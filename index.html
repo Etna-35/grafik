@@ -35,7 +35,7 @@
   html,body{margin:0;background:var(--paper);color:var(--ink);
     font-family:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
     font-feature-settings:"tnum" 1;}
-  .wrap{max-width:920px;margin:0 auto;padding:14px 12px 60px;}
+  .wrap{max-width:1040px;margin:0 auto;padding:14px 12px 60px;}
 
   /* Header */
   header.top{display:flex;align-items:baseline;gap:10px;margin:2px 2px 12px;}
@@ -62,11 +62,18 @@
   th,td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);}
   thead th{position:sticky;top:0;z-index:3;background:var(--card);}
   /* Date column */
-  .colDate{position:sticky;left:0;z-index:2;background:var(--card);min-width:60px;width:60px;}
+  .colDate{position:sticky;left:0;z-index:2;background:var(--card);min-width:68px;width:68px;}
   thead .colDate{z-index:4;}
   .dcell{padding:7px 6px;text-align:left;line-height:1.05;}
   .dcell .dnum{font-weight:800;font-size:15px;}
   .dcell .dwd{font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.3px;}
+  .markDate{cursor:pointer;}
+  .dmarks{display:flex;gap:3px;align-items:center;margin-top:3px;min-height:11px;}
+  .markIcon{display:inline-flex;align-items:center;justify-content:center;min-width:13px;height:13px;padding:0 3px;
+    color:var(--ink);font-size:10px;font-weight:800;line-height:1;border:1px solid var(--line-strong);
+    border-radius:8px;background:rgba(255,255,255,.46);}
+  .markIcon.star{font-size:11px;font-weight:700;}
+  .markIcon .cnt{font-size:8px;margin-left:1px;}
   tr.we .colDate,tr.we td.cell{background:var(--weekend);}
   tr.we .dcell .dwd{color:var(--brand);}
   tr.today .colDate{box-shadow:inset 3px 0 0 var(--brand);}
@@ -171,10 +178,16 @@
   .colMoney{min-width:64px;width:64px;text-align:right;background:#fbf3ea;padding-right:8px;}
   thead .colMoney{background:#fbf3ea;}
   .colMoney .mv{font-weight:700;font-size:11px;color:var(--brand);}
+  .colPlan{min-width:76px;width:76px;text-align:right;background:#f7f1e8;padding-right:8px;}
+  thead .colPlan{background:#f7f1e8;}
+  .colPlan .pv{font-weight:800;font-size:11px;color:var(--ink);}
   tfoot td.tt .pay{font-size:11px;font-weight:800;color:var(--brand);margin-top:1px;}
   tfoot .colMoney.tt{text-align:right;padding-right:8px;}
   tfoot .colMoney .sh{font-size:13px;text-align:right;}
   tfoot .colMoney .hr{text-align:right;}
+  tfoot .colPlan.tt{text-align:right;padding-right:8px;}
+  tfoot .colPlan .sh{font-size:12px;text-align:right;}
+  tfoot .colPlan .hr{text-align:right;}
 
   .moneySummary{background:linear-gradient(135deg,#fff8f0,#fffdf9);border:1px solid var(--line);
     border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;margin:0 2px 12px;}
@@ -189,6 +202,16 @@
   .fld i{font-style:normal;font-size:10px;color:var(--ink-soft);}
   .rateNote{border:1px solid var(--line);border-radius:16px;padding:6px 9px;background:#fbf6ee;}
   .emprow input[type=number]{width:62px;}
+  .markActions{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+  .markToggle{border:1px solid var(--line-strong);background:#fff;border-radius:12px;padding:10px 12px;
+    font:inherit;font-weight:700;font-size:14px;cursor:pointer;}
+  .markToggle.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .payList{max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:12px;background:#fff;}
+  .payEmp{display:flex;align-items:center;gap:9px;padding:10px 12px;border-bottom:1px solid var(--line);
+    font-size:14px;}
+  .payEmp:last-child{border-bottom:none;}
+  .payEmp input{width:18px;height:18px;accent-color:var(--brand);}
+  .payEmp .role{margin-left:auto;color:var(--ink-soft);font-size:11px;}
 </style>
 
 <div class="wrap">
@@ -216,6 +239,7 @@
   <div class="hint">
     Тап по клетке — поставить или снять смену; у мойщиц откроется выбор оплаты.
     <b>Долгое нажатие</b> на клетке — изменить часы или сумму конкретной смены.
+    Тап по дате — добавить метки ₽ или ☆.
     Столбец <b>Σ</b> справа — сколько человек работает в этот день.
   </div>
 
@@ -266,6 +290,23 @@
   </div>
 </div>
 
+<!-- Date marks bottom sheet -->
+<div class="ovl" id="markOvl">
+  <div class="sheet">
+    <h3>Метки даты</h3>
+    <div class="who" id="markWho"></div>
+    <div class="markActions">
+      <button class="markToggle" id="markTask" type="button"><span class="markIcon star">☆</span> Дедлайн</button>
+    </div>
+    <div class="seclabel">Зарплата</div>
+    <div class="payList" id="payList"></div>
+    <div class="sheetbtns" style="margin-top:14px;">
+      <button class="btn ghost danger" id="markClear">Очистить</button>
+      <button class="btn brand" id="markDone">Готово</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- Export image preview -->
@@ -297,6 +338,8 @@
   const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
   const KEY = "etna_schedule_v1";
   const FIXED_PAY_PRESETS = [3000,4000,6000,8000];
+  const FOT_MIN_RATE = 0.23;
+  const FOT_MAX_RATE = 0.28;
 
   let state = null;
   let saveTimer = null;
@@ -310,10 +353,11 @@
     for(let i=1;i<=2;i++) emps.push({id:uid(),name:"Бармен "+i,role:"bar",hours:12,rate:0});
     for(let i=1;i<=4;i++) emps.push({id:uid(),name:"Официант "+i,role:"waiter",hours:12,rate:0});
     for(let i=1;i<=2;i++) emps.push({id:uid(),name:"Мойщица "+i,role:"dish",fixed:0,fixedWe:0});
-    return { employees:emps, shifts:{}, year:now.getFullYear(), month:now.getMonth(), showMoney:true };
+    return { employees:emps, shifts:{}, marks:{}, year:now.getFullYear(), month:now.getMonth(), showMoney:true };
   }
 
   function migrate(){
+    const empIds = new Set(state.employees.map(e=>e.id));
     state.employees.forEach(e=>{
       const model=(ROLES[e.role]||{}).model||"hourly";
       if(model==="hourly"){
@@ -323,6 +367,15 @@
         if(typeof e.fixed!=="number")   e.fixed=0;
         if(typeof e.fixedWe!=="number") e.fixedWe=e.fixed||0;
       }
+    });
+    if(!state.marks || typeof state.marks!=="object") state.marks={};
+    Object.keys(state.marks).forEach(dk=>{
+      const m=state.marks[dk]||{};
+      m.task=!!m.task;
+      m.pay=Array.isArray(m.pay) ? m.pay.filter(id=>empIds.has(id)) : [];
+      m.pay=[...new Set(m.pay)];
+      if(!m.task && m.pay.length===0) delete state.marks[dk];
+      else state.marks[dk]=m;
     });
     if(typeof state.showMoney!=="boolean") state.showMoney=true;
   }
@@ -334,6 +387,7 @@
     }catch(e){ /* no saved data yet */ }
     if(!state || !state.employees){ state = defaultState(); }
     if(!state.shifts) state.shifts = {};
+    if(!state.marks) state.marks = {};
     migrate();
   }
 
@@ -374,6 +428,31 @@
     if(state.shifts[dk]){ delete state.shifts[dk][eid];
       if(Object.keys(state.shifts[dk]).length===0) delete state.shifts[dk]; }
   }
+  function getMark(dk){
+    const m = state.marks && state.marks[dk];
+    return {task:!!(m&&m.task), pay:(m&&Array.isArray(m.pay))?m.pay.slice():[]};
+  }
+  function setMark(dk, mark){
+    if(!state.marks) state.marks={};
+    const pay = (mark.pay||[]).filter((id,i,a)=>a.indexOf(id)===i);
+    if(mark.task || pay.length){ state.marks[dk]={task:!!mark.task,pay}; }
+    else if(state.marks){ delete state.marks[dk]; }
+  }
+  function markBadges(mark){
+    let h="";
+    if(mark.pay.length){
+      h += "<span class='markIcon' title='День зарплаты'>₽"+(mark.pay.length>1?"<span class='cnt'>"+mark.pay.length+"</span>":"")+"</span>";
+    }
+    if(mark.task){ h += "<span class='markIcon star' title='Дедлайн'>☆</span>"; }
+    return h ? "<div class='dmarks'>"+h+"</div>" : "";
+  }
+  function markTitle(mark){
+    const names = mark.pay.map(id=>state.employees.find(e=>e.id===id)).filter(Boolean).map(e=>e.name);
+    const parts=[];
+    if(names.length) parts.push("Зарплата: "+names.join(", "));
+    if(mark.task) parts.push("Дедлайн");
+    return parts.join(" · ");
+  }
 
   /* ---------- render grid ---------- */
   function render(){
@@ -394,7 +473,8 @@
               "</div><div class='rl'>"+sub+"</div><div class='bar' style='background:"+r.color+"'></div></th>";
     });
     html += "<th class='colSum'><div class='dcell'><div class='dwd'>Σ</div></div></th>";
-    if(sm) html += "<th class='colMoney'><div class='dcell'><div class='dwd'>ФОТ</div></div></th>";
+    if(sm) html += "<th class='colMoney'><div class='dcell'><div class='dwd'>ФОТ</div></div></th>"+
+                   "<th class='colPlan'><div class='dcell'><div class='dwd'>План</div></div></th>";
     html += "</tr></thead>";
 
     // body
@@ -404,9 +484,12 @@
       const wd = new Date(y,m,d).getDay();
       const we = (wd===0||wd===6);
       const isToday = isThisMonth && today.getDate()===d;
+      const mark = getMark(dk);
+      const mTitle = markTitle(mark);
       let cover=0, dayPay=0;
       let row = "<tr class='"+(we?"we ":"")+(isToday?"today":"")+"'>";
-      row += "<td class='colDate'><div class='dcell'><span class='dnum'>"+d+"</span> <span class='dwd'>"+WD[wd]+"</span></div></td>";
+      row += "<td class='colDate markDate' data-d='"+d+"' title='"+esc(mTitle||"Метки даты")+"'><div class='dcell'>"+
+             "<span class='dnum'>"+d+"</span> <span class='dwd'>"+WD[wd]+"</span>"+markBadges(mark)+"</div></td>";
       emps.forEach(e=>{
         const h = getShift(dk, e.id);
         const r = ROLES[e.role];
@@ -422,7 +505,8 @@
         }
       });
       row += "<td class='colSum'><span class='cv'>"+(cover||"")+"</span></td>";
-      if(sm) row += "<td class='colMoney'><span class='mv'>"+(dayPay?money0(dayPay):"")+"</span></td>";
+      if(sm) row += "<td class='colMoney'><span class='mv'>"+(dayPay?money0(dayPay):"")+"</span></td>"+
+                    "<td class='colPlan'><span class='pv'>"+(dayPay?planRange(dayPay):"")+"</span></td>";
       row += "</tr>";
       html += row;
     }
@@ -445,7 +529,8 @@
               (sm?"<div class='pay'>"+money0(tot[e.id].pay)+"</div>":"")+"</td>";
     });
     html += "<td class='colSum'></td>";
-    if(sm) html += "<td class='colMoney tt'><div class='sh' style='color:var(--brand)'>"+money0(grand)+"</div><div class='hr'>за месяц</div></td>";
+    if(sm) html += "<td class='colMoney tt'><div class='sh' style='color:var(--brand)'>"+money0(grand)+"</div><div class='hr'>за месяц</div></td>"+
+                   "<td class='colPlan tt'><div class='sh'>"+(planRange(grand)||"0к")+"</div><div class='hr'>план</div></td>";
     html += "</tr></tfoot>";
 
     document.getElementById("grid").innerHTML = html;
@@ -477,6 +562,7 @@
       ms.innerHTML =
         "<div class='msmain'><div class='mslabel'>ФОТ за месяц</div><div class='msbig'>"+money0(grand)+" ₽</div></div>"+
         "<div class='msrow'><span>Дней с сменами: <b>"+workDays+"</b></span>"+
+        "<span>План выручки при ФОТ 23–28%: <b>"+(planRange(grand)||"0к")+"</b></span>"+
         "<span>В среднем за рабочий день: <b>"+money0(workDays?grand/workDays:0)+" ₽</b></span>"+
         "<span>В среднем за день месяца: <b>"+money0(grand/nd)+" ₽</b></span></div>";
     }else{ ms.style.display="none"; ms.innerHTML=""; }
@@ -533,12 +619,19 @@
   function shiftDefault(e,we){ return isFixed(e) ? FIXED_PAY_PRESETS[0] : (e.hours||0); }
   function payOf(e,val){ if(val===null||val===undefined) return 0; return isFixed(e) ? val : (e.rate||0)*val; }
   function money0(x){ return Math.round(x||0).toLocaleString("ru-RU"); }
+  function shortK(x){ return Math.round((x||0)/1000)+"к"; }
+  function planRange(fot){
+    if(!fot) return "";
+    const low=shortK(fot/FOT_MAX_RATE), high=shortK(fot/FOT_MIN_RATE);
+    return low===high ? low : low+"-"+high;
+  }
 
   /* ---------- interactions ---------- */
   const gridwrap = document.getElementById("gridwrap");
   let pressTimer=null, longFired=false, pendingCell=null;
 
   function cellFrom(t){ return t.closest ? t.closest("td.cell") : null; }
+  function dateFrom(t){ return t.closest ? t.closest("td.markDate") : null; }
 
   function quickToggle(cell){
     const d=+cell.dataset.d, eid=cell.dataset.e;
@@ -549,6 +642,11 @@
     else{ setShift(dk,eid, emp? shiftDefault(emp, isWeekend(d)) : 0); }
     render(); save();
   }
+
+  gridwrap.addEventListener("click",function(ev){
+    const dc=dateFrom(ev.target); if(!dc) return;
+    openMarkSheet(+dc.dataset.d);
+  });
 
   // touch / mouse long-press
   gridwrap.addEventListener("touchstart",function(ev){
@@ -650,6 +748,55 @@
   });
   ovl.addEventListener("click",function(ev){ if(ev.target===ovl) closeSheet(); });
 
+  /* ---------- date marks sheet ---------- */
+  const markOvl=document.getElementById("markOvl");
+  const markTask=document.getElementById("markTask");
+  const payList=document.getElementById("payList");
+  let markCtx=null;
+
+  function openMarkSheet(d){
+    const dk=dateKey(state.year,state.month,d);
+    markCtx={dk,d,mark:getMark(dk)};
+    document.getElementById("markWho").textContent = d+" "+MONTHS[state.month]+" "+state.year;
+    renderMarkSheet();
+    markOvl.classList.add("show");
+  }
+  function renderMarkSheet(){
+    if(!markCtx) return;
+    markTask.classList.toggle("on", !!markCtx.mark.task);
+    const chosen=new Set(markCtx.mark.pay);
+    const emps=sortedEmployees();
+    payList.innerHTML = emps.map(e=>
+      "<label class='payEmp'><input type='checkbox' data-e='"+e.id+"' "+(chosen.has(e.id)?"checked":"")+">"+
+      "<span class='markIcon'>₽</span><span>"+esc(e.name)+"</span><span class='role'>"+ROLES[e.role].label+"</span></label>"
+    ).join("");
+  }
+  function closeMarkSheet(){ markOvl.classList.remove("show"); markCtx=null; }
+  function saveMarkSheet(){
+    if(!markCtx) return;
+    setMark(markCtx.dk, markCtx.mark);
+    closeMarkSheet(); render(); save();
+  }
+  markTask.addEventListener("click",function(){
+    if(!markCtx) return;
+    markCtx.mark.task=!markCtx.mark.task;
+    renderMarkSheet();
+  });
+  payList.addEventListener("change",function(ev){
+    if(!markCtx || ev.target.type!=="checkbox") return;
+    const eid=ev.target.dataset.e;
+    const pay=new Set(markCtx.mark.pay);
+    if(ev.target.checked) pay.add(eid); else pay.delete(eid);
+    markCtx.mark.pay=[...pay];
+  });
+  document.getElementById("markDone").addEventListener("click",saveMarkSheet);
+  document.getElementById("markClear").addEventListener("click",function(){
+    if(!markCtx) return;
+    markCtx.mark={task:false,pay:[]};
+    saveMarkSheet();
+  });
+  markOvl.addEventListener("click",function(ev){ if(ev.target===markOvl) closeMarkSheet(); });
+
   /* ---------- month nav ---------- */
   function updateMoneyBtn(){
     const b=document.getElementById("moneyToggle");
@@ -699,6 +846,10 @@
     state.employees=state.employees.filter(x=>x.id!==e.id);
     Object.keys(state.shifts).forEach(dk=>{ delete state.shifts[dk][e.id];
       if(Object.keys(state.shifts[dk]).length===0) delete state.shifts[dk]; });
+    Object.keys(state.marks||{}).forEach(dk=>{
+      state.marks[dk].pay=(state.marks[dk].pay||[]).filter(id=>id!==e.id);
+      if(!state.marks[dk].task && state.marks[dk].pay.length===0) delete state.marks[dk];
+    });
     renderSettings(); render(); save();
   });
   document.getElementById("addEmp").addEventListener("click",function(){
@@ -707,9 +858,13 @@
   });
   document.getElementById("clearMonth").addEventListener("click",function(){
     const nm=MONTHS[state.month]+" "+state.year;
-    if(!confirm("Очистить все смены за "+nm+"?")) return;
+    if(!confirm("Очистить все смены и метки за "+nm+"?")) return;
     const nd=daysIn(state.year,state.month);
-    for(let d=1;d<=nd;d++) delete state.shifts[dateKey(state.year,state.month,d)];
+    for(let d=1;d<=nd;d++){
+      const dk=dateKey(state.year,state.month,d);
+      delete state.shifts[dk];
+      if(state.marks) delete state.marks[dk];
+    }
     render(); save(); toast("Месяц очищен");
   });
 
@@ -754,24 +909,30 @@
   async function buildImage(){
     const emps = sortedEmployees();
     const y=state.year, m=state.month, nd=daysIn(y,m);
+    const sm=state.showMoney;
     try{ await document.fonts.ready; }catch(e){}
 
     // layout (logical px)
     const S=2;
     const PAD=26, titleH=78, headerH=64, rowH=37, totH=42;
-    const dateW=98, EW=66, sumW=48;
-    const tableW = dateW + emps.length*EW + sumW;
+    const dateW=98, EW=66, sumW=48, moneyW=72, planW=80;
+    const tableW = dateW + emps.length*EW + sumW + (sm ? moneyW + planW : 0);
     const W = PAD*2 + tableW;
     const tableTop = PAD + titleH;
     const tableH = headerH + nd*rowH + totH;
 
     // totals
-    const tot={}; emps.forEach(e=>tot[e.id]={sh:0,hr:0});
-    const cover=[];
+    const tot={}; emps.forEach(e=>tot[e.id]={sh:0,hr:0,pay:0});
+    const cover=[], dayPay=[];
+    let grand=0;
     for(let d=1;d<=nd;d++){
-      const dk=dateKey(y,m,d); let c=0;
-      emps.forEach(e=>{ const h=getShift(dk,e.id); if(h!==null){tot[e.id].sh++; if(!isFixed(e)) tot[e.id].hr+=h; c++;} });
+      const dk=dateKey(y,m,d); let c=0, pay=0;
+      emps.forEach(e=>{ const h=getShift(dk,e.id); if(h!==null){
+        const p=payOf(e,h);
+        tot[e.id].sh++; if(!isFixed(e)) tot[e.id].hr+=h; tot[e.id].pay+=p; c++; pay+=p; grand+=p;
+      } });
       cover[d]=c;
+      dayPay[d]=pay;
     }
     // role totals for footer
     const byRole={}; ROLE_ORDER.forEach(r=>byRole[r]={sh:0,hr:0,n:0});
@@ -805,7 +966,7 @@
     ctx.fillStyle=HEX.card; ctx.fill();
     ctx.clip();
 
-    const x0=PAD, ec0=x0+dateW, sc0=ec0+emps.length*EW;
+    const x0=PAD, ec0=x0+dateW, sc0=ec0+emps.length*EW, mc0=sc0+sumW, pc0=mc0+moneyW;
 
     // header
     ctx.textAlign="center";
@@ -822,6 +983,10 @@
     });
     ctx.fillStyle=HEX.soft; F("700",11);
     ctx.fillText("Σ", sc0+sumW/2, tableTop+headerH/2);
+    if(sm){
+      ctx.fillText("ФОТ", mc0+moneyW/2, tableTop+headerH/2);
+      ctx.fillText("ПЛАН", pc0+planW/2, tableTop+headerH/2);
+    }
 
     // rows
     for(let d=1;d<=nd;d++){
@@ -836,6 +1001,17 @@
       const dw=ctx.measureText(String(d)).width;
       ctx.fillStyle= we?HEX.brand:HEX.soft; F("700",11);
       ctx.fillText(WD[wd], x0+12+dw+6, ry+rowH/2+1);
+      const mark=getMark(dateKey(y,m,d));
+      if(mark.pay.length || mark.task){
+        let mx=x0+62;
+        ctx.fillStyle=HEX.ink; F("800",10.5);
+        if(mark.pay.length){
+          const txt="₽"+(mark.pay.length>1?mark.pay.length:"");
+          ctx.fillText(txt, mx, ry+rowH/2+1);
+          mx+=ctx.measureText(txt).width+7;
+        }
+        if(mark.task){ F("700",12); ctx.fillText("☆", mx, ry+rowH/2+1); }
+      }
       // cells
       ctx.textAlign="center";
       emps.forEach((e,i)=>{
@@ -851,6 +1027,14 @@
       // coverage
       ctx.fillStyle= cover[d]?HEX.soft:HEX.line; F("700",12);
       ctx.fillText(cover[d]||"·", sc0+sumW/2, ry+rowH/2);
+      if(sm && dayPay[d]){
+        ctx.textAlign="right";
+        ctx.fillStyle=HEX.brand; F("800",10.5);
+        ctx.fillText(money0(dayPay[d]), mc0+moneyW-8, ry+rowH/2);
+        ctx.fillStyle=HEX.ink; F("800",10.5);
+        ctx.fillText(planRange(dayPay[d]), pc0+planW-8, ry+rowH/2);
+        ctx.textAlign="center";
+      }
     }
 
     // totals row
@@ -866,14 +1050,27 @@
       ctx.fillStyle=HEX.soft; F("700",10);
       ctx.fillText(isFixed(e)?"смен":(fmt(tot[e.id].hr)+"ч"), cx, ty+30);
     });
+    if(sm){
+      ctx.textAlign="right";
+      ctx.fillStyle=HEX.brand; F("800",11);
+      ctx.fillText(money0(grand), mc0+moneyW-8, ty+15);
+      ctx.fillStyle=HEX.soft; F("700",9);
+      ctx.fillText("за месяц", mc0+moneyW-8, ty+30);
+      ctx.fillStyle=HEX.ink; F("800",11);
+      ctx.fillText(planRange(grand)||"0к", pc0+planW-8, ty+15);
+      ctx.fillStyle=HEX.soft; F("700",9);
+      ctx.fillText("план", pc0+planW-8, ty+30);
+    }
     ctx.restore();
 
     // grid lines
     ctx.strokeStyle=HEX.line; ctx.lineWidth=1;
     ctx.beginPath();
-    for(let i=0;i<=emps.length;i++){ const gx=ec0+i*EW; ctx.moveTo(gx+0.5,tableTop); ctx.lineTo(gx+0.5,tableTop+tableH); }
-    ctx.moveTo(x0+0.5,tableTop); ctx.lineTo(x0+0.5,tableTop+tableH);
-    ctx.moveTo(sc0+sumW+0.5,tableTop); ctx.lineTo(sc0+sumW+0.5,tableTop+tableH);
+    const gxList=[x0];
+    for(let i=0;i<=emps.length;i++) gxList.push(ec0+i*EW);
+    gxList.push(mc0);
+    if(sm) gxList.push(pc0, pc0+planW);
+    [...new Set(gxList)].forEach(gx=>{ ctx.moveTo(gx+0.5,tableTop); ctx.lineTo(gx+0.5,tableTop+tableH); });
     for(let d=0;d<=nd;d++){ const gy=tableTop+headerH+d*rowH; ctx.moveTo(x0,gy+0.5); ctx.lineTo(x0+tableW,gy+0.5); }
     ctx.moveTo(x0,tableTop+0.5); ctx.lineTo(x0+tableW,tableTop+0.5);
     ctx.stroke();
