@@ -48,7 +48,8 @@
   .monthbar .mname{flex:1;text-align:center;font-weight:700;font-size:16px;text-transform:capitalize;}
   .btn{border:1px solid var(--line-strong);background:var(--card);color:var(--ink);
     border-radius:11px;padding:9px 12px;font:inherit;font-weight:600;font-size:14px;cursor:pointer;
-    box-shadow:var(--shadow);transition:transform .08s ease,background .15s;}
+    box-shadow:var(--shadow);transition:transform .08s ease,background .15s;text-decoration:none;
+    display:inline-flex;align-items:center;justify-content:center;}
   .btn:active{transform:scale(.96)}
   .btn.icon{width:42px;text-align:center;padding:9px 0;font-size:18px;line-height:1;}
   .btn.ghost{background:transparent;box-shadow:none;border-color:var(--line);}
@@ -151,8 +152,8 @@
   .custom{display:flex;gap:8px;align-items:center;margin-bottom:16px;}
   .custom input{width:80px;border:1px solid var(--line-strong);border-radius:10px;padding:10px;font:inherit;
     font-size:15px;text-align:center;}
-  .sheetbtns{display:flex;gap:8px;}
-  .sheetbtns .btn{flex:1;justify-content:center;text-align:center;padding:12px;}
+  .sheetbtns{display:flex;gap:8px;flex-wrap:wrap;}
+  .sheetbtns .btn{flex:1 1 130px;justify-content:center;text-align:center;padding:12px;}
 
   .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%) translateY(20px);
     background:var(--ink);color:#fff;padding:9px 16px;border-radius:20px;font-size:13px;font-weight:600;
@@ -271,11 +272,12 @@
 <div class="ovl" id="expOvl">
   <div class="sheet">
     <h3>Картинка для чата</h3>
-    <div class="who">Нажми «Поделиться / Скачать», или удерживай картинку, чтобы сохранить.</div>
+    <div class="who">Нажми «Скачать PNG», чтобы сохранить файл с нормальным именем.</div>
     <div class="imgbox"><img id="expImg" alt="График смен"></div>
     <div class="sheetbtns">
       <button class="btn ghost" id="expClose">Закрыть</button>
-      <button class="btn brand" id="expShare">Поделиться / Скачать</button>
+      <button class="btn ghost" id="expShare">Поделиться</button>
+      <a class="btn brand" id="expDownload" href="#" download="grafik-etna.png">Скачать PNG</a>
     </div>
   </div>
 </div>
@@ -736,6 +738,16 @@
     return t+"…";
   }
   function pad2(n){ return String(n).padStart(2,"0"); }
+  function exportFilename(){ return "grafik-etna-"+state.year+"-"+pad2(state.month+1)+".png"; }
+  function exportFile(){
+    if(!lastBlob) return null;
+    try{ return new File([lastBlob], exportFilename(), {type:"image/png"}); }
+    catch(e){ return null; }
+  }
+  function canShareExport(){
+    const file=exportFile();
+    return !!(file && navigator.canShare && navigator.canShare({files:[file]}) && navigator.share);
+  }
 
   let lastBlob=null, lastUrl=null;
 
@@ -899,6 +911,7 @@
       W-PAD, H-PAD+2);
 
     const blob = await new Promise(res=> cv.toBlob(res,"image/png",0.96));
+    if(!blob) throw new Error("empty image");
     return blob;
   }
 
@@ -911,29 +924,31 @@
       if(lastUrl) URL.revokeObjectURL(lastUrl);
       lastUrl=URL.createObjectURL(blob);
       document.getElementById("expImg").src=lastUrl;
+      const dl=document.getElementById("expDownload");
+      dl.href=lastUrl;
+      dl.download=exportFilename();
+      document.getElementById("expShare").style.display = canShareExport() ? "" : "none";
       document.getElementById("expOvl").classList.add("show");
     }catch(e){ toast("Не удалось собрать картинку"); }
     finally{ btn.disabled=false; btn.innerHTML=old; }
   }
 
-  async function shareOrDownload(){
-    if(!lastBlob){ return; }
-    const fname="grafik-"+MONTHS[state.month]+"-"+state.year+".png";
-    const file=new File([lastBlob],fname,{type:"image/png"});
-    if(navigator.canShare && navigator.canShare({files:[file]})){
-      try{ await navigator.share({files:[file], title:"График смен · Etna"}); return; }
-      catch(e){ if(e && e.name==="AbortError") return; }
+  async function shareImage(){
+    const file=exportFile();
+    if(!file){ toast("Поделиться недоступно"); return; }
+    if(!navigator.canShare || !navigator.canShare({files:[file]}) || !navigator.share){
+      toast("Поделиться недоступно");
+      return;
     }
-    try{
-      const a=document.createElement("a");
-      a.href=lastUrl; a.download=fname;
-      document.body.appendChild(a); a.click(); a.remove();
-      toast("Файл сохранён");
-    }catch(e){ toast("Удерживай картинку, чтобы сохранить"); }
+    try{ await navigator.share({files:[file], title:"График смен · Etna"}); }
+    catch(e){ if(!e || e.name!=="AbortError") toast("Не удалось поделиться"); }
   }
 
   document.getElementById("exportImg").addEventListener("click",exportImage);
-  document.getElementById("expShare").addEventListener("click",shareOrDownload);
+  document.getElementById("expDownload").addEventListener("click",function(ev){
+    if(!lastBlob || !lastUrl){ ev.preventDefault(); toast("Сначала собери картинку"); }
+  });
+  document.getElementById("expShare").addEventListener("click",shareImage);
   document.getElementById("expClose").addEventListener("click",()=>document.getElementById("expOvl").classList.remove("show"));
   document.getElementById("expOvl").addEventListener("click",e=>{ if(e.target.id==="expOvl") e.currentTarget.classList.remove("show"); });
 
