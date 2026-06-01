@@ -100,14 +100,17 @@
 
   /* Summary cards */
   h2.sec{font-family:"Playfair Display",serif;font-size:17px;margin:22px 4px 10px;font-weight:700;}
-  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:9px;}
   .scard{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:12px;
-    padding:10px 12px;box-shadow:var(--shadow);}
+    padding:10px 12px;box-shadow:var(--shadow);min-width:0;overflow:hidden;}
   .scard .nm{font-weight:700;font-size:14px;line-height:1.15;}
   .scard .rl{font-size:11px;color:var(--ink-soft);margin-bottom:7px;}
-  .scard .nums{display:flex;gap:14px;align-items:baseline;}
-  .scard .big{font-size:22px;font-weight:800;line-height:1;}
-  .scard .unit{font-size:11px;color:var(--ink-soft);margin-left:3px;}
+  .scard .nums{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end;}
+  .scard .nums>div{min-width:58px;max-width:100%;}
+  .scard .big{display:inline-block;max-width:100%;font-size:21px;font-weight:800;line-height:1;
+    overflow-wrap:anywhere;}
+  .scard .big.pay{font-size:19px;}
+  .scard .unit{font-size:11px;color:var(--ink-soft);margin-left:3px;white-space:nowrap;}
   .roleTotals{display:flex;flex-wrap:wrap;gap:8px;margin:6px 4px 0;font-size:12px;color:var(--ink-soft);}
   .roleTotals .rt{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:4px 10px;}
   .roleTotals .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle;}
@@ -183,6 +186,7 @@
   .erow2{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%;margin-top:7px;}
   .fld{display:inline-flex;align-items:center;gap:4px;}
   .fld i{font-style:normal;font-size:10px;color:var(--ink-soft);}
+  .rateNote{border:1px solid var(--line);border-radius:16px;padding:6px 9px;background:#fbf6ee;}
   .emprow input[type=number]{width:62px;}
 </style>
 
@@ -209,8 +213,8 @@
   </div>
 
   <div class="hint">
-    Тап по клетке — поставить или снять смену (берутся часы сотрудника).
-    <b>Долгое нажатие</b> на клетке — задать другие часы для конкретной смены.
+    Тап по клетке — поставить или снять смену; у мойщиц откроется выбор оплаты.
+    <b>Долгое нажатие</b> на клетке — изменить часы или сумму конкретной смены.
     Столбец <b>Σ</b> справа — сколько человек работает в этот день.
   </div>
 
@@ -250,7 +254,7 @@
     <div class="who" id="sheetWho"></div>
     <div class="hopts" id="hopts"></div>
     <div class="custom">
-      <span style="font-size:13px;color:var(--ink-soft)">Своё:</span>
+      <span style="font-size:13px;color:var(--ink-soft)" id="customLabel">Своё:</span>
       <input type="number" id="customH" min="0" step="0.5" placeholder="ч">
       <span style="font-size:13px;color:var(--ink-soft)" id="customUnit">часов</span>
     </div>
@@ -290,6 +294,7 @@
   const WD = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
   const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
   const KEY = "etna_schedule_v1";
+  const FIXED_PAY_PRESETS = [3000,4000,6000,8000];
 
   let state = null;
   let saveTimer = null;
@@ -485,7 +490,7 @@
            "<div class='rl'>"+r.label+"</div>"+
            "<div class='nums'><div><span class='big' style='color:"+r.color+"'>"+tot[e.id].sh+"</span><span class='unit'>смен</span></div>"+
            (isFixed(e)?"":"<div><span class='big'>"+fmt(tot[e.id].hr)+"</span><span class='unit'>часов</span></div>")+
-           (sm?"<div><span class='big' style='color:var(--brand)'>"+money0(tot[e.id].pay)+"</span><span class='unit'>₽</span></div>":"")+
+           (sm?"<div><span class='big pay' style='color:var(--brand)'>"+money0(tot[e.id].pay)+"</span><span class='unit'>₽</span></div>":"")+
            "</div></div>";
     });
     document.getElementById("cards").innerHTML = c;
@@ -498,8 +503,7 @@
       const roleSel = "<select class='erl'>"+ROLE_ORDER.map(r=>"<option value='"+r+"' "+(r===e.role?"selected":"")+">"+ROLES[r].label+"</option>").join("")+"</select>";
       let flds;
       if(isFixed(e)){
-        flds = "<span class='fld'><input type='number' class='efixed' value='"+(e.fixed||0)+"' min='0' step='50'><i>буд ₽</i></span>"+
-               "<span class='fld'><input type='number' class='efixedwe' value='"+(e.fixedWe||0)+"' min='0' step='50'><i>вых ₽</i></span>";
+        flds = "<span class='fld rateNote'><i>ставка в датах</i></span>";
       }else{
         flds = "<span class='fld'><input type='number' class='ehr' value='"+e.hours+"' min='0' max='24' step='0.5'><i>ч</i></span>"+
                "<span class='fld'><input type='number' class='erate' value='"+(e.rate||0)+"' min='0' step='10'><i>₽/ч</i></span>";
@@ -524,7 +528,7 @@
   function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
   function isFixed(e){ return (ROLES[e.role]||{}).model==="fixed"; }
   function isWeekend(d){ const wd=new Date(state.year,state.month,d).getDay(); return wd===0||wd===6; }
-  function shiftDefault(e,we){ return isFixed(e) ? (we?(e.fixedWe||0):(e.fixed||0)) : (e.hours||0); }
+  function shiftDefault(e,we){ return isFixed(e) ? FIXED_PAY_PRESETS[0] : (e.hours||0); }
   function payOf(e,val){ if(val===null||val===undefined) return 0; return isFixed(e) ? val : (e.rate||0)*val; }
   function money0(x){ return Math.round(x||0).toLocaleString("ru-RU"); }
 
@@ -538,6 +542,7 @@
     const d=+cell.dataset.d, eid=cell.dataset.e;
     const dk=dateKey(state.year,state.month,d);
     const emp=state.employees.find(x=>x.id===eid);
+    if(emp && isFixed(emp)){ openSheet(cell); return; }
     if(getShift(dk,eid)!==null){ removeShift(dk,eid); }
     else{ setShift(dk,eid, emp? shiftDefault(emp, isWeekend(d)) : 0); }
     render(); save();
@@ -599,7 +604,7 @@
 
     let opts, unit;
     if(fixed){
-      opts = [emp.fixed||0, emp.fixedWe||0].filter((v,i,a)=>a.indexOf(v)===i);
+      opts = FIXED_PAY_PRESETS.slice();
       unit = "₽";
     }else{
       opts = PRESETS.slice();
@@ -608,12 +613,13 @@
       unit = "ч";
     }
     hopts.innerHTML = opts.map(v=>{
-      const lbl = fixed ? (v===(emp.fixed||0)?"будни ":"")+(v===(emp.fixedWe||0)&&we?"вых ":"")+money0(v) : fmt(v)+unit;
+      const lbl = fixed ? money0(v) : fmt(v)+unit;
       return "<button data-v='"+v+"' class='"+(v===sheetSel?"sel":"")+"'>"+lbl+(fixed?" ₽":"")+"</button>";
     }).join("");
     customH.value = opts.includes(sheetSel)?"":sheetSel;
     customH.step = fixed?"50":"0.5";
     customH.placeholder = unit;
+    document.getElementById("customLabel").textContent = fixed?"Своя:":"Своё:";
     document.getElementById("customUnit").textContent = fixed?"рублей":"часов";
     ovl.classList.add("show");
   }
@@ -623,6 +629,9 @@
     const b=ev.target.closest("button"); if(!b) return;
     sheetSel=parseFloat(b.dataset.v); customH.value="";
     [...hopts.children].forEach(c=>c.classList.toggle("sel",c===b));
+    if(sheetCtx && sheetCtx.fixed){
+      setShift(sheetCtx.dk,sheetCtx.eid,sheetSel); closeSheet(); render(); save();
+    }
   });
   customH.addEventListener("input",function(){
     [...hopts.children].forEach(c=>c.classList.remove("sel"));
