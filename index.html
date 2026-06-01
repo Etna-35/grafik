@@ -1,0 +1,967 @@
+<!-- График смен · Etna -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>График смен · Etna</title>
+<meta name="theme-color" content="#8f2433">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="График Etna">
+<link rel="icon" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="22" fill="%238f2433"/><text x="50" y="70" font-size="62" font-family="Georgia,serif" font-weight="700" fill="white" text-anchor="middle">E</text></svg>'>
+<link rel="apple-touch-icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAALQAAAC0CAYAAAA9zQYyAAAEGElEQVR4nO3dP4wUVQDH8bcXKzvQHhG0tcBGOxvsMTExQWjQ/hpbayu0VRpiYTRQWnCtiTZcQmJiYc7WxBBKaywM5A5292Z23syb+d3n0x7ZfcWXH2//hFuVmbh9+crT1mdgd/tHh6vWZyillGaHEHC2VoFP+qQiPpumjHv0JxIxx40d92gPLmS2GSvs6g8qZPqoHfZezQcTM33VbqbK3w4hU0ONtR680GKmlhotDQpazNQ2tKmdJl7ITGGXK0jvhRYzU9mltV5Bi5mp9W2uc9BippU+7VV9Hxpa6xS0daa1rg2eGrSYmYsuLW4NWszMzWlNukMTZWPQ1pm52tbm2qDFzNxtatSVgygvBW2dWYp1rVpoopwI2jqzNC82a6GJImiiPA/adYOlOt6uhSaKoImyV4rrBsv3rGELTRRBE0XQRFm5P5PEQhNF0EQRNFEETRRBE0XQRBE0UQRNFEETRdBEETRRXml9gDHcPLhfzl280PoYs/XTJ7fK3w8ftT7GKCw0UQRNFEETRdBEETRRBE2UyLft7l79qNOf++DLL8o71z+u+tzfvf9h+ffxk6qP2ddrb18qn/78Y9MztGKhiSJoogiaKIImiqCJImiiCJoogiaKoIkiaKIImiiR3+U46578+Vf5+q13Wx+jCQtNFEETRdBEcYdegM9/Oyivvn5+7c9++eqbcnjn+4lPNF8WmiiCJoqgiSJoogiaKIImiqCJImiiCJooPims7LNfH7Q+wplmoYkiaKIImiiCJoqgiSJoonjbrrIx/sPzbV/w5yQLTRRBE0XQRBE0UQRNFEETRdBEETRRBE0UnxQuwLfvXW19hMWw0EQRNFEETRRBE0XQRBE0UQRNFEETRdBEETRRfPQd6vybb5QbD+5t/PkP126Uf37/Y8ITTcNCE0XQRBE0UQRNFEETRdBEETRRBE0UQRNF0EQRNFEiv8tx8+B+OXfxQpPn9nsK27LQRBE0UQRNFEETRdBEETRRVrcvX3na+hBQi4UmiqCJImiiCJoogiaKoIkiaKIImiiCJoqgiSJoogiaKIImiqCJImiiCJoogiaKoIkiaKLs7R8drlofAmrYPzpcWWiiCJoogibKXin/3z1aHwSGeNawhSaKoInyPGjXDpbqeLsWmiiCJsqJoF07WJoXm7XQRHkpaCvNUqxr1UITZW3QVpq529ToxoUWNXO1rU1XDqJsDdpKMzenNXnqQouauejSYqcrh6hprWuD7tBE6Ry0laaVPu31WmhRM7W+zfW+coiaqezS2qA4/Z5wxjBkNAe9KLTW1Da0qcHvcoiaWmq0VDVGVxB2UXMUq74Pba3pq3YzowVordlmrPEbfVGFzXFj/ys+6RVB3GfTlFfRZndecWdr9XpqNi/iBL5sc3lD4D8G2ulAekXkQwAAAABJRU5ErkJggg==">
+<link rel="manifest" href='data:application/manifest+json,{"name":"График смен Etna","short_name":"График Etna","display":"standalone","background_color":"%23f5efe6","theme_color":"%238f2433","start_url":"."}'>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --paper:#f5efe6;
+    --card:#fffdf9;
+    --ink:#2a2320;
+    --ink-soft:#7a6f64;
+    --line:#e6ddcf;
+    --line-strong:#d8ccb8;
+    --brand:#8f2433;       /* Etna burgundy */
+    --cook:#9d2235;
+    --bar:#2f6f6b;
+    --waiter:#b07a1e;
+    --dish:#5b6b86;
+    --weekend:#efe6d6;
+    --shadow:0 1px 2px rgba(60,40,20,.06),0 6px 18px rgba(60,40,20,.06);
+    --radius:14px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:var(--paper);color:var(--ink);
+    font-family:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    font-feature-settings:"tnum" 1;}
+  .wrap{max-width:920px;margin:0 auto;padding:14px 12px 60px;}
+
+  /* Header */
+  header.top{display:flex;align-items:baseline;gap:10px;margin:2px 2px 12px;}
+  header.top .mark{width:9px;height:26px;border-radius:3px;background:var(--brand);align-self:center;flex:none;}
+  header.top h1{font-family:"Playfair Display",serif;font-weight:700;font-size:22px;margin:0;letter-spacing:.2px;}
+  header.top .sub{font-size:12px;color:var(--ink-soft);margin-left:auto;}
+
+  /* Month switcher */
+  .monthbar{display:flex;align-items:center;gap:8px;margin-bottom:12px;}
+  .monthbar .mname{flex:1;text-align:center;font-weight:700;font-size:16px;text-transform:capitalize;}
+  .btn{border:1px solid var(--line-strong);background:var(--card);color:var(--ink);
+    border-radius:11px;padding:9px 12px;font:inherit;font-weight:600;font-size:14px;cursor:pointer;
+    box-shadow:var(--shadow);transition:transform .08s ease,background .15s;}
+  .btn:active{transform:scale(.96)}
+  .btn.icon{width:42px;text-align:center;padding:9px 0;font-size:18px;line-height:1;}
+  .btn.ghost{background:transparent;box-shadow:none;border-color:var(--line);}
+  .btn.brand{background:var(--brand);color:#fff;border-color:var(--brand);}
+
+  /* Grid */
+  .gridwrap{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);overflow:auto;-webkit-overflow-scrolling:touch;max-height:70vh;}
+  table{border-collapse:separate;border-spacing:0;width:100%;}
+  th,td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);}
+  thead th{position:sticky;top:0;z-index:3;background:var(--card);}
+  /* Date column */
+  .colDate{position:sticky;left:0;z-index:2;background:var(--card);min-width:60px;width:60px;}
+  thead .colDate{z-index:4;}
+  .dcell{padding:7px 6px;text-align:left;line-height:1.05;}
+  .dcell .dnum{font-weight:800;font-size:15px;}
+  .dcell .dwd{font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.3px;}
+  tr.we .colDate,tr.we td.cell{background:var(--weekend);}
+  tr.we .dcell .dwd{color:var(--brand);}
+  tr.today .colDate{box-shadow:inset 3px 0 0 var(--brand);}
+
+  /* Employee header */
+  th.emp{min-width:48px;width:48px;padding:7px 3px 8px;vertical-align:bottom;cursor:default;}
+  th.emp .nm{font-weight:700;font-size:12px;line-height:1.1;white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:46px;margin:0 auto;}
+  th.emp .bar{height:4px;border-radius:3px;margin:5px 4px 0;}
+  th.emp .rl{font-size:9px;color:var(--ink-soft);margin-top:2px;}
+
+  /* Shift cells */
+  td.cell{text-align:center;cursor:pointer;height:40px;user-select:none;position:relative;}
+  td.cell .h{display:inline-flex;align-items:center;justify-content:center;
+    width:34px;height:28px;border-radius:8px;font-weight:700;font-size:13px;}
+  td.cell.on .h{color:#fff;}
+  td.cell:active{filter:brightness(.97)}
+  /* coverage column */
+  .colSum{min-width:36px;width:36px;text-align:center;background:#faf5ec;}
+  thead .colSum{background:#faf5ec;}
+  .colSum .cv{font-weight:700;font-size:12px;color:var(--ink-soft);}
+
+  /* totals row */
+  tfoot td{position:sticky;bottom:0;background:#fbf6ee;z-index:2;border-top:2px solid var(--line-strong);}
+  tfoot .colDate{z-index:3;background:#fbf6ee;font-weight:800;font-size:11px;}
+  tfoot td.tt{text-align:center;font-weight:800;line-height:1.15;padding:5px 2px;}
+  tfoot td.tt .sh{font-size:13px;}
+  tfoot td.tt .hr{font-size:10px;color:var(--ink-soft);font-weight:700;}
+
+  .hint{font-size:12px;color:var(--ink-soft);margin:10px 4px 16px;line-height:1.4;}
+  .hint b{color:var(--ink);}
+
+  /* Summary cards */
+  h2.sec{font-family:"Playfair Display",serif;font-size:17px;margin:22px 4px 10px;font-weight:700;}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:9px;}
+  .scard{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:12px;
+    padding:10px 12px;box-shadow:var(--shadow);}
+  .scard .nm{font-weight:700;font-size:14px;line-height:1.15;}
+  .scard .rl{font-size:11px;color:var(--ink-soft);margin-bottom:7px;}
+  .scard .nums{display:flex;gap:14px;align-items:baseline;}
+  .scard .big{font-size:22px;font-weight:800;line-height:1;}
+  .scard .unit{font-size:11px;color:var(--ink-soft);margin-left:3px;}
+  .roleTotals{display:flex;flex-wrap:wrap;gap:8px;margin:6px 4px 0;font-size:12px;color:var(--ink-soft);}
+  .roleTotals .rt{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:4px 10px;}
+  .roleTotals .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+
+  /* Settings */
+  details.settings{margin-top:22px;background:var(--card);border:1px solid var(--line);
+    border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;}
+  details.settings>summary{cursor:pointer;list-style:none;padding:13px 15px;font-weight:700;font-size:15px;
+    display:flex;align-items:center;gap:8px;}
+  details.settings>summary::-webkit-details-marker{display:none}
+  details.settings>summary .chev{margin-left:auto;color:var(--ink-soft);transition:transform .2s;}
+  details.settings[open]>summary .chev{transform:rotate(180deg);}
+  .setbody{padding:4px 13px 15px;border-top:1px solid var(--line);}
+  .emprow{display:flex;flex-wrap:wrap;align-items:center;gap:7px;padding:10px 0;border-bottom:1px dashed var(--line);}
+  .emprow input[type=text]{flex:1;min-width:0;border:1px solid var(--line-strong);border-radius:9px;
+    padding:8px 9px;font:inherit;font-size:14px;background:#fff;color:var(--ink);}
+  .emprow select{border:1px solid var(--line-strong);border-radius:9px;padding:8px 6px;font:inherit;font-size:13px;background:#fff;}
+  .emprow input[type=number]{width:52px;border:1px solid var(--line-strong);border-radius:9px;
+    padding:8px 4px;font:inherit;font-size:14px;text-align:center;background:#fff;}
+  .emprow .del{border:none;background:transparent;color:#b04a4a;font-size:18px;cursor:pointer;padding:4px 6px;line-height:1;}
+  .addrow{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+  .danger{color:#b04a4a;border-color:#e3c2c2;}
+  .seclabel{font-size:11px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 4px;}
+
+  /* Hours modal */
+  .ovl{position:fixed;inset:0;background:rgba(35,25,18,.42);display:none;align-items:flex-end;
+    justify-content:center;z-index:50;padding:0;}
+  .ovl.show{display:flex;}
+  .sheet{background:var(--card);width:100%;max-width:440px;border-radius:18px 18px 0 0;padding:18px 18px 26px;
+    box-shadow:0 -8px 30px rgba(0,0,0,.2);animation:up .22s ease;}
+  @keyframes up{from{transform:translateY(40px);opacity:.6}to{transform:none;opacity:1}}
+  .sheet h3{margin:0 0 2px;font-size:16px;font-family:"Playfair Display",serif;}
+  .sheet .who{font-size:12px;color:var(--ink-soft);margin-bottom:14px;}
+  .hopts{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+  .hopts button{border:1px solid var(--line-strong);background:#fff;border-radius:11px;padding:11px 0;width:58px;
+    font:inherit;font-weight:700;font-size:15px;cursor:pointer;}
+  .hopts button.sel{background:var(--brand);color:#fff;border-color:var(--brand);}
+  .custom{display:flex;gap:8px;align-items:center;margin-bottom:16px;}
+  .custom input{width:80px;border:1px solid var(--line-strong);border-radius:10px;padding:10px;font:inherit;
+    font-size:15px;text-align:center;}
+  .sheetbtns{display:flex;gap:8px;}
+  .sheetbtns .btn{flex:1;justify-content:center;text-align:center;padding:12px;}
+
+  .toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:#fff;padding:9px 16px;border-radius:20px;font-size:13px;font-weight:600;
+    opacity:0;transition:.25s;z-index:60;pointer-events:none;}
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  .exportbar{display:flex;justify-content:space-between;gap:8px;margin:-4px 2px 12px;}
+  .exportbar .btn{font-size:14px;}
+  #expOvl .sheet{max-height:88vh;overflow:auto;}
+  .imgbox{margin:4px 0 16px;}
+  .imgbox img{display:block;max-width:100%;height:auto;border-radius:12px;border:1px solid var(--line);
+    box-shadow:var(--shadow);}
+
+  td.cell .h.fx{font-size:10px;font-weight:800;letter-spacing:-.2px;}
+  .colMoney{min-width:64px;width:64px;text-align:right;background:#fbf3ea;padding-right:8px;}
+  thead .colMoney{background:#fbf3ea;}
+  .colMoney .mv{font-weight:700;font-size:11px;color:var(--brand);}
+  tfoot td.tt .pay{font-size:11px;font-weight:800;color:var(--brand);margin-top:1px;}
+  tfoot .colMoney.tt{text-align:right;padding-right:8px;}
+  tfoot .colMoney .sh{font-size:13px;text-align:right;}
+  tfoot .colMoney .hr{text-align:right;}
+
+  .moneySummary{background:linear-gradient(135deg,#fff8f0,#fffdf9);border:1px solid var(--line);
+    border-radius:var(--radius);box-shadow:var(--shadow);padding:14px 16px;margin:0 2px 12px;}
+  .moneySummary .msmain{display:flex;align-items:baseline;justify-content:space-between;}
+  .moneySummary .mslabel{font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;}
+  .moneySummary .msbig{font-family:"Playfair Display",serif;font-weight:700;font-size:26px;color:var(--brand);}
+  .moneySummary .msrow{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:12px;color:var(--ink-soft);}
+  .moneySummary .msrow b{color:var(--ink);}
+
+  .erow2{display:flex;flex-wrap:wrap;gap:6px;align-items:center;width:100%;margin-top:7px;}
+  .fld{display:inline-flex;align-items:center;gap:4px;}
+  .fld i{font-style:normal;font-size:10px;color:var(--ink-soft);}
+  .emprow input[type=number]{width:62px;}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="mark"></div>
+    <h1>График смен</h1>
+    <div class="sub">Etna · сохраняется автоматически</div>
+  </header>
+
+  <div class="monthbar">
+    <button class="btn icon" id="prevM">‹</button>
+    <div class="mname" id="mName">—</div>
+    <button class="btn icon" id="nextM">›</button>
+  </div>
+
+  <div class="exportbar">
+    <button class="btn ghost" id="moneyToggle">₽ Деньги</button>
+    <button class="btn brand" id="exportImg">📷&nbsp; Картинка для чата</button>
+  </div>
+
+  <div class="gridwrap" id="gridwrap">
+    <table id="grid"></table>
+  </div>
+
+  <div class="hint">
+    Тап по клетке — поставить или снять смену (берутся часы сотрудника).
+    <b>Долгое нажатие</b> на клетке — задать другие часы для конкретной смены.
+    Столбец <b>Σ</b> справа — сколько человек работает в этот день.
+  </div>
+
+  <h2 class="sec">Итоги за месяц</h2>
+  <div class="moneySummary" id="moneySummary" style="display:none;"></div>
+  <div class="roleTotals" id="roleTotals"></div>
+  <div class="cards" id="cards" style="margin-top:10px;"></div>
+
+  <details class="settings" id="settings">
+    <summary>Сотрудники и настройки <span class="chev">▾</span></summary>
+    <div class="setbody">
+      <div class="seclabel">Состав смены</div>
+      <div id="empList"></div>
+      <div class="addrow">
+        <button class="btn brand" id="addEmp">+ Добавить сотрудника</button>
+        <button class="btn ghost danger" id="clearMonth">Очистить месяц</button>
+      </div>
+
+      <div class="seclabel" style="margin-top:18px;">Резервная копия</div>
+      <div class="hint" style="margin:0 0 8px;">Данные хранятся на этом устройстве. Сохраняй копию перед сменой телефона или браузера — и сможешь восстановить график на новом.</div>
+      <div class="addrow">
+        <button class="btn ghost" id="backupSave">⬇ Сохранить копию</button>
+        <button class="btn ghost" id="backupLoad">⬆ Загрузить копию</button>
+        <input type="file" id="backupFile" accept="application/json,.json" style="display:none">
+      </div>
+      <div class="seclabel" style="margin-top:18px;">Подсказка</div>
+      <div class="hint" style="margin:0;">«Часы» в строке сотрудника — это длительность одной его смены по умолчанию.
+      Итоговые часы считаются как количество смен × эти часы (плюс ручные правки через долгое нажатие).</div>
+    </div>
+  </details>
+</div>
+
+<!-- Hours bottom sheet -->
+<div class="ovl" id="ovl">
+  <div class="sheet">
+    <h3>Часы смены</h3>
+    <div class="who" id="sheetWho"></div>
+    <div class="hopts" id="hopts"></div>
+    <div class="custom">
+      <span style="font-size:13px;color:var(--ink-soft)">Своё:</span>
+      <input type="number" id="customH" min="0" step="0.5" placeholder="ч">
+      <span style="font-size:13px;color:var(--ink-soft)" id="customUnit">часов</span>
+    </div>
+    <div class="sheetbtns">
+      <button class="btn ghost danger" id="sheetRemove">Снять смену</button>
+      <button class="btn brand" id="sheetSave">Готово</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Export image preview -->
+<div class="ovl" id="expOvl">
+  <div class="sheet">
+    <h3>Картинка для чата</h3>
+    <div class="who">Нажми «Поделиться / Скачать», или удерживай картинку, чтобы сохранить.</div>
+    <div class="imgbox"><img id="expImg" alt="График смен"></div>
+    <div class="sheetbtns">
+      <button class="btn ghost" id="expClose">Закрыть</button>
+      <button class="btn brand" id="expShare">Поделиться / Скачать</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  const ROLES = {
+    cook:   {label:"Повар",    color:"var(--cook)",   model:"hourly"},
+    bar:    {label:"Бармен",   color:"var(--bar)",    model:"hourly"},
+    waiter: {label:"Официант", color:"var(--waiter)", model:"hourly"},
+    dish:   {label:"Мойщица",  color:"var(--dish)",   model:"fixed"}
+  };
+  const ROLE_ORDER = ["cook","bar","waiter","dish"];
+  const WD = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
+  const MONTHS = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+  const KEY = "etna_schedule_v1";
+
+  let state = null;
+  let saveTimer = null;
+
+  function uid(){ return "e"+Math.random().toString(36).slice(2,8); }
+
+  function defaultState(){
+    const now = new Date();
+    const emps = [];
+    for(let i=1;i<=4;i++) emps.push({id:uid(),name:"Повар "+i,role:"cook",hours:12,rate:0});
+    for(let i=1;i<=2;i++) emps.push({id:uid(),name:"Бармен "+i,role:"bar",hours:12,rate:0});
+    for(let i=1;i<=4;i++) emps.push({id:uid(),name:"Официант "+i,role:"waiter",hours:12,rate:0});
+    for(let i=1;i<=2;i++) emps.push({id:uid(),name:"Мойщица "+i,role:"dish",fixed:0,fixedWe:0});
+    return { employees:emps, shifts:{}, year:now.getFullYear(), month:now.getMonth(), showMoney:true };
+  }
+
+  function migrate(){
+    state.employees.forEach(e=>{
+      const model=(ROLES[e.role]||{}).model||"hourly";
+      if(model==="hourly"){
+        if(typeof e.hours!=="number") e.hours=12;
+        if(typeof e.rate!=="number")  e.rate=0;
+      }else{
+        if(typeof e.fixed!=="number")   e.fixed=0;
+        if(typeof e.fixedWe!=="number") e.fixedWe=e.fixed||0;
+      }
+    });
+    if(typeof state.showMoney!=="boolean") state.showMoney=true;
+  }
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(KEY);
+      if(raw){ state = JSON.parse(raw); }
+    }catch(e){ /* no saved data yet */ }
+    if(!state || !state.employees){ state = defaultState(); }
+    if(!state.shifts) state.shifts = {};
+    migrate();
+  }
+
+  function save(){
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(()=>{
+      try{ localStorage.setItem(KEY, JSON.stringify(state)); toast("Сохранено"); }
+      catch(e){ toast("Не удалось сохранить"); }
+    }, 350);
+  }
+
+  function toast(msg){
+    const t = document.getElementById("toast");
+    t.textContent = msg; t.classList.add("show");
+    clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove("show"),1100);
+  }
+
+  function dateKey(y,m,d){ return y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0"); }
+  function daysIn(y,m){ return new Date(y,m+1,0).getDate(); }
+
+  function sortedEmployees(){
+    return state.employees.slice().sort((a,b)=>{
+      const ra=ROLE_ORDER.indexOf(a.role), rb=ROLE_ORDER.indexOf(b.role);
+      if(ra!==rb) return ra-rb;
+      return state.employees.indexOf(a)-state.employees.indexOf(b);
+    });
+  }
+
+  function getShift(dk, eid){
+    const d = state.shifts[dk];
+    return d && (eid in d) ? d[eid] : null;
+  }
+  function setShift(dk, eid, hours){
+    if(!state.shifts[dk]) state.shifts[dk] = {};
+    state.shifts[dk][eid] = hours;
+  }
+  function removeShift(dk, eid){
+    if(state.shifts[dk]){ delete state.shifts[dk][eid];
+      if(Object.keys(state.shifts[dk]).length===0) delete state.shifts[dk]; }
+  }
+
+  /* ---------- render grid ---------- */
+  function render(){
+    const y=state.year, m=state.month;
+    document.getElementById("mName").textContent = MONTHS[m]+" "+y;
+    const emps = sortedEmployees();
+    const nd = daysIn(y,m);
+    const today = new Date();
+    const isThisMonth = today.getFullYear()===y && today.getMonth()===m;
+
+    // header
+    const sm = state.showMoney;
+    let html = "<thead><tr><th class='colDate'><div class='dcell'><div class='dwd'>дата</div></div></th>";
+    emps.forEach(e=>{
+      const r=ROLES[e.role];
+      const sub = isFixed(e) ? "фикс" : (fmt(e.hours)+"ч");
+      html += "<th class='emp' title='"+esc(e.name)+"'><div class='nm'>"+esc(shortName(e.name))+
+              "</div><div class='rl'>"+sub+"</div><div class='bar' style='background:"+r.color+"'></div></th>";
+    });
+    html += "<th class='colSum'><div class='dcell'><div class='dwd'>Σ</div></div></th>";
+    if(sm) html += "<th class='colMoney'><div class='dcell'><div class='dwd'>ФОТ</div></div></th>";
+    html += "</tr></thead>";
+
+    // body
+    html += "<tbody>";
+    for(let d=1; d<=nd; d++){
+      const dk = dateKey(y,m,d);
+      const wd = new Date(y,m,d).getDay();
+      const we = (wd===0||wd===6);
+      const isToday = isThisMonth && today.getDate()===d;
+      let cover=0, dayPay=0;
+      let row = "<tr class='"+(we?"we ":"")+(isToday?"today":"")+"'>";
+      row += "<td class='colDate'><div class='dcell'><span class='dnum'>"+d+"</span> <span class='dwd'>"+WD[wd]+"</span></div></td>";
+      emps.forEach(e=>{
+        const h = getShift(dk, e.id);
+        const r = ROLES[e.role];
+        if(h!==null){
+          cover++; dayPay+=payOf(e,h);
+          let label, cls="h";
+          if(isFixed(e)){ label = sm ? money0(h) : "✓"; cls="h fx"; }
+          else { label = fmt(h); }
+          row += "<td class='cell on' data-d='"+d+"' data-e='"+e.id+"'>"+
+                 "<span class='"+cls+"' style='background:"+r.color+"'>"+label+"</span></td>";
+        }else{
+          row += "<td class='cell' data-d='"+d+"' data-e='"+e.id+"'><span class='h'></span></td>";
+        }
+      });
+      row += "<td class='colSum'><span class='cv'>"+(cover||"")+"</span></td>";
+      if(sm) row += "<td class='colMoney'><span class='mv'>"+(dayPay?money0(dayPay):"")+"</span></td>";
+      row += "</tr>";
+      html += row;
+    }
+    html += "</tbody>";
+
+    // totals
+    const tot = {};
+    emps.forEach(e=> tot[e.id]={sh:0,hr:0,pay:0});
+    let grand=0;
+    for(let d=1; d<=nd; d++){
+      const dk = dateKey(y,m,d);
+      emps.forEach(e=>{ const h=getShift(dk,e.id); if(h!==null){
+        tot[e.id].sh++; if(!isFixed(e)) tot[e.id].hr+=h; const p=payOf(e,h); tot[e.id].pay+=p; grand+=p; } });
+    }
+    html += "<tfoot><tr><td class='colDate'><div class='dcell'>ИТОГО</div></td>";
+    emps.forEach(e=>{
+      const second = isFixed(e) ? "смен" : (fmt(tot[e.id].hr)+"ч");
+      html += "<td class='tt'><div class='sh' style='color:"+ROLES[e.role].color+"'>"+tot[e.id].sh+"</div>"+
+              "<div class='hr'>"+second+"</div>"+
+              (sm?"<div class='pay'>"+money0(tot[e.id].pay)+"</div>":"")+"</td>";
+    });
+    html += "<td class='colSum'></td>";
+    if(sm) html += "<td class='colMoney tt'><div class='sh' style='color:var(--brand)'>"+money0(grand)+"</div><div class='hr'>за месяц</div></td>";
+    html += "</tr></tfoot>";
+
+    document.getElementById("grid").innerHTML = html;
+    renderSummary(emps, tot, grand, nd);
+  }
+
+  function renderSummary(emps, tot, grand, nd){
+    const sm = state.showMoney;
+    // role totals
+    const byRole = {};
+    ROLE_ORDER.forEach(r=> byRole[r]={sh:0,hr:0,pay:0,n:0});
+    emps.forEach(e=>{ byRole[e.role].sh+=tot[e.id].sh; byRole[e.role].hr+=tot[e.id].hr; byRole[e.role].pay+=tot[e.id].pay; byRole[e.role].n++; });
+    let rt="";
+    ROLE_ORDER.forEach(r=>{
+      if(byRole[r].n===0) return;
+      const plural = r==="dish" ? ROLES[r].label+"и" : ROLES[r].label+"ы";
+      const hrs = ROLES[r].model==="fixed" ? "" : " · "+fmt(byRole[r].hr)+"ч";
+      rt += "<span class='rt'><span class='dot' style='background:"+ROLES[r].color+"'></span>"+
+            plural+": <b>"+byRole[r].sh+"</b> смен"+hrs+(sm?" · "+money0(byRole[r].pay)+" ₽":"")+"</span>";
+    });
+    document.getElementById("roleTotals").innerHTML = rt;
+
+    // money summary
+    const ms=document.getElementById("moneySummary");
+    if(sm){
+      const workDays = (function(){ let n=0; for(let d=1; d<=nd; d++){ const dk=dateKey(state.year,state.month,d);
+        if(state.shifts[dk] && Object.keys(state.shifts[dk]).length) n++; } return n; })();
+      ms.style.display="";
+      ms.innerHTML =
+        "<div class='msmain'><div class='mslabel'>ФОТ за месяц</div><div class='msbig'>"+money0(grand)+" ₽</div></div>"+
+        "<div class='msrow'><span>Дней с сменами: <b>"+workDays+"</b></span>"+
+        "<span>В среднем за рабочий день: <b>"+money0(workDays?grand/workDays:0)+" ₽</b></span>"+
+        "<span>В среднем за день месяца: <b>"+money0(grand/nd)+" ₽</b></span></div>";
+    }else{ ms.style.display="none"; ms.innerHTML=""; }
+
+    // per-employee cards
+    let c="";
+    emps.forEach(e=>{
+      const r=ROLES[e.role];
+      const secondNum = isFixed(e) ? tot[e.id].sh : fmt(tot[e.id].hr);
+      const secondLbl = isFixed(e) ? "смен" : "часов";
+      c += "<div class='scard' style='border-left-color:"+r.color+"'>"+
+           "<div class='nm'>"+esc(e.name)+"</div>"+
+           "<div class='rl'>"+r.label+"</div>"+
+           "<div class='nums'><div><span class='big' style='color:"+r.color+"'>"+tot[e.id].sh+"</span><span class='unit'>смен</span></div>"+
+           (isFixed(e)?"":"<div><span class='big'>"+fmt(tot[e.id].hr)+"</span><span class='unit'>часов</span></div>")+
+           (sm?"<div><span class='big' style='color:var(--brand)'>"+money0(tot[e.id].pay)+"</span><span class='unit'>₽</span></div>":"")+
+           "</div></div>";
+    });
+    document.getElementById("cards").innerHTML = c;
+  }
+
+  function renderSettings(){
+    const emps = sortedEmployees();
+    let h="";
+    emps.forEach(e=>{
+      const roleSel = "<select class='erl'>"+ROLE_ORDER.map(r=>"<option value='"+r+"' "+(r===e.role?"selected":"")+">"+ROLES[r].label+"</option>").join("")+"</select>";
+      let flds;
+      if(isFixed(e)){
+        flds = "<span class='fld'><input type='number' class='efixed' value='"+(e.fixed||0)+"' min='0' step='50'><i>буд ₽</i></span>"+
+               "<span class='fld'><input type='number' class='efixedwe' value='"+(e.fixedWe||0)+"' min='0' step='50'><i>вых ₽</i></span>";
+      }else{
+        flds = "<span class='fld'><input type='number' class='ehr' value='"+e.hours+"' min='0' max='24' step='0.5'><i>ч</i></span>"+
+               "<span class='fld'><input type='number' class='erate' value='"+(e.rate||0)+"' min='0' step='10'><i>₽/ч</i></span>";
+      }
+      h += "<div class='emprow' data-e='"+e.id+"'>"+
+           "<input type='text' class='enm' value='"+esc(e.name)+"'>"+
+           "<button class='del' title='Удалить'>✕</button>"+
+           "<div class='erow2'>"+roleSel+flds+"</div>"+
+           "</div>";
+    });
+    document.getElementById("empList").innerHTML = h;
+  }
+
+  /* ---------- helpers ---------- */
+  function shortName(n){
+    n=n.trim();
+    if(n.length<=7) return n;
+    const parts=n.split(/\s+/);
+    return parts[0].length<=8?parts[0]:parts[0].slice(0,7)+"…";
+  }
+  function fmt(x){ return Number.isInteger(x)?x:String(x).replace(".",","); }
+  function esc(s){ return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
+  function isFixed(e){ return (ROLES[e.role]||{}).model==="fixed"; }
+  function isWeekend(d){ const wd=new Date(state.year,state.month,d).getDay(); return wd===0||wd===6; }
+  function shiftDefault(e,we){ return isFixed(e) ? (we?(e.fixedWe||0):(e.fixed||0)) : (e.hours||0); }
+  function payOf(e,val){ if(val===null||val===undefined) return 0; return isFixed(e) ? val : (e.rate||0)*val; }
+  function money0(x){ return Math.round(x||0).toLocaleString("ru-RU"); }
+
+  /* ---------- interactions ---------- */
+  const gridwrap = document.getElementById("gridwrap");
+  let pressTimer=null, longFired=false, pendingCell=null;
+
+  function cellFrom(t){ return t.closest ? t.closest("td.cell") : null; }
+
+  function quickToggle(cell){
+    const d=+cell.dataset.d, eid=cell.dataset.e;
+    const dk=dateKey(state.year,state.month,d);
+    const emp=state.employees.find(x=>x.id===eid);
+    if(getShift(dk,eid)!==null){ removeShift(dk,eid); }
+    else{ setShift(dk,eid, emp? shiftDefault(emp, isWeekend(d)) : 0); }
+    render(); save();
+  }
+
+  // touch / mouse long-press
+  gridwrap.addEventListener("touchstart",function(ev){
+    const cell=cellFrom(ev.target); if(!cell) return;
+    longFired=false; pendingCell=cell;
+    pressTimer=setTimeout(()=>{ longFired=true; openSheet(cell); }, 460);
+  },{passive:true});
+  gridwrap.addEventListener("touchmove",()=>{ clearTimeout(pressTimer); },{passive:true});
+  gridwrap.addEventListener("touchend",function(ev){
+    clearTimeout(pressTimer);
+    if(longFired){ longFired=false; return; }
+    const cell=cellFrom(ev.target);
+    if(cell && cell===pendingCell){ quickToggle(cell); }
+    pendingCell=null;
+  });
+  // desktop
+  gridwrap.addEventListener("click",function(ev){
+    if('ontouchstart' in window) return; // handled by touch
+    const cell=cellFrom(ev.target); if(cell) quickToggle(cell);
+  });
+  gridwrap.addEventListener("contextmenu",function(ev){
+    const cell=cellFrom(ev.target); if(cell){ ev.preventDefault(); openSheet(cell); }
+  });
+  // desktop long-press via mousedown
+  gridwrap.addEventListener("mousedown",function(ev){
+    if('ontouchstart' in window) return;
+    const cell=cellFrom(ev.target); if(!cell) return;
+    pressTimer=setTimeout(()=>{ openSheet(cell); },460);
+  });
+  gridwrap.addEventListener("mouseup",()=>clearTimeout(pressTimer));
+  gridwrap.addEventListener("mouseleave",()=>clearTimeout(pressTimer));
+
+  /* ---------- hours sheet ---------- */
+  const ovl=document.getElementById("ovl");
+  const hopts=document.getElementById("hopts");
+  const customH=document.getElementById("customH");
+  let sheetCtx=null, sheetSel=null;
+  const PRESETS=[6,8,10,11,12,14];
+
+  function openSheet(cell){
+    const d=+cell.dataset.d, eid=cell.dataset.e;
+    const dk=dateKey(state.year,state.month,d);
+    const emp=state.employees.find(x=>x.id===eid);
+    if(!emp) return;
+    const cur=getShift(dk,eid);
+    const we=isWeekend(d);
+    const fixed=isFixed(emp);
+    const def=shiftDefault(emp,we);
+    sheetCtx={dk,eid,empDefault:def,fixed:fixed};
+    sheetSel = cur!==null?cur:def;
+
+    document.getElementById("sheetWho").textContent =
+      emp.name+" · "+d+" "+MONTHS[state.month]+(fixed?" · оплата за смену, ₽":" · часы смены");
+    document.querySelector("#ovl .sheet h3").textContent = fixed?"Оплата смены":"Часы смены";
+
+    let opts, unit;
+    if(fixed){
+      opts = [emp.fixed||0, emp.fixedWe||0].filter((v,i,a)=>a.indexOf(v)===i);
+      unit = "₽";
+    }else{
+      opts = PRESETS.slice();
+      if(!opts.includes(def)) opts.push(def);
+      opts.sort((a,b)=>a-b);
+      unit = "ч";
+    }
+    hopts.innerHTML = opts.map(v=>{
+      const lbl = fixed ? (v===(emp.fixed||0)?"будни ":"")+(v===(emp.fixedWe||0)&&we?"вых ":"")+money0(v) : fmt(v)+unit;
+      return "<button data-v='"+v+"' class='"+(v===sheetSel?"sel":"")+"'>"+lbl+(fixed?" ₽":"")+"</button>";
+    }).join("");
+    customH.value = opts.includes(sheetSel)?"":sheetSel;
+    customH.step = fixed?"50":"0.5";
+    customH.placeholder = unit;
+    document.getElementById("customUnit").textContent = fixed?"рублей":"часов";
+    ovl.classList.add("show");
+  }
+  function closeSheet(){ ovl.classList.remove("show"); sheetCtx=null; }
+
+  hopts.addEventListener("click",function(ev){
+    const b=ev.target.closest("button"); if(!b) return;
+    sheetSel=parseFloat(b.dataset.v); customH.value="";
+    [...hopts.children].forEach(c=>c.classList.toggle("sel",c===b));
+  });
+  customH.addEventListener("input",function(){
+    [...hopts.children].forEach(c=>c.classList.remove("sel"));
+    const v=parseFloat(customH.value); if(!isNaN(v)) sheetSel=v;
+  });
+  document.getElementById("sheetSave").addEventListener("click",function(){
+    if(!sheetCtx) return;
+    let v=sheetSel; if(isNaN(v)||v<0) v=sheetCtx.empDefault;
+    setShift(sheetCtx.dk,sheetCtx.eid,v); closeSheet(); render(); save();
+  });
+  document.getElementById("sheetRemove").addEventListener("click",function(){
+    if(!sheetCtx) return;
+    removeShift(sheetCtx.dk,sheetCtx.eid); closeSheet(); render(); save();
+  });
+  ovl.addEventListener("click",function(ev){ if(ev.target===ovl) closeSheet(); });
+
+  /* ---------- month nav ---------- */
+  function updateMoneyBtn(){
+    const b=document.getElementById("moneyToggle");
+    b.classList.toggle("brand", !!state.showMoney);
+    b.classList.toggle("ghost", !state.showMoney);
+    b.textContent = state.showMoney ? "₽ Деньги: вкл" : "₽ Деньги: выкл";
+  }
+  document.getElementById("moneyToggle").addEventListener("click",()=>{
+    state.showMoney=!state.showMoney; updateMoneyBtn(); render(); save();
+  });
+  document.getElementById("prevM").addEventListener("click",()=>{
+    state.month--; if(state.month<0){state.month=11;state.year--;} render(); save();
+  });
+  document.getElementById("nextM").addEventListener("click",()=>{
+    state.month++; if(state.month>11){state.month=0;state.year++;} render(); save();
+  });
+
+  /* ---------- settings ---------- */
+  document.getElementById("settings").addEventListener("toggle",function(e){
+    if(e.target.open) renderSettings();
+  });
+  document.getElementById("empList").addEventListener("input",function(ev){
+    const row=ev.target.closest(".emprow"); if(!row) return;
+    const e=state.employees.find(x=>x.id===row.dataset.e); if(!e) return;
+    const t=ev.target, v=parseFloat(t.value);
+    if(t.classList.contains("enm")) e.name=t.value;
+    else if(t.classList.contains("ehr")){ if(!isNaN(v)) e.hours=v; }
+    else if(t.classList.contains("erate")){ if(!isNaN(v)) e.rate=v; }
+    else if(t.classList.contains("efixed")){ if(!isNaN(v)) e.fixed=v; }
+    else if(t.classList.contains("efixedwe")){ if(!isNaN(v)) e.fixedWe=v; }
+    render(); save();
+  });
+  document.getElementById("empList").addEventListener("change",function(ev){
+    if(!ev.target.classList.contains("erl")) return;
+    const row=ev.target.closest(".emprow");
+    const e=state.employees.find(x=>x.id===row.dataset.e); if(!e) return;
+    e.role=ev.target.value;
+    if(isFixed(e)){ if(typeof e.fixed!=="number") e.fixed=0; if(typeof e.fixedWe!=="number") e.fixedWe=e.fixed||0; }
+    else { if(typeof e.hours!=="number") e.hours=12; if(typeof e.rate!=="number") e.rate=0; }
+    renderSettings(); render(); save();
+  });
+  document.getElementById("empList").addEventListener("click",function(ev){
+    if(!ev.target.classList.contains("del")) return;
+    const row=ev.target.closest(".emprow");
+    const e=state.employees.find(x=>x.id===row.dataset.e); if(!e) return;
+    if(!confirm("Удалить «"+e.name+"» и все его смены?")) return;
+    state.employees=state.employees.filter(x=>x.id!==e.id);
+    Object.keys(state.shifts).forEach(dk=>{ delete state.shifts[dk][e.id];
+      if(Object.keys(state.shifts[dk]).length===0) delete state.shifts[dk]; });
+    renderSettings(); render(); save();
+  });
+  document.getElementById("addEmp").addEventListener("click",function(){
+    state.employees.push({id:uid(),name:"Новый сотрудник",role:"waiter",hours:12});
+    renderSettings(); render(); save();
+  });
+  document.getElementById("clearMonth").addEventListener("click",function(){
+    const nm=MONTHS[state.month]+" "+state.year;
+    if(!confirm("Очистить все смены за "+nm+"?")) return;
+    const nd=daysIn(state.year,state.month);
+    for(let d=1;d<=nd;d++) delete state.shifts[dateKey(state.year,state.month,d)];
+    render(); save(); toast("Месяц очищен");
+  });
+
+  /* ---------- export to image ---------- */
+  const HEX = {
+    paper:"#f5efe6", card:"#fffdf9", ink:"#2a2320", soft:"#7a6f64",
+    line:"#e6ddcf", lineS:"#d8ccb8", brand:"#8f2433",
+    cook:"#9d2235", bar:"#2f6f6b", waiter:"#b07a1e", dish:"#5b6b86", weekend:"#efe6d6", foot:"#fbf6ee"
+  };
+  function roleHex(r){ return HEX[r] || HEX.ink; }
+
+  function rr(ctx,x,y,w,h,r){
+    r = Math.min(r, w/2, h/2);
+    ctx.beginPath();
+    ctx.moveTo(x+r,y);
+    ctx.arcTo(x+w,y,x+w,y+h,r);
+    ctx.arcTo(x+w,y+h,x,y+h,r);
+    ctx.arcTo(x,y+h,x,y,r);
+    ctx.arcTo(x,y,x+w,y,r);
+    ctx.closePath();
+  }
+  function fit(ctx,text,maxw){
+    if(ctx.measureText(text).width<=maxw) return text;
+    let t=text;
+    while(t.length>1 && ctx.measureText(t+"…").width>maxw) t=t.slice(0,-1);
+    return t+"…";
+  }
+  function pad2(n){ return String(n).padStart(2,"0"); }
+
+  let lastBlob=null, lastUrl=null;
+
+  async function buildImage(){
+    const emps = sortedEmployees();
+    const y=state.year, m=state.month, nd=daysIn(y,m);
+    try{ await document.fonts.ready; }catch(e){}
+
+    // layout (logical px)
+    const S=2;
+    const PAD=26, titleH=78, headerH=64, rowH=37, totH=42;
+    const dateW=98, EW=66, sumW=48;
+    const tableW = dateW + emps.length*EW + sumW;
+    const W = PAD*2 + tableW;
+    const tableTop = PAD + titleH;
+    const tableH = headerH + nd*rowH + totH;
+
+    // totals
+    const tot={}; emps.forEach(e=>tot[e.id]={sh:0,hr:0});
+    const cover=[];
+    for(let d=1;d<=nd;d++){
+      const dk=dateKey(y,m,d); let c=0;
+      emps.forEach(e=>{ const h=getShift(dk,e.id); if(h!==null){tot[e.id].sh++; if(!isFixed(e)) tot[e.id].hr+=h; c++;} });
+      cover[d]=c;
+    }
+    // role totals for footer
+    const byRole={}; ROLE_ORDER.forEach(r=>byRole[r]={sh:0,hr:0,n:0});
+    emps.forEach(e=>{ byRole[e.role].sh+=tot[e.id].sh; byRole[e.role].hr+=tot[e.id].hr; byRole[e.role].n++; });
+    const chips=ROLE_ORDER.filter(r=>byRole[r].n>0);
+    const footH = 56 + (chips.length>5?28:0);
+    const H = tableTop + tableH + footH + PAD;
+
+    const cv=document.createElement("canvas");
+    cv.width=W*S; cv.height=H*S;
+    const ctx=cv.getContext("2d");
+    ctx.scale(S,S);
+    ctx.textBaseline="middle";
+    const F=(w,s)=>{ ctx.font=w+" "+s+'px Manrope, "Segoe UI", sans-serif'; };
+    const FP=(s)=>{ ctx.font='700 '+s+'px "Playfair Display", Georgia, serif'; };
+
+    // background
+    ctx.fillStyle=HEX.paper; ctx.fillRect(0,0,W,H);
+
+    // title
+    ctx.fillStyle=HEX.brand; rr(ctx,PAD,PAD+4,9,32,3); ctx.fill();
+    ctx.fillStyle=HEX.ink; FP(27); ctx.textAlign="left";
+    ctx.fillText("График смен", PAD+22, PAD+18);
+    ctx.fillStyle=HEX.soft; F("600",14);
+    const mt=MONTHS[m].charAt(0).toUpperCase()+MONTHS[m].slice(1)+" "+y+"  ·  Etna";
+    ctx.fillText(mt, PAD+23, PAD+46);
+
+    // table card
+    ctx.save();
+    rr(ctx,PAD,tableTop,tableW,tableH,14);
+    ctx.fillStyle=HEX.card; ctx.fill();
+    ctx.clip();
+
+    const x0=PAD, ec0=x0+dateW, sc0=ec0+emps.length*EW;
+
+    // header
+    ctx.textAlign="center";
+    ctx.fillStyle=HEX.soft; F("700",10);
+    ctx.fillText("ДАТА", x0+dateW/2, tableTop+headerH/2);
+    emps.forEach((e,i)=>{
+      const cx=ec0+i*EW+EW/2;
+      ctx.fillStyle=HEX.ink; F("700",12.5);
+      ctx.fillText(fit(ctx,e.name,EW-8), cx, tableTop+20);
+      ctx.fillStyle=HEX.soft; F("600",10.5);
+      const sub = isFixed(e) ? ROLES[e.role].label.slice(0,4) : (ROLES[e.role].label.slice(0,4)+" · "+fmt(e.hours)+"ч");
+      ctx.fillText(sub, cx, tableTop+37);
+      ctx.fillStyle=roleHex(e.role); rr(ctx,cx-17,tableTop+48,34,5,2.5); ctx.fill();
+    });
+    ctx.fillStyle=HEX.soft; F("700",11);
+    ctx.fillText("Σ", sc0+sumW/2, tableTop+headerH/2);
+
+    // rows
+    for(let d=1;d<=nd;d++){
+      const ry=tableTop+headerH+(d-1)*rowH;
+      const wd=new Date(y,m,d).getDay();
+      const we=(wd===0||wd===6);
+      if(we){ ctx.fillStyle=HEX.weekend; ctx.fillRect(x0,ry,tableW,rowH); }
+      // date
+      ctx.textAlign="left";
+      ctx.fillStyle=HEX.ink; F("800",15);
+      ctx.fillText(String(d), x0+12, ry+rowH/2);
+      const dw=ctx.measureText(String(d)).width;
+      ctx.fillStyle= we?HEX.brand:HEX.soft; F("700",11);
+      ctx.fillText(WD[wd], x0+12+dw+6, ry+rowH/2+1);
+      // cells
+      ctx.textAlign="center";
+      emps.forEach((e,i)=>{
+        const dk=dateKey(y,m,d); const h=getShift(dk,e.id);
+        if(h!==null){
+          const cx=ec0+i*EW+EW/2;
+          ctx.fillStyle=roleHex(e.role); rr(ctx,cx-17,ry+(rowH-26)/2,34,26,8); ctx.fill();
+          ctx.fillStyle="#fff";
+          if(isFixed(e)){ F("700",14); ctx.fillText("✓", cx, ry+rowH/2+0.5); }
+          else { F("700",12.5); ctx.fillText(fmt(h), cx, ry+rowH/2+0.5); }
+        }
+      });
+      // coverage
+      ctx.fillStyle= cover[d]?HEX.soft:HEX.line; F("700",12);
+      ctx.fillText(cover[d]||"·", sc0+sumW/2, ry+rowH/2);
+    }
+
+    // totals row
+    const ty=tableTop+headerH+nd*rowH;
+    ctx.fillStyle=HEX.foot; ctx.fillRect(x0,ty,tableW,totH);
+    ctx.textAlign="left"; ctx.fillStyle=HEX.ink; F("800",11);
+    ctx.fillText("ИТОГО", x0+12, ty+totH/2);
+    ctx.textAlign="center";
+    emps.forEach((e,i)=>{
+      const cx=ec0+i*EW+EW/2;
+      ctx.fillStyle=roleHex(e.role); F("800",14);
+      ctx.fillText(String(tot[e.id].sh), cx, ty+15);
+      ctx.fillStyle=HEX.soft; F("700",10);
+      ctx.fillText(isFixed(e)?"смен":(fmt(tot[e.id].hr)+"ч"), cx, ty+30);
+    });
+    ctx.restore();
+
+    // grid lines
+    ctx.strokeStyle=HEX.line; ctx.lineWidth=1;
+    ctx.beginPath();
+    for(let i=0;i<=emps.length;i++){ const gx=ec0+i*EW; ctx.moveTo(gx+0.5,tableTop); ctx.lineTo(gx+0.5,tableTop+tableH); }
+    ctx.moveTo(x0+0.5,tableTop); ctx.lineTo(x0+0.5,tableTop+tableH);
+    ctx.moveTo(sc0+sumW+0.5,tableTop); ctx.lineTo(sc0+sumW+0.5,tableTop+tableH);
+    for(let d=0;d<=nd;d++){ const gy=tableTop+headerH+d*rowH; ctx.moveTo(x0,gy+0.5); ctx.lineTo(x0+tableW,gy+0.5); }
+    ctx.moveTo(x0,tableTop+0.5); ctx.lineTo(x0+tableW,tableTop+0.5);
+    ctx.stroke();
+    // emphasis lines
+    ctx.strokeStyle=HEX.lineS; ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(x0,tableTop+headerH+0.5); ctx.lineTo(x0+tableW,tableTop+headerH+0.5);
+    ctx.moveTo(x0,ty+0.5); ctx.lineTo(x0+tableW,ty+0.5);
+    ctx.stroke();
+    // outer rounded border
+    ctx.strokeStyle=HEX.lineS; ctx.lineWidth=1.5;
+    rr(ctx,PAD,tableTop,tableW,tableH,14); ctx.stroke();
+
+    // footer chips
+    let fx=PAD, fy=tableTop+tableH+26;
+    ctx.textAlign="left";
+    chips.forEach(r=>{
+      const plural = r==="dish" ? ROLES[r].label+"и" : ROLES[r].label+"ы";
+      const txt = ROLES[r].model==="fixed"
+        ? plural+": "+byRole[r].sh+" смен"
+        : plural+": "+byRole[r].sh+" смен · "+fmt(byRole[r].hr)+"ч";
+      F("600",12.5);
+      const tw=ctx.measureText(txt).width, pw=tw+34;
+      if(fx+pw>W-PAD){ fx=PAD; fy+=30; }
+      ctx.fillStyle=HEX.card; rr(ctx,fx,fy-13,pw,26,13); ctx.fill();
+      ctx.strokeStyle=HEX.line; ctx.lineWidth=1; rr(ctx,fx,fy-13,pw,26,13); ctx.stroke();
+      ctx.fillStyle=roleHex(r); ctx.beginPath(); ctx.arc(fx+14,fy,4.5,0,7); ctx.fill();
+      ctx.fillStyle=HEX.ink; ctx.fillText(txt, fx+24, fy+1);
+      fx+=pw+9;
+    });
+    // caption
+    ctx.textAlign="right"; ctx.fillStyle=HEX.soft; F("600",11);
+    const now=new Date();
+    ctx.fillText("сформировано "+pad2(now.getDate())+"."+pad2(now.getMonth()+1)+"."+now.getFullYear(),
+      W-PAD, H-PAD+2);
+
+    const blob = await new Promise(res=> cv.toBlob(res,"image/png",0.96));
+    return blob;
+  }
+
+  async function exportImage(){
+    const btn=document.getElementById("exportImg");
+    const old=btn.innerHTML; btn.disabled=true; btn.innerHTML="Готовлю…";
+    try{
+      const blob=await buildImage();
+      lastBlob=blob;
+      if(lastUrl) URL.revokeObjectURL(lastUrl);
+      lastUrl=URL.createObjectURL(blob);
+      document.getElementById("expImg").src=lastUrl;
+      document.getElementById("expOvl").classList.add("show");
+    }catch(e){ toast("Не удалось собрать картинку"); }
+    finally{ btn.disabled=false; btn.innerHTML=old; }
+  }
+
+  async function shareOrDownload(){
+    if(!lastBlob){ return; }
+    const fname="grafik-"+MONTHS[state.month]+"-"+state.year+".png";
+    const file=new File([lastBlob],fname,{type:"image/png"});
+    if(navigator.canShare && navigator.canShare({files:[file]})){
+      try{ await navigator.share({files:[file], title:"График смен · Etna"}); return; }
+      catch(e){ if(e && e.name==="AbortError") return; }
+    }
+    try{
+      const a=document.createElement("a");
+      a.href=lastUrl; a.download=fname;
+      document.body.appendChild(a); a.click(); a.remove();
+      toast("Файл сохранён");
+    }catch(e){ toast("Удерживай картинку, чтобы сохранить"); }
+  }
+
+  document.getElementById("exportImg").addEventListener("click",exportImage);
+  document.getElementById("expShare").addEventListener("click",shareOrDownload);
+  document.getElementById("expClose").addEventListener("click",()=>document.getElementById("expOvl").classList.remove("show"));
+  document.getElementById("expOvl").addEventListener("click",e=>{ if(e.target.id==="expOvl") e.currentTarget.classList.remove("show"); });
+
+  /* ---------- backup ---------- */
+  function exportBackup(){
+    try{
+      const data=JSON.stringify(state,null,2);
+      const blob=new Blob([data],{type:"application/json"});
+      const url=URL.createObjectURL(blob);
+      const a=document.createElement("a"); const n=new Date();
+      a.href=url; a.download="etna-grafik-"+n.getFullYear()+pad2(n.getMonth()+1)+pad2(n.getDate())+".json";
+      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      toast("Копия сохранена");
+    }catch(e){ toast("Не удалось сохранить копию"); }
+  }
+  function importBackup(file){
+    const rd=new FileReader();
+    rd.onload=()=>{
+      try{
+        const obj=JSON.parse(rd.result);
+        if(!obj || !Array.isArray(obj.employees)) throw new Error("bad");
+        if(!confirm("Заменить текущие данные на данные из файла? Текущий график будет перезаписан.")) return;
+        state=obj; if(!state.shifts) state.shifts={}; migrate();
+        updateMoneyBtn(); renderSettings(); render(); save();
+        toast("Данные загружены");
+      }catch(e){ alert("Не удалось прочитать файл копии. Проверь, что это файл, сохранённый этим же приложением."); }
+    };
+    rd.readAsText(file);
+  }
+  document.getElementById("backupSave").addEventListener("click",exportBackup);
+  document.getElementById("backupLoad").addEventListener("click",()=>document.getElementById("backupFile").click());
+  document.getElementById("backupFile").addEventListener("change",function(e){
+    if(e.target.files && e.target.files[0]) importBackup(e.target.files[0]);
+    e.target.value="";
+  });
+
+  /* ---------- init ---------- */
+  (function init(){ load(); updateMoneyBtn(); render(); })();
+})();
+</script>
