@@ -189,6 +189,8 @@
   tfoot .colMoney.tt{text-align:right;padding-right:8px;}
   tfoot .colMoney .sh{font-size:13px;text-align:right;}
   tfoot .colMoney .hr{text-align:right;}
+  tfoot .colMoney .paid{font-size:9px;color:#4f8a64;text-align:right;font-weight:700;margin-top:1px;}
+  tfoot .colMoney .rest{font-size:9px;color:var(--ink-soft);text-align:right;font-weight:700;margin-top:1px;}
   tfoot .colPlan.tt{text-align:right;padding-right:8px;}
   tfoot .colPlan .sh{font-size:12px;text-align:right;}
   tfoot .colPlan .hr{text-align:right;}
@@ -582,6 +584,8 @@
         tot[e.id].sh++; if(!isFixed(e)) tot[e.id].hr+=h; const p=payOf(e,h); tot[e.id].pay+=p; grand+=p; } });
       getPayouts(dk).forEach(p=>{ if(p.employeeId in paid) paid[p.employeeId]+=p.amount; });
     }
+    const paidGrand = Object.values(paid).reduce((s,v)=>s+v,0);
+    const restGrand = grand-paidGrand;
     html += "<tfoot><tr><td class='colDate'><div class='dcell'>ИТОГО</div></td>";
     emps.forEach(e=>{
       const second = isFixed(e) ? "смен" : (fmt(tot[e.id].hr)+"ч");
@@ -591,7 +595,8 @@
               (sm?"<div class='pay'>"+money0(net)+"</div>":"")+"</td>";
     });
     html += "<td class='colSum'></td>";
-    if(sm) html += "<td class='colMoney tt'><div class='sh' style='color:var(--brand)'>"+money0(grand)+"</div><div class='hr'>за месяц</div></td>"+
+    if(sm) html += "<td class='colMoney tt'><div class='sh' style='color:var(--brand)'>"+money0(grand)+"</div><div class='hr'>ФОТ</div>"+
+                   "<div class='paid'>выд "+money0(paidGrand)+"</div><div class='rest'>ост "+money0(restGrand)+"</div></td>"+
                    "<td class='colPlan tt'><div class='sh'>"+(planRange(grand)||"0к")+"</div><div class='hr'>план</div></td>";
     html += "</tr></tfoot>";
 
@@ -618,6 +623,8 @@
     // money summary
     const ms=document.getElementById("moneySummary");
     if(sm){
+      const paidGrand = Object.values(paid).reduce((s,v)=>s+v,0);
+      const restGrand = grand-paidGrand;
       const workDays = (function(){ let n=0; for(let d=1; d<=nd; d++){ const dk=dateKey(state.year,state.month,d);
         if(state.shifts[dk] && Object.keys(state.shifts[dk]).length) n++; } return n; })();
       ms.style.display="";
@@ -625,6 +632,8 @@
         "<div class='msmain'><div class='mslabel'>ФОТ за месяц</div><div class='msbig'>"+money0(grand)+" ₽</div></div>"+
         "<div class='msrow'><span>Дней с сменами: <b>"+workDays+"</b></span>"+
         "<span>План выручки при ФОТ 23–28%: <b>"+(planRange(grand)||"0к")+"</b></span>"+
+        "<span>Выдано: <b>"+money0(paidGrand)+" ₽</b></span>"+
+        "<span>Остаток: <b>"+money0(restGrand)+" ₽</b></span>"+
         "<span>В среднем за рабочий день: <b>"+money0(workDays?grand/workDays:0)+" ₽</b></span>"+
         "<span>В среднем за день месяца: <b>"+money0(grand/nd)+" ₽</b></span></div>";
     }else{ ms.style.display="none"; ms.innerHTML=""; }
@@ -1021,6 +1030,7 @@
 
     // totals
     const tot={}; emps.forEach(e=>tot[e.id]={sh:0,hr:0,pay:0});
+    const paid={}; emps.forEach(e=>paid[e.id]=0);
     const cover=[], dayPay=[];
     let grand=0;
     for(let d=1;d<=nd;d++){
@@ -1029,9 +1039,12 @@
         const p=payOf(e,h);
         tot[e.id].sh++; if(!isFixed(e)) tot[e.id].hr+=h; tot[e.id].pay+=p; c++; pay+=p; grand+=p;
       } });
+      getPayouts(dk).forEach(p=>{ if(p.employeeId in paid) paid[p.employeeId]+=p.amount; });
       cover[d]=c;
       dayPay[d]=pay;
     }
+    const paidGrand=Object.values(paid).reduce((s,v)=>s+v,0);
+    const restGrand=grand-paidGrand;
     // role totals for footer
     const byRole={}; ROLE_ORDER.forEach(r=>byRole[r]={sh:0,hr:0,n:0});
     emps.forEach(e=>{ byRole[e.role].sh+=tot[e.id].sh; byRole[e.role].hr+=tot[e.id].hr; byRole[e.role].n++; });
@@ -1161,9 +1174,10 @@
     if(sm){
       ctx.textAlign="right";
       ctx.fillStyle=HEX.brand; F("800",11);
-      ctx.fillText(money0(grand), mc0+moneyW-8, ty+15);
+      ctx.fillText(money0(grand), mc0+moneyW-8, ty+10);
       ctx.fillStyle=HEX.soft; F("700",9);
-      ctx.fillText("за месяц", mc0+moneyW-8, ty+30);
+      ctx.fillText("выд "+money0(paidGrand), mc0+moneyW-8, ty+24);
+      ctx.fillText("ост "+money0(restGrand), mc0+moneyW-8, ty+36);
       ctx.fillStyle=HEX.ink; F("800",11);
       ctx.fillText(planRange(grand)||"0к", pc0+planW-8, ty+15);
       ctx.fillStyle=HEX.soft; F("700",9);
