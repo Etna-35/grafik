@@ -28,6 +28,7 @@
     --waiter:#b07a1e;
     --dish:#5b6b86;
     --payout:#287a50;
+    --payday:#8f2433;
     --weekend:#efe6d6;
     --shadow:0 1px 2px rgba(60,40,20,.06),0 6px 18px rgba(60,40,20,.06);
     --radius:14px;
@@ -90,8 +91,10 @@
   /* Shift cells */
   td.cell{text-align:center;cursor:pointer;height:40px;user-select:none;position:relative;}
   td.cell .h{display:inline-flex;align-items:center;justify-content:center;
-    width:34px;height:28px;border-radius:8px;font-weight:700;font-size:13px;position:relative;overflow:hidden;}
+    width:34px;height:28px;border-radius:8px;font-weight:700;font-size:13px;position:relative;overflow:hidden;z-index:1;}
   td.cell.on .h{color:#fff;}
+  td.cell.payday::before{content:"";position:absolute;inset:1px;border:2px solid var(--payday);
+    border-radius:5px;background:rgba(143,36,51,.1);pointer-events:none;z-index:0;}
   td.cell.payout .h{box-shadow:inset 0 0 0 2px var(--payout),inset 0 0 0 4px rgba(255,253,249,.68);}
   td.cell.payout .h::after,
   td.cell.payoutEmpty .h::after{content:"";position:absolute;right:0;top:0;width:10px;height:10px;
@@ -497,9 +500,6 @@
   }
   function markBadges(mark){
     let h="";
-    if(mark.pay.length){
-      h += "<span class='markIcon' title='День зарплаты'>₽"+(mark.pay.length>1?"<span class='cnt'>"+mark.pay.length+"</span>":"")+"</span>";
-    }
     if(mark.task){ h += "<span class='markIcon star' title='Дедлайн'>☆</span>"; }
     return h ? "<div class='dmarks'>"+h+"</div>" : "";
   }
@@ -558,15 +558,17 @@
         const r = ROLES[e.role];
         const empPayouts = payoutsForEmployee(payouts, e.id);
         const pTitle = payoutTitle(empPayouts);
+        const hasPayday = mark.pay.includes(e.id);
+        const cellTitle = [pTitle, hasPayday ? "День зарплаты: "+e.name : ""].filter(Boolean).join(" · ");
         if(h!==null){
           cover++; dayPay+=payOf(e,h);
           let label, cls="h";
           if(isFixed(e)){ label = sm ? money0(h) : "✓"; cls="h fx"; }
           else { label = fmt(h); }
-          row += "<td class='cell on"+(empPayouts.length?" payout":"")+"' data-d='"+d+"' data-e='"+e.id+"' "+(pTitle?"title='"+esc(pTitle)+"'":"")+">"+
+          row += "<td class='cell on"+(hasPayday?" payday":"")+(empPayouts.length?" payout":"")+"' data-d='"+d+"' data-e='"+e.id+"' "+(cellTitle?"title='"+esc(cellTitle)+"'":"")+">"+
                  "<span class='"+cls+"' style='background:"+r.color+"'>"+label+"</span></td>";
         }else{
-          row += "<td class='cell"+(empPayouts.length?" payoutEmpty":"")+"' data-d='"+d+"' data-e='"+e.id+"' "+(pTitle?"title='"+esc(pTitle)+"'":"")+"><span class='h'></span></td>";
+          row += "<td class='cell"+(hasPayday?" payday":"")+(empPayouts.length?" payoutEmpty":"")+"' data-d='"+d+"' data-e='"+e.id+"' "+(cellTitle?"title='"+esc(cellTitle)+"'":"")+"><span class='h'></span></td>";
         }
       });
       row += "<td class='colSum'><span class='cv'>"+(cover||"")+"</span></td>";
@@ -983,7 +985,7 @@
   /* ---------- export to image ---------- */
   const HEX = {
     paper:"#f5efe6", card:"#fffdf9", ink:"#2a2320", soft:"#7a6f64",
-    line:"#e6ddcf", lineS:"#d8ccb8", brand:"#8f2433", payout:"#287a50",
+    line:"#e6ddcf", lineS:"#d8ccb8", brand:"#8f2433", payout:"#287a50", payday:"#8f2433",
     cook:"#9d2235", bar:"#2f6f6b", waiter:"#b07a1e", dish:"#5b6b86", weekend:"#efe6d6", foot:"#fbf6ee"
   };
   function roleHex(r){ return HEX[r] || HEX.ink; }
@@ -1012,6 +1014,12 @@
     ctx.moveTo(bx+bw-10,by); ctx.lineTo(bx+bw-10,by+10);
     ctx.moveTo(bx+bw-10,by+10); ctx.lineTo(bx+bw,by+10);
     ctx.stroke();
+  }
+  function drawPaydayCue(ctx,x,y,w,h){
+    ctx.fillStyle="rgba(143,36,51,.1)";
+    rr(ctx,x+1,y+2,w-2,h-4,5); ctx.fill();
+    ctx.strokeStyle=HEX.payday; ctx.lineWidth=2;
+    rr(ctx,x+1,y+2,w-2,h-4,5); ctx.stroke();
   }
   function fit(ctx,text,maxw){
     if(ctx.measureText(text).width<=maxw) return text;
@@ -1134,23 +1142,21 @@
       ctx.fillText(WD[wd], x0+12+dw+6, ry+rowH/2+1);
       const mark=getMark(dateKey(y,m,d));
       const payouts=getPayouts(dateKey(y,m,d));
-      if(mark.pay.length || mark.task){
+      if(mark.task){
         let mx=x0+62;
         ctx.fillStyle=HEX.ink; F("800",10.5);
-        if(mark.pay.length){
-          const txt="₽"+(mark.pay.length>1?mark.pay.length:"");
-          ctx.fillText(txt, mx, ry+rowH/2+1);
-          mx+=ctx.measureText(txt).width+7;
-        }
-        if(mark.task){ F("700",12); ctx.fillText("☆", mx, ry+rowH/2+1); }
+        F("700",12); ctx.fillText("☆", mx, ry+rowH/2+1);
       }
       // cells
       ctx.textAlign="center";
       emps.forEach((e,i)=>{
         const dk=dateKey(y,m,d); const h=getShift(dk,e.id);
         const hasPayout=payoutsForEmployee(payouts,e.id).length>0;
+        const hasPayday=mark.pay.includes(e.id);
         const cx=ec0+i*EW+EW/2;
+        const cellX=ec0+i*EW;
         const bx=cx-17, by=ry+(rowH-26)/2, bw=34, bh=26;
+        if(hasPayday) drawPaydayCue(ctx,cellX,ry,EW,rowH);
         if(h!==null){
           ctx.fillStyle=roleHex(e.role); rr(ctx,bx,by,bw,bh,8); ctx.fill();
           if(hasPayout){
