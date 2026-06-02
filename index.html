@@ -27,6 +27,7 @@
     --bar:#2f6f6b;
     --waiter:#b07a1e;
     --dish:#5b6b86;
+    --payout:#287a50;
     --weekend:#efe6d6;
     --shadow:0 1px 2px rgba(60,40,20,.06),0 6px 18px rgba(60,40,20,.06);
     --radius:14px;
@@ -89,10 +90,14 @@
   /* Shift cells */
   td.cell{text-align:center;cursor:pointer;height:40px;user-select:none;position:relative;}
   td.cell .h{display:inline-flex;align-items:center;justify-content:center;
-    width:34px;height:28px;border-radius:8px;font-weight:700;font-size:13px;}
+    width:34px;height:28px;border-radius:8px;font-weight:700;font-size:13px;position:relative;overflow:hidden;}
   td.cell.on .h{color:#fff;}
-  td.cell.payout .h{box-shadow:inset 0 0 0 2px #1f7a4d;}
-  td.cell.payoutEmpty .h{box-shadow:inset 0 0 0 1.5px #9fcbb2;background:transparent;}
+  td.cell.payout .h{box-shadow:inset 0 0 0 2px var(--payout),inset 0 0 0 4px rgba(255,253,249,.68);}
+  td.cell.payout .h::after,
+  td.cell.payoutEmpty .h::after{content:"";position:absolute;right:0;top:0;width:10px;height:10px;
+    background:var(--payout);border-left:2px solid rgba(255,253,249,.92);border-bottom:2px solid rgba(255,253,249,.92);
+    border-radius:0 8px 0 6px;}
+  td.cell.payoutEmpty .h{box-shadow:inset 0 0 0 2px var(--payout);background:transparent;}
   td.cell:active{filter:brightness(.97)}
   /* coverage column */
   .colSum{min-width:36px;width:36px;text-align:center;background:#faf5ec;}
@@ -978,7 +983,7 @@
   /* ---------- export to image ---------- */
   const HEX = {
     paper:"#f5efe6", card:"#fffdf9", ink:"#2a2320", soft:"#7a6f64",
-    line:"#e6ddcf", lineS:"#d8ccb8", brand:"#8f2433",
+    line:"#e6ddcf", lineS:"#d8ccb8", brand:"#8f2433", payout:"#287a50",
     cook:"#9d2235", bar:"#2f6f6b", waiter:"#b07a1e", dish:"#5b6b86", weekend:"#efe6d6", foot:"#fbf6ee"
   };
   function roleHex(r){ return HEX[r] || HEX.ink; }
@@ -992,6 +997,21 @@
     ctx.arcTo(x,y+h,x,y,r);
     ctx.arcTo(x,y,x+w,y,r);
     ctx.closePath();
+  }
+  function drawPayoutCue(ctx,bx,by,bw,bh,contrast){
+    ctx.strokeStyle=HEX.payout; ctx.lineWidth=2;
+    rr(ctx,bx+1,by+1,bw-2,bh-2,7); ctx.stroke();
+    if(contrast){
+      ctx.strokeStyle="rgba(255,253,249,.68)"; ctx.lineWidth=2;
+      rr(ctx,bx+3,by+3,bw-6,bh-6,5); ctx.stroke();
+    }
+    ctx.fillStyle=HEX.payout;
+    ctx.fillRect(bx+bw-10,by,10,10);
+    ctx.strokeStyle="rgba(255,253,249,.92)"; ctx.lineWidth=2;
+    ctx.beginPath();
+    ctx.moveTo(bx+bw-10,by); ctx.lineTo(bx+bw-10,by+10);
+    ctx.moveTo(bx+bw-10,by+10); ctx.lineTo(bx+bw,by+10);
+    ctx.stroke();
   }
   function fit(ctx,text,maxw){
     if(ctx.measureText(text).width<=maxw) return text;
@@ -1134,15 +1154,13 @@
         if(h!==null){
           ctx.fillStyle=roleHex(e.role); rr(ctx,bx,by,bw,bh,8); ctx.fill();
           if(hasPayout){
-            ctx.strokeStyle="#1f7a4d"; ctx.lineWidth=2;
-            rr(ctx,bx+1,by+1,bw-2,bh-2,7); ctx.stroke();
+            drawPayoutCue(ctx,bx,by,bw,bh,true);
           }
           ctx.fillStyle="#fff";
           if(isFixed(e)){ F("700",14); ctx.fillText("✓", cx, ry+rowH/2+0.5); }
           else { F("700",12.5); ctx.fillText(fmt(h), cx, ry+rowH/2+0.5); }
         }else if(hasPayout){
-          ctx.strokeStyle="#9fcbb2"; ctx.lineWidth=1.4;
-          rr(ctx,bx+1,by+1,bw-2,bh-2,7); ctx.stroke();
+          drawPayoutCue(ctx,bx,by,bw,bh,false);
         }
       });
       // coverage
