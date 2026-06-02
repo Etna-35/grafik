@@ -91,6 +91,8 @@
   td.cell .h{display:inline-flex;align-items:center;justify-content:center;
     width:34px;height:28px;border-radius:8px;font-weight:700;font-size:13px;}
   td.cell.on .h{color:#fff;}
+  td.cell.payout .h{box-shadow:inset 0 0 0 2px #1f7a4d;}
+  td.cell.payoutEmpty .h{box-shadow:inset 0 0 0 1.5px #9fcbb2;background:transparent;}
   td.cell:active{filter:brightness(.97)}
   /* coverage column */
   .colSum{min-width:36px;width:36px;text-align:center;background:#faf5ec;}
@@ -478,11 +480,16 @@
     if(clean.length) state.payouts[dk]=clean;
     else delete state.payouts[dk];
   }
-  function markBadges(mark, payouts){
+  function payoutsForEmployee(payouts, eid){
+    return (payouts||[]).filter(p=>p.employeeId===eid);
+  }
+  function payoutTitle(payouts){
+    if(!payouts.length) return "";
+    const sum=payouts.reduce((s,p)=>s+p.amount,0);
+    return "Выдано: "+money0(sum)+" ₽";
+  }
+  function markBadges(mark){
     let h="";
-    if(payouts.length){
-      h += "<span class='markIcon payout' title='Выданы деньги'>Р"+(payouts.length>1?"<span class='cnt'>"+payouts.length+"</span>":"")+"</span>";
-    }
     if(mark.pay.length){
       h += "<span class='markIcon' title='День зарплаты'>₽"+(mark.pay.length>1?"<span class='cnt'>"+mark.pay.length+"</span>":"")+"</span>";
     }
@@ -538,19 +545,21 @@
       let cover=0, dayPay=0;
       let row = "<tr class='"+(we?"we ":"")+(isToday?"today":"")+"'>";
       row += "<td class='colDate markDate' data-d='"+d+"' title='"+esc(mTitle||"Метки даты")+"'><div class='dcell'>"+
-             "<span class='dnum'>"+d+"</span> <span class='dwd'>"+WD[wd]+"</span>"+markBadges(mark,payouts)+"</div></td>";
+             "<span class='dnum'>"+d+"</span> <span class='dwd'>"+WD[wd]+"</span>"+markBadges(mark)+"</div></td>";
       emps.forEach(e=>{
         const h = getShift(dk, e.id);
         const r = ROLES[e.role];
+        const empPayouts = payoutsForEmployee(payouts, e.id);
+        const pTitle = payoutTitle(empPayouts);
         if(h!==null){
           cover++; dayPay+=payOf(e,h);
           let label, cls="h";
           if(isFixed(e)){ label = sm ? money0(h) : "✓"; cls="h fx"; }
           else { label = fmt(h); }
-          row += "<td class='cell on' data-d='"+d+"' data-e='"+e.id+"'>"+
+          row += "<td class='cell on"+(empPayouts.length?" payout":"")+"' data-d='"+d+"' data-e='"+e.id+"' "+(pTitle?"title='"+esc(pTitle)+"'":"")+">"+
                  "<span class='"+cls+"' style='background:"+r.color+"'>"+label+"</span></td>";
         }else{
-          row += "<td class='cell' data-d='"+d+"' data-e='"+e.id+"'><span class='h'></span></td>";
+          row += "<td class='cell"+(empPayouts.length?" payoutEmpty":"")+"' data-d='"+d+"' data-e='"+e.id+"' "+(pTitle?"title='"+esc(pTitle)+"'":"")+"><span class='h'></span></td>";
         }
       });
       row += "<td class='colSum'><span class='cv'>"+(cover||"")+"</span></td>";
@@ -1092,15 +1101,8 @@
       ctx.fillText(WD[wd], x0+12+dw+6, ry+rowH/2+1);
       const mark=getMark(dateKey(y,m,d));
       const payouts=getPayouts(dateKey(y,m,d));
-      if(payouts.length || mark.pay.length || mark.task){
+      if(mark.pay.length || mark.task){
         let mx=x0+62;
-        ctx.fillStyle=HEX.ink; F("800",10.5);
-        if(payouts.length){
-          const txt="Р"+(payouts.length>1?payouts.length:"");
-          ctx.fillStyle="#1f7a4d";
-          ctx.fillText(txt, mx, ry+rowH/2+1);
-          mx+=ctx.measureText(txt).width+7;
-        }
         ctx.fillStyle=HEX.ink; F("800",10.5);
         if(mark.pay.length){
           const txt="₽"+(mark.pay.length>1?mark.pay.length:"");
@@ -1113,12 +1115,21 @@
       ctx.textAlign="center";
       emps.forEach((e,i)=>{
         const dk=dateKey(y,m,d); const h=getShift(dk,e.id);
+        const hasPayout=payoutsForEmployee(payouts,e.id).length>0;
+        const cx=ec0+i*EW+EW/2;
+        const bx=cx-17, by=ry+(rowH-26)/2, bw=34, bh=26;
         if(h!==null){
-          const cx=ec0+i*EW+EW/2;
-          ctx.fillStyle=roleHex(e.role); rr(ctx,cx-17,ry+(rowH-26)/2,34,26,8); ctx.fill();
+          ctx.fillStyle=roleHex(e.role); rr(ctx,bx,by,bw,bh,8); ctx.fill();
+          if(hasPayout){
+            ctx.strokeStyle="#1f7a4d"; ctx.lineWidth=2;
+            rr(ctx,bx+1,by+1,bw-2,bh-2,7); ctx.stroke();
+          }
           ctx.fillStyle="#fff";
           if(isFixed(e)){ F("700",14); ctx.fillText("✓", cx, ry+rowH/2+0.5); }
           else { F("700",12.5); ctx.fillText(fmt(h), cx, ry+rowH/2+0.5); }
+        }else if(hasPayout){
+          ctx.strokeStyle="#9fcbb2"; ctx.lineWidth=1.4;
+          rr(ctx,bx+1,by+1,bw-2,bh-2,7); ctx.stroke();
         }
       });
       // coverage
