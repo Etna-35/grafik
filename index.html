@@ -72,6 +72,7 @@
   .markIcon{display:inline-flex;align-items:center;justify-content:center;min-width:13px;height:13px;padding:0 3px;
     color:var(--ink);font-size:10px;font-weight:800;line-height:1;border:1px solid var(--line-strong);
     border-radius:8px;background:rgba(255,255,255,.46);}
+  .markIcon.payout{color:#1f7a4d;border-color:#9fcbb2;background:#edf7f0;}
   .markIcon.star{font-size:11px;font-weight:700;}
   .markIcon .cnt{font-size:8px;margin-left:1px;}
   tr.we .colDate,tr.we td.cell{background:var(--weekend);}
@@ -119,6 +120,7 @@
     overflow-wrap:anywhere;}
   .scard .big.pay{font-size:19px;}
   .scard .unit{font-size:11px;color:var(--ink-soft);margin-left:3px;white-space:nowrap;}
+  .scard .payMeta{width:100%;font-size:10px;color:var(--ink-soft);margin-top:5px;line-height:1.25;}
   .roleTotals{display:flex;flex-wrap:wrap;gap:8px;margin:6px 4px 0;font-size:12px;color:var(--ink-soft);}
   .roleTotals .rt{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:4px 10px;}
   .roleTotals .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle;}
@@ -212,6 +214,16 @@
   .payEmp:last-child{border-bottom:none;}
   .payEmp input{width:18px;height:18px;accent-color:var(--brand);}
   .payEmp .role{margin-left:auto;color:var(--ink-soft);font-size:11px;}
+  .payoutForm{display:grid;grid-template-columns:1fr 92px;gap:8px;margin-bottom:8px;}
+  .payoutForm select,.payoutForm input{min-width:0;border:1px solid var(--line-strong);border-radius:10px;
+    padding:9px 8px;font:inherit;font-size:14px;background:#fff;color:var(--ink);}
+  .payoutForm .btn{grid-column:1/-1;padding:10px;}
+  .payoutList{display:flex;flex-direction:column;gap:6px;margin-bottom:14px;}
+  .payoutRow{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:12px;
+    padding:8px 10px;background:#fff;font-size:13px;}
+  .payoutRow b{font-size:14px;}
+  .payoutRow .delPay{margin-left:auto;border:none;background:transparent;color:#b04a4a;font-size:16px;
+    cursor:pointer;padding:2px 4px;line-height:1;}
 </style>
 
 <div class="wrap">
@@ -298,7 +310,14 @@
     <div class="markActions">
       <button class="markToggle" id="markTask" type="button"><span class="markIcon star">☆</span> Дедлайн</button>
     </div>
-    <div class="seclabel">Зарплата</div>
+    <div class="seclabel">Выдано денег</div>
+    <div class="payoutForm">
+      <select id="payoutEmp"></select>
+      <input type="number" id="payoutAmount" min="0" step="100" placeholder="сумма">
+      <button class="btn ghost" id="payoutAdd" type="button">Добавить выплату</button>
+    </div>
+    <div class="payoutList" id="payoutList"></div>
+    <div class="seclabel">План зарплаты</div>
     <div class="payList" id="payList"></div>
     <div class="sheetbtns" style="margin-top:14px;">
       <button class="btn ghost danger" id="markClear">Очистить</button>
@@ -353,7 +372,7 @@
     for(let i=1;i<=2;i++) emps.push({id:uid(),name:"Бармен "+i,role:"bar",hours:12,rate:0});
     for(let i=1;i<=4;i++) emps.push({id:uid(),name:"Официант "+i,role:"waiter",hours:12,rate:0});
     for(let i=1;i<=2;i++) emps.push({id:uid(),name:"Мойщица "+i,role:"dish",fixed:0,fixedWe:0});
-    return { employees:emps, shifts:{}, marks:{}, year:now.getFullYear(), month:now.getMonth(), showMoney:true };
+    return { employees:emps, shifts:{}, marks:{}, payouts:{}, year:now.getFullYear(), month:now.getMonth(), showMoney:true };
   }
 
   function migrate(){
@@ -377,6 +396,16 @@
       if(!m.task && m.pay.length===0) delete state.marks[dk];
       else state.marks[dk]=m;
     });
+    if(!state.payouts || typeof state.payouts!=="object") state.payouts={};
+    Object.keys(state.payouts).forEach(dk=>{
+      const items=Array.isArray(state.payouts[dk]) ? state.payouts[dk] : [];
+      state.payouts[dk]=items.map(p=>({
+        id:p.id||uid(),
+        employeeId:p.employeeId,
+        amount:+p.amount||0
+      })).filter(p=>empIds.has(p.employeeId)&&p.amount>0);
+      if(state.payouts[dk].length===0) delete state.payouts[dk];
+    });
     if(typeof state.showMoney!=="boolean") state.showMoney=true;
   }
 
@@ -388,6 +417,7 @@
     if(!state || !state.employees){ state = defaultState(); }
     if(!state.shifts) state.shifts = {};
     if(!state.marks) state.marks = {};
+    if(!state.payouts) state.payouts = {};
     migrate();
   }
 
@@ -438,17 +468,35 @@
     if(mark.task || pay.length){ state.marks[dk]={task:!!mark.task,pay}; }
     else if(state.marks){ delete state.marks[dk]; }
   }
-  function markBadges(mark){
+  function getPayouts(dk){
+    return state.payouts && Array.isArray(state.payouts[dk]) ? state.payouts[dk].slice() : [];
+  }
+  function setPayouts(dk, payouts){
+    if(!state.payouts) state.payouts={};
+    const clean=(payouts||[]).map(p=>({id:p.id||uid(),employeeId:p.employeeId,amount:+p.amount||0}))
+      .filter(p=>state.employees.some(e=>e.id===p.employeeId)&&p.amount>0);
+    if(clean.length) state.payouts[dk]=clean;
+    else delete state.payouts[dk];
+  }
+  function markBadges(mark, payouts){
     let h="";
+    if(payouts.length){
+      h += "<span class='markIcon payout' title='Выданы деньги'>Р"+(payouts.length>1?"<span class='cnt'>"+payouts.length+"</span>":"")+"</span>";
+    }
     if(mark.pay.length){
       h += "<span class='markIcon' title='День зарплаты'>₽"+(mark.pay.length>1?"<span class='cnt'>"+mark.pay.length+"</span>":"")+"</span>";
     }
     if(mark.task){ h += "<span class='markIcon star' title='Дедлайн'>☆</span>"; }
     return h ? "<div class='dmarks'>"+h+"</div>" : "";
   }
-  function markTitle(mark){
+  function markTitle(mark, payouts){
     const names = mark.pay.map(id=>state.employees.find(e=>e.id===id)).filter(Boolean).map(e=>e.name);
+    const paid = payouts.map(p=>{
+      const e=state.employees.find(x=>x.id===p.employeeId);
+      return (e?e.name:"Сотрудник")+": "+money0(p.amount)+" ₽";
+    });
     const parts=[];
+    if(paid.length) parts.push("Выдано: "+paid.join(", "));
     if(names.length) parts.push("Зарплата: "+names.join(", "));
     if(mark.task) parts.push("Дедлайн");
     return parts.join(" · ");
@@ -485,11 +533,12 @@
       const we = (wd===0||wd===6);
       const isToday = isThisMonth && today.getDate()===d;
       const mark = getMark(dk);
-      const mTitle = markTitle(mark);
+      const payouts = getPayouts(dk);
+      const mTitle = markTitle(mark, payouts);
       let cover=0, dayPay=0;
       let row = "<tr class='"+(we?"we ":"")+(isToday?"today":"")+"'>";
       row += "<td class='colDate markDate' data-d='"+d+"' title='"+esc(mTitle||"Метки даты")+"'><div class='dcell'>"+
-             "<span class='dnum'>"+d+"</span> <span class='dwd'>"+WD[wd]+"</span>"+markBadges(mark)+"</div></td>";
+             "<span class='dnum'>"+d+"</span> <span class='dwd'>"+WD[wd]+"</span>"+markBadges(mark,payouts)+"</div></td>";
       emps.forEach(e=>{
         const h = getShift(dk, e.id);
         const r = ROLES[e.role];
@@ -515,18 +564,22 @@
     // totals
     const tot = {};
     emps.forEach(e=> tot[e.id]={sh:0,hr:0,pay:0});
+    const paid = {};
+    emps.forEach(e=> paid[e.id]=0);
     let grand=0;
     for(let d=1; d<=nd; d++){
       const dk = dateKey(y,m,d);
       emps.forEach(e=>{ const h=getShift(dk,e.id); if(h!==null){
         tot[e.id].sh++; if(!isFixed(e)) tot[e.id].hr+=h; const p=payOf(e,h); tot[e.id].pay+=p; grand+=p; } });
+      getPayouts(dk).forEach(p=>{ if(p.employeeId in paid) paid[p.employeeId]+=p.amount; });
     }
     html += "<tfoot><tr><td class='colDate'><div class='dcell'>ИТОГО</div></td>";
     emps.forEach(e=>{
       const second = isFixed(e) ? "смен" : (fmt(tot[e.id].hr)+"ч");
+      const net = tot[e.id].pay - (paid[e.id]||0);
       html += "<td class='tt'><div class='sh' style='color:"+ROLES[e.role].color+"'>"+tot[e.id].sh+"</div>"+
               "<div class='hr'>"+second+"</div>"+
-              (sm?"<div class='pay'>"+money0(tot[e.id].pay)+"</div>":"")+"</td>";
+              (sm?"<div class='pay'>"+money0(net)+"</div>":"")+"</td>";
     });
     html += "<td class='colSum'></td>";
     if(sm) html += "<td class='colMoney tt'><div class='sh' style='color:var(--brand)'>"+money0(grand)+"</div><div class='hr'>за месяц</div></td>"+
@@ -534,10 +587,10 @@
     html += "</tr></tfoot>";
 
     document.getElementById("grid").innerHTML = html;
-    renderSummary(emps, tot, grand, nd);
+    renderSummary(emps, tot, paid, grand, nd);
   }
 
-  function renderSummary(emps, tot, grand, nd){
+  function renderSummary(emps, tot, paid, grand, nd){
     const sm = state.showMoney;
     // role totals
     const byRole = {};
@@ -573,12 +626,15 @@
       const r=ROLES[e.role];
       const secondNum = isFixed(e) ? tot[e.id].sh : fmt(tot[e.id].hr);
       const secondLbl = isFixed(e) ? "смен" : "часов";
+      const paidSum = paid[e.id]||0;
+      const netPay = tot[e.id].pay-paidSum;
       c += "<div class='scard' style='border-left-color:"+r.color+"'>"+
            "<div class='nm'>"+esc(e.name)+"</div>"+
            "<div class='rl'>"+r.label+"</div>"+
            "<div class='nums'><div><span class='big' style='color:"+r.color+"'>"+tot[e.id].sh+"</span><span class='unit'>смен</span></div>"+
            (isFixed(e)?"":"<div><span class='big'>"+fmt(tot[e.id].hr)+"</span><span class='unit'>часов</span></div>")+
-           (sm?"<div><span class='big pay' style='color:var(--brand)'>"+money0(tot[e.id].pay)+"</span><span class='unit'>₽</span></div>":"")+
+           (sm?"<div><span class='big pay' style='color:var(--brand)'>"+money0(netPay)+"</span><span class='unit'>₽ к выплате</span></div>":"")+
+           (sm&&paidSum?"<div class='payMeta'>начислено "+money0(tot[e.id].pay)+" ₽ · выдано "+money0(paidSum)+" ₽</div>":"")+
            "</div></div>";
     });
     document.getElementById("cards").innerHTML = c;
@@ -752,12 +808,16 @@
   const markOvl=document.getElementById("markOvl");
   const markTask=document.getElementById("markTask");
   const payList=document.getElementById("payList");
+  const payoutEmp=document.getElementById("payoutEmp");
+  const payoutAmount=document.getElementById("payoutAmount");
+  const payoutList=document.getElementById("payoutList");
   let markCtx=null;
 
   function openMarkSheet(d){
     const dk=dateKey(state.year,state.month,d);
-    markCtx={dk,d,mark:getMark(dk)};
+    markCtx={dk,d,mark:getMark(dk),payouts:getPayouts(dk)};
     document.getElementById("markWho").textContent = d+" "+MONTHS[state.month]+" "+state.year;
+    payoutAmount.value="";
     renderMarkSheet();
     markOvl.classList.add("show");
   }
@@ -766,15 +826,23 @@
     markTask.classList.toggle("on", !!markCtx.mark.task);
     const chosen=new Set(markCtx.mark.pay);
     const emps=sortedEmployees();
+    payoutEmp.innerHTML = emps.map(e=>"<option value='"+e.id+"'>"+esc(e.name)+" · "+ROLES[e.role].label+"</option>").join("");
     payList.innerHTML = emps.map(e=>
       "<label class='payEmp'><input type='checkbox' data-e='"+e.id+"' "+(chosen.has(e.id)?"checked":"")+">"+
       "<span class='markIcon'>₽</span><span>"+esc(e.name)+"</span><span class='role'>"+ROLES[e.role].label+"</span></label>"
     ).join("");
+    payoutList.innerHTML = markCtx.payouts.length ? markCtx.payouts.map(p=>{
+      const e=state.employees.find(x=>x.id===p.employeeId);
+      return "<div class='payoutRow' data-p='"+p.id+"'><span class='markIcon payout'>Р</span>"+
+        "<span>"+esc(e?e.name:"Сотрудник")+"</span><b>"+money0(p.amount)+" ₽</b>"+
+        "<button class='delPay' type='button' title='Удалить'>✕</button></div>";
+    }).join("") : "<div class='hint' style='margin:0 0 10px;'>Выплат за эту дату пока нет.</div>";
   }
   function closeMarkSheet(){ markOvl.classList.remove("show"); markCtx=null; }
   function saveMarkSheet(){
     if(!markCtx) return;
     setMark(markCtx.dk, markCtx.mark);
+    setPayouts(markCtx.dk, markCtx.payouts);
     closeMarkSheet(); render(); save();
   }
   markTask.addEventListener("click",function(){
@@ -789,10 +857,26 @@
     if(ev.target.checked) pay.add(eid); else pay.delete(eid);
     markCtx.mark.pay=[...pay];
   });
+  document.getElementById("payoutAdd").addEventListener("click",function(){
+    if(!markCtx) return;
+    const amount=parseFloat(payoutAmount.value);
+    if(isNaN(amount)||amount<=0){ toast("Введите сумму"); return; }
+    markCtx.payouts.push({id:uid(),employeeId:payoutEmp.value,amount});
+    payoutAmount.value="";
+    renderMarkSheet();
+  });
+  payoutList.addEventListener("click",function(ev){
+    const btn=ev.target.closest(".delPay");
+    if(!btn||!markCtx) return;
+    const row=btn.closest(".payoutRow");
+    markCtx.payouts=markCtx.payouts.filter(p=>p.id!==row.dataset.p);
+    renderMarkSheet();
+  });
   document.getElementById("markDone").addEventListener("click",saveMarkSheet);
   document.getElementById("markClear").addEventListener("click",function(){
     if(!markCtx) return;
     markCtx.mark={task:false,pay:[]};
+    markCtx.payouts=[];
     saveMarkSheet();
   });
   markOvl.addEventListener("click",function(ev){ if(ev.target===markOvl) closeMarkSheet(); });
@@ -850,6 +934,10 @@
       state.marks[dk].pay=(state.marks[dk].pay||[]).filter(id=>id!==e.id);
       if(!state.marks[dk].task && state.marks[dk].pay.length===0) delete state.marks[dk];
     });
+    Object.keys(state.payouts||{}).forEach(dk=>{
+      state.payouts[dk]=(state.payouts[dk]||[]).filter(p=>p.employeeId!==e.id);
+      if(state.payouts[dk].length===0) delete state.payouts[dk];
+    });
     renderSettings(); render(); save();
   });
   document.getElementById("addEmp").addEventListener("click",function(){
@@ -864,6 +952,7 @@
       const dk=dateKey(state.year,state.month,d);
       delete state.shifts[dk];
       if(state.marks) delete state.marks[dk];
+      if(state.payouts) delete state.payouts[dk];
     }
     render(); save(); toast("Месяц очищен");
   });
@@ -1002,8 +1091,16 @@
       ctx.fillStyle= we?HEX.brand:HEX.soft; F("700",11);
       ctx.fillText(WD[wd], x0+12+dw+6, ry+rowH/2+1);
       const mark=getMark(dateKey(y,m,d));
-      if(mark.pay.length || mark.task){
+      const payouts=getPayouts(dateKey(y,m,d));
+      if(payouts.length || mark.pay.length || mark.task){
         let mx=x0+62;
+        ctx.fillStyle=HEX.ink; F("800",10.5);
+        if(payouts.length){
+          const txt="Р"+(payouts.length>1?payouts.length:"");
+          ctx.fillStyle="#1f7a4d";
+          ctx.fillText(txt, mx, ry+rowH/2+1);
+          mx+=ctx.measureText(txt).width+7;
+        }
         ctx.fillStyle=HEX.ink; F("800",10.5);
         if(mark.pay.length){
           const txt="₽"+(mark.pay.length>1?mark.pay.length:"");
