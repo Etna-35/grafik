@@ -1,0 +1,322 @@
+<!-- Заявка (продуктовая + хозяйственная) · эскиз · Etna -->
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Etna · заявка</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root{
+    --paper:#f5efe6; --card:#fffdf9; --ink:#2a2320; --ink-soft:#7a6f64;
+    --line:#e6ddcf; --line-strong:#d8ccb8; --brand:#8f2433; --weekend:#efe6d6;
+    --shadow:0 1px 2px rgba(60,40,20,.06),0 6px 18px rgba(60,40,20,.06); --radius:14px;
+    --veg:#5f8d4e; --grocery:#b07a1e; --dairy:#c89b3c; --alco:#8f2433; --herb:#2f6f4f; --house:#5b6b86;
+    --ok:#2f7a52;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;background:#ece3d4;color:var(--ink);
+    font-family:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-feature-settings:"tnum" 1;}
+
+  /* prototype switcher */
+  .protobar{position:sticky;top:0;z-index:50;background:rgba(42,35,32,.94);backdrop-filter:blur(6px);
+    padding:9px 12px;display:flex;gap:7px;overflow-x:auto;box-shadow:0 2px 10px rgba(0,0,0,.18);}
+  .protobar .lbl{color:#cabba6;font-size:11px;font-weight:700;letter-spacing:.4px;text-transform:uppercase;
+    align-self:center;white-space:nowrap;margin-right:4px;}
+  .pchip{flex:none;border:1px solid rgba(255,255,255,.14);background:transparent;color:#e9ddc9;border-radius:999px;
+    padding:7px 13px;font:inherit;font-weight:600;font-size:13px;cursor:pointer;white-space:nowrap;transition:.15s;}
+  .pchip.on{background:var(--brand);border-color:var(--brand);color:#fff;}
+
+  .stage{display:flex;justify-content:center;padding:26px 14px 60px;}
+  .phone{width:100%;max-width:412px;background:var(--paper);border-radius:30px;
+    box-shadow:0 18px 50px rgba(60,40,20,.22),0 2px 0 #fff inset;border:1px solid #d8ccb8;
+    position:relative;min-height:780px;display:flex;flex-direction:column;overflow:hidden;}
+  .notch{height:26px;display:flex;align-items:center;justify-content:center;flex:none;}
+  .notch::after{content:"";width:96px;height:5px;border-radius:5px;background:#cdbfa9;}
+
+  .screen{display:none;flex-direction:column;flex:1;min-height:0;}
+  .screen.active{display:flex;animation:fade .25s ease;}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  .scroll{flex:1;overflow:auto;padding:6px 16px 4px;}
+
+  header.top{display:flex;align-items:center;gap:10px;margin:4px 2px 12px;}
+  header.top .mark{width:9px;height:26px;border-radius:3px;background:var(--brand);flex:none;}
+  header.top h1{font-family:"Playfair Display",serif;font-weight:700;font-size:21px;margin:0;}
+  header.top .sub{font-size:12px;color:var(--ink-soft);margin-left:auto;text-align:right;}
+
+  .btn{border:1px solid var(--line-strong);background:var(--card);color:var(--ink);border-radius:11px;
+    padding:11px 14px;font:inherit;font-weight:600;font-size:14px;cursor:pointer;box-shadow:var(--shadow);
+    display:inline-flex;align-items:center;justify-content:center;gap:7px;transition:transform .08s;}
+  .btn:active{transform:scale(.97)}
+  .btn.brand{background:var(--brand);color:#fff;border-color:var(--brand);}
+  .btn.block{width:100%;padding:14px;font-size:15px;}
+  .btn.ghost{background:transparent;box-shadow:none;border-color:var(--line);}
+
+  /* type toggle Продукты/Хозтовары */
+  .seg{display:flex;background:#eadfce;border-radius:12px;padding:3px;margin:0 2px 12px;}
+  .seg button{flex:1;border:none;background:transparent;font:inherit;font-weight:700;font-size:13px;
+    color:var(--ink-soft);padding:9px;border-radius:9px;cursor:pointer;}
+  .seg button.on{background:var(--card);color:var(--ink);box-shadow:var(--shadow);}
+
+  /* search */
+  .search{display:flex;align-items:center;gap:9px;border:1px solid var(--line-strong);background:var(--card);
+    border-radius:12px;padding:11px 12px;margin:0 2px 11px;box-shadow:var(--shadow);}
+  .search svg{width:16px;height:16px;color:var(--ink-soft);flex:none;}
+  .search .ph{color:var(--ink-soft);font-size:14px;}
+
+  /* category chips */
+  .cats{display:flex;gap:7px;overflow-x:auto;margin:0 -16px 6px;padding:0 16px 2px;}
+  .cats::-webkit-scrollbar{display:none}
+  .catchip{flex:none;border:1px solid var(--line-strong);background:var(--card);border-radius:999px;
+    padding:7px 11px;font-size:13px;font-weight:600;display:flex;gap:6px;align-items:center;cursor:pointer;box-shadow:var(--shadow);}
+  .catchip .b{font-size:11px;color:var(--ink-soft);background:#efe6d6;border-radius:6px;padding:1px 6px;font-weight:700;}
+  .catchip.on{background:var(--ink);color:#fff;border-color:var(--ink);}
+  .catchip.on .b{background:rgba(255,255,255,.22);color:#fff;}
+
+  /* category section */
+  .cathead{display:flex;align-items:baseline;gap:8px;margin:16px 2px 2px;}
+  .cathead .cdot{width:9px;height:9px;border-radius:3px;align-self:center;}
+  .cathead h3{font-family:"Playfair Display",serif;font-size:15px;margin:0;font-weight:700;}
+  .cathead .cnt{font-size:12px;color:var(--ink-soft);margin-left:auto;}
+
+  /* item row */
+  .item{display:flex;align-items:center;gap:10px;padding:11px 4px;border-bottom:1px solid var(--line);}
+  .item .nm{flex:1;font-weight:600;font-size:14px;line-height:1.2;}
+  .item .nm .u{display:block;font-size:11px;color:var(--ink-soft);font-weight:600;margin-top:1px;}
+  .item.sel{background:rgba(47,122,82,.07);border-radius:11px;padding:11px;border-bottom:1px solid transparent;}
+  .addbtn{width:30px;height:30px;border-radius:9px;border:1px solid var(--line-strong);background:var(--card);
+    color:var(--ok);font-size:20px;font-weight:700;line-height:1;cursor:pointer;flex:none;}
+  .stepper{display:inline-flex;align-items:center;border:1px solid var(--ok);border-radius:10px;overflow:hidden;background:var(--card);flex:none;}
+  .stepper button{width:30px;height:32px;border:none;background:transparent;font-size:18px;font-weight:700;color:var(--ok);cursor:pointer;}
+  .stepper .q{min-width:54px;text-align:center;font-weight:800;font-size:13px;line-height:1;}
+  .stepper .q .u{display:block;font-size:9px;color:var(--ink-soft);font-weight:700;margin-top:1px;}
+
+  /* sticky cart bar */
+  .cartbar{flex:none;padding:10px 16px 16px;background:linear-gradient(rgba(245,239,230,0),var(--paper) 38%);}
+  .cartbar .btn{position:relative;}
+  .cartbar .cnt{background:rgba(255,255,255,.25);border-radius:999px;padding:1px 8px;font-size:12px;font-weight:800;}
+
+  /* request (cart) view */
+  .scard{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 13px;box-shadow:var(--shadow);}
+  .scard + .scard{margin-top:9px;}
+  .grpttl{display:flex;align-items:center;gap:8px;margin:16px 2px 8px;font-weight:800;font-size:13px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.3px;}
+  .grpttl .cdot{width:9px;height:9px;border-radius:3px;}
+  .crow{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--line);}
+  .crow:last-child{border-bottom:none;}
+  .crow .nm{flex:1;font-weight:600;font-size:14px;}
+  .crow .qty{font-weight:800;font-size:14px;white-space:nowrap;}
+  .crow .x{color:var(--ink-soft);font-size:17px;cursor:pointer;width:24px;text-align:center;flex:none;}
+  .field{margin:14px 2px 0;}
+  .field label{display:block;font-size:12px;color:var(--ink-soft);font-weight:700;margin:0 0 5px 2px;}
+  .inp{width:100%;border:1px solid var(--line-strong);background:var(--card);border-radius:11px;padding:12px 13px;
+    font:inherit;font-size:14px;color:var(--ink);box-shadow:var(--shadow);}
+  .inp.ta{min-height:70px;resize:none;font-weight:500;}
+  .stat{display:flex;gap:8px;margin:0 2px 4px;}
+  .stat .box{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 12px;box-shadow:var(--shadow);}
+  .stat .k{font-size:11px;color:var(--ink-soft);font-weight:700;}
+  .stat .v{font-size:19px;font-weight:800;margin-top:2px;}
+  .who{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--ink-soft);margin:0 2px 12px;}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.55);
+    border-radius:999px;padding:4px 10px;font-size:12px;font-weight:600;color:var(--ink);}
+  .note{font-size:12px;color:var(--ink-soft);background:#efe6d6;border:1px dashed var(--line-strong);
+    border-radius:11px;padding:10px 12px;margin:14px 2px 0;line-height:1.45;}
+  .hint{font-size:12px;color:var(--ink-soft);margin:12px 2px 0;line-height:1.45;}
+</style>
+
+<div class="protobar">
+  <span class="lbl">Эскиз</span>
+  <button class="pchip on" data-s="catalog">Каталог</button>
+  <button class="pchip" data-s="cart">Моя заявка · 4</button>
+</div>
+
+<div class="stage">
+<div class="phone">
+  <div class="notch"></div>
+
+  <!-- ============ CATALOG ============ -->
+  <section class="screen active" id="catalog">
+    <div class="scroll">
+      <header class="top"><span class="mark"></span><h1>Заявка</h1><span class="sub">Сб, 14 июня</span></header>
+
+      <div class="seg">
+        <button class="on" data-set="prod">Продукты · 212</button>
+        <button data-set="house">Хозтовары</button>
+      </div>
+
+      <div class="search">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <span class="ph">Поиск по 212 позициям…</span>
+      </div>
+
+      <!-- PRODUCTS -->
+      <div class="catalogset" data-set="prod">
+        <div class="cats">
+          <div class="catchip on">Все <span class="b">212</span></div>
+          <div class="catchip"><span class="cdot" style="width:8px;height:8px;border-radius:50%;background:var(--veg)"></span>Овощи <span class="b">46</span></div>
+          <div class="catchip"><span class="cdot" style="width:8px;height:8px;border-radius:50%;background:var(--grocery)"></span>Соусы/бакалея <span class="b">28</span></div>
+          <div class="catchip"><span class="cdot" style="width:8px;height:8px;border-radius:50%;background:var(--dairy)"></span>Молочка/сыры <span class="b">27</span></div>
+          <div class="catchip"><span class="cdot" style="width:8px;height:8px;border-radius:50%;background:var(--alco)"></span>Алкоголь <span class="b">22</span></div>
+          <div class="catchip"><span class="cdot" style="width:8px;height:8px;border-radius:50%;background:var(--herb)"></span>Зелень <span class="b">20</span></div>
+          <div class="catchip">ещё 7 <span class="b">69</span></div>
+        </div>
+
+        <div class="cathead"><span class="cdot" style="background:var(--veg)"></span><h3>Овощи</h3><span class="cnt">46 позиций</span></div>
+        <div class="item sel">
+          <div class="nm">Помидоры розовые<span class="u">в базе: кг</span></div>
+          <div class="stepper"><button>−</button><div class="q">5<span class="u">кг</span></div><button>+</button></div>
+        </div>
+        <div class="item">
+          <div class="nm">Огурцы гладкие<span class="u">кг</span></div>
+          <button class="addbtn">+</button>
+        </div>
+        <div class="item">
+          <div class="nm">Картофель<span class="u">кг</span></div>
+          <button class="addbtn">+</button>
+        </div>
+        <div class="item sel">
+          <div class="nm">Лук репчатый<span class="u">кг</span></div>
+          <div class="stepper"><button>−</button><div class="q">8<span class="u">кг</span></div><button>+</button></div>
+        </div>
+        <div class="item">
+          <div class="nm">Перец болгарский<span class="u">кг</span></div>
+          <button class="addbtn">+</button>
+        </div>
+
+        <div class="cathead"><span class="cdot" style="background:var(--herb)"></span><h3>Зелень</h3><span class="cnt">20 позиций</span></div>
+        <div class="item sel">
+          <div class="nm">Укроп<span class="u">пучок</span></div>
+          <div class="stepper"><button>−</button><div class="q">10<span class="u">пуч</span></div><button>+</button></div>
+        </div>
+        <div class="item">
+          <div class="nm">Петрушка<span class="u">пучок</span></div>
+          <button class="addbtn">+</button>
+        </div>
+        <div class="item">
+          <div class="nm">Базилик зелёный<span class="u">пучок</span></div>
+          <button class="addbtn">+</button>
+        </div>
+
+        <div class="cathead"><span class="cdot" style="background:var(--dairy)"></span><h3>Молочка / сыры / яйца</h3><span class="cnt">27 позиций</span></div>
+        <div class="item">
+          <div class="nm">Молоко 3,2%<span class="u">л</span></div>
+          <button class="addbtn">+</button>
+        </div>
+        <div class="item">
+          <div class="nm">Сливки 33%<span class="u">л</span></div>
+          <button class="addbtn">+</button>
+        </div>
+      </div>
+
+      <!-- HOUSEHOLD -->
+      <div class="catalogset" data-set="house" style="display:none">
+        <div class="cats">
+          <div class="catchip on">Все</div>
+          <div class="catchip"><span class="cdot" style="width:8px;height:8px;border-radius:50%;background:var(--house)"></span>Уборка / моющие</div>
+          <div class="catchip"><span class="cdot" style="width:8px;height:8px;border-radius:50%;background:var(--house)"></span>Одноразовое</div>
+          <div class="catchip"><span class="cdot" style="width:8px;height:8px;border-radius:50%;background:var(--house)"></span>Бумага / салфетки</div>
+          <div class="catchip"><span class="cdot" style="width:8px;height:8px;border-radius:50%;background:var(--house)"></span>Инвентарь</div>
+        </div>
+
+        <div class="cathead"><span class="cdot" style="background:var(--house)"></span><h3>Одноразовое</h3><span class="cnt">пример</span></div>
+        <div class="item sel">
+          <div class="nm">Перчатки нитрил, M<span class="u">упак</span></div>
+          <div class="stepper"><button>−</button><div class="q">3<span class="u">упак</span></div><button>+</button></div>
+        </div>
+        <div class="item">
+          <div class="nm">Стаканы 200 мл<span class="u">упак</span></div>
+          <button class="addbtn">+</button>
+        </div>
+
+        <div class="cathead"><span class="cdot" style="background:var(--house)"></span><h3>Уборка / моющие</h3><span class="cnt">пример</span></div>
+        <div class="item">
+          <div class="nm">Средство для посуды<span class="u">канистра</span></div>
+          <button class="addbtn">+</button>
+        </div>
+        <div class="item">
+          <div class="nm">Мешки для мусора 60 л<span class="u">рулон</span></div>
+          <button class="addbtn">+</button>
+        </div>
+        <div class="item">
+          <div class="nm">Губки кухонные<span class="u">упак</span></div>
+          <button class="addbtn">+</button>
+        </div>
+        <div class="hint">Хозяйственный каталог — отдельный набор категорий и позиций, тот же механизм поиска и добавления.</div>
+      </div>
+    </div>
+
+    <div class="cartbar">
+      <button class="btn brand block" data-go="cart">В заявке <span class="cnt">4 позиции</span> · Оформить</button>
+    </div>
+  </section>
+
+  <!-- ============ CART / REQUEST ============ -->
+  <section class="screen" id="cart">
+    <div class="scroll">
+      <header class="top"><span class="mark"></span><h1>Моя заявка</h1><span class="sub">Сб, 14 июня</span></header>
+
+      <div class="who">
+        <span class="chip">Аня · официант</span>
+        <span>уйдёт управляющему / в закуп</span>
+      </div>
+
+      <div class="stat">
+        <div class="box"><div class="k">Позиций</div><div class="v">4</div></div>
+        <div class="box"><div class="k">Продукты</div><div class="v">3</div></div>
+        <div class="box"><div class="k">Хозтовары</div><div class="v">1</div></div>
+      </div>
+
+      <div class="grpttl"><span class="cdot" style="background:var(--veg)"></span>Продукты</div>
+      <div class="scard">
+        <div class="crow"><div class="nm">Помидоры розовые</div><div class="qty">5 кг</div><div class="x">✕</div></div>
+        <div class="crow"><div class="nm">Лук репчатый</div><div class="qty">8 кг</div><div class="x">✕</div></div>
+        <div class="crow"><div class="nm">Укроп</div><div class="qty">10 пуч</div><div class="x">✕</div></div>
+      </div>
+
+      <div class="grpttl"><span class="cdot" style="background:var(--house)"></span>Хозтовары</div>
+      <div class="scard">
+        <div class="crow"><div class="nm">Перчатки нитрил, M</div><div class="qty">3 упак</div><div class="x">✕</div></div>
+      </div>
+
+      <div class="field"><label>Комментарий к заявке</label>
+        <div class="inp ta">Помидоры нужны к субботнему банкету. Перчаток осталось мало.</div></div>
+
+      <div class="note">Заявка не списывает бюджет и не считается закупом — это список «что нужно купить». Бюджет/фудкост считается уже при закрытии смены.</div>
+    </div>
+
+    <div class="cartbar">
+      <button class="btn brand block">Отправить заявку</button>
+    </div>
+  </section>
+
+</div>
+</div>
+
+<script>
+  const chips=document.querySelectorAll(".pchip"), screens=document.querySelectorAll(".screen");
+  function show(id){ chips.forEach(c=>c.classList.toggle("on",c.dataset.s===id));
+    screens.forEach(s=>s.classList.toggle("active",s.id===id));
+    document.querySelector(".phone").scrollIntoView({behavior:"smooth",block:"start"}); }
+  chips.forEach(c=>c.addEventListener("click",()=>show(c.dataset.s)));
+  document.querySelectorAll("[data-go]").forEach(b=>b.addEventListener("click",()=>show(b.dataset.go)));
+
+  // Продукты / Хозтовары
+  const segBtns=document.querySelectorAll(".seg button");
+  segBtns.forEach(b=>b.addEventListener("click",()=>{
+    segBtns.forEach(x=>x.classList.toggle("on",x===b));
+    document.querySelectorAll(".catalogset").forEach(s=>s.style.display=(s.dataset.set===b.dataset.set)?"":"none");
+  }));
+
+  // steppers / add — лёгкая визуальная реакция (без реальной корзины)
+  document.querySelectorAll(".stepper").forEach(st=>{
+    const q=st.querySelector(".q"), u=q.querySelector(".u").textContent;
+    let n=parseInt(q.textContent);
+    st.children[0].addEventListener("click",()=>{ n=Math.max(0,n-1); q.innerHTML=n+"<span class='u'>"+u+"</span>"; });
+    st.children[2].addEventListener("click",()=>{ n++; q.innerHTML=n+"<span class='u'>"+u+"</span>"; });
+  });
+  document.querySelectorAll(".addbtn").forEach(b=>b.addEventListener("click",()=>{
+    const item=b.closest(".item"); item.classList.add("sel");
+    const u=(item.querySelector(".nm .u")||{}).textContent||"шт";
+    b.outerHTML="<div class='stepper'><button>−</button><div class='q'>1<span class='u'>"+u+"</span></div><button>+</button></div>";
+  }));
+</script>
