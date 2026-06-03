@@ -1,0 +1,9 @@
+.git
+node_modules
+apps/api/dist
+npm-debug.log*
+.env
+.env.*
+!.env.example
+.DS_Store
+

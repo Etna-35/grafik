@@ -14,9 +14,12 @@ https://etna-35.github.io/grafik/
 
 Документы:
 
+- `PROJECT.md` - главный проектный контекст: продукт, текущий календарь, ограничения, бэклог, этапы.
 - `service-architecture.md` - архитектура сервиса, выбранная связка, роли компонентов, домены.
 - `data-model.md` - первичная модель данных для Postgres.
 - `implementation-roadmap.md` - этапы реализации от инфраструктуры до деплоя.
+- `deployment-beget.md` - план деплоя MVP на VPS Beget в РФ.
+- `etna-cabinet-mockup.html` - визуальный референс экранов личного кабинета.
 
 ## Зафиксированное решение
 
@@ -28,3 +31,17 @@ https://etna-35.github.io/grafik/
 - отдельный frontend личного кабинета.
 
 `NocoDB` не должен быть публичным интерфейсом для сотрудников.
+
+## Выбранная площадка для MVP
+
+Для первого серверного запуска используем существующий VPS в РФ от Beget.
+
+Купленная конфигурация MVP: `2 CPU 3-3.3 GHz / 4 GB RAM / 40 GB NVMe / 1 Gbit/s`, Ubuntu 24.04, IP `212.67.14.25`.
+
+На VPS уже подняты `Postgres`, `Redis`, `NocoDB`, `Caddy`, backend API и frontend личного кабинета с PIN-входом.
+
+Рабочие ссылки:
+
+- `https://lk.no-money-no-honey.ru/` - личный кабинет;
+- `https://api.no-money-no-honey.ru/api/health` - healthcheck backend;
+- `https://admin.no-money-no-honey.ru/` - NocoDB.

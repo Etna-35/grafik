@@ -1,0 +1,114 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      internal:
+        aliases:
+          - postgres
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      internal:
+        aliases:
+          - redis
+
+  api:
+    build:
+      context: ${APP_BUILD_CONTEXT:-/opt/etna/app}
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DATABASE_URL: postgres://${ETNA_APP_USER}:${ETNA_APP_PASSWORD}@postgres:5432/${ETNA_APP_DB}
+      SESSION_SECRET: ${SESSION_SECRET}
+      PIN_PEPPER: ${PIN_PEPPER}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      PUBLIC_GRAFIK_URL: ${PUBLIC_GRAFIK_URL}
+      OWNER_NAME: ${OWNER_NAME}
+      OWNER_PIN: ${OWNER_PIN}
+    networks:
+      internal:
+        aliases:
+          - api
+
+  nocodb:
+    image: nocodb/nocodb:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - .env
+    environment:
+      NC_DB: pg://postgres:5432?u=${NOCODB_META_USER}&p=${NOCODB_META_PASSWORD}&d=${NOCODB_META_DB}
+      NC_CACHE_REDIS_URL: redis://redis:6379/0
+      NC_JOBS_REDIS_URL: redis://redis:6379/1
+      NC_SITE_URL: ${NC_SITE_URL}
+      NC_AUTH_JWT_SECRET: ${NC_AUTH_JWT_SECRET}
+      NC_CONNECTION_ENCRYPT_KEY: ${NC_CONNECTION_ENCRYPT_KEY}
+      NC_ADMIN_EMAIL: ${NC_ADMIN_EMAIL}
+      NC_ADMIN_PASSWORD: ${NC_ADMIN_PASSWORD}
+      NC_INVITE_ONLY_SIGNUP: "true"
+      NC_DISABLE_SUPPORT_CHAT: "true"
+    volumes:
+      - nocodb_data:/usr/app/data
+    networks:
+      internal:
+        aliases:
+          - nocodb
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - nocodb
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      internal:
+        aliases:
+          - caddy
+      public:
+
+volumes:
+  postgres_data:
+  nocodb_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  internal:
+  public:

@@ -1,0 +1,11 @@
+lk.no-money-no-honey.ru {
+  reverse_proxy api:3000
+}
+
+api.no-money-no-honey.ru {
+  reverse_proxy api:3000
+}
+
+admin.no-money-no-honey.ru {
+  reverse_proxy nocodb:8080
+}

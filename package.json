@@ -1,0 +1,29 @@
+{
+  "name": "etna-cabinet",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx apps/api/src/server.ts",
+    "build": "tsc -p apps/api/tsconfig.json",
+    "start": "node apps/api/dist/server.js",
+    "migrate": "tsx apps/api/src/migrate.ts",
+    "seed": "tsx apps/api/src/seed.ts",
+    "check": "tsc -p apps/api/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/static": "^9.1.3",
+    "argon2": "^0.44.0",
+    "dotenv": "^17.2.3",
+    "fastify": "^5.6.2",
+    "pg": "^8.16.3",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "@types/pg": "^8.15.6",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3"
+  }
+}
