@@ -75,6 +75,8 @@ Beget VPS подходит для старта, потому что VPS в РФ 
 - `https://admin.no-money-no-honey.ru/` отдаёт `200`;
 - вход по PIN в `https://lk.no-money-no-honey.ru/` работает;
 - owner-пользователь `Руководитель` создан и имеет доступ к сервисам `schedule`, `shift_close`, `tasks`, `payroll`, `admin`;
+- `https://lk.no-money-no-honey.ru/grafik` показывает раздел графика из Postgres;
+- импорт JSON-бэкапа календаря через API проверен на тестовом бэкапе;
 - публичные порты `5432` и `8080` закрыты;
 - публичные порты `80` и `443` открыты;
 - пробный backup Postgres создан.

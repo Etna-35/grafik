@@ -1,0 +1,522 @@
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { z } from "zod";
+import { audit, requireUser, type SessionUser } from "./auth.js";
+import { pool, query } from "./db.js";
+
+const roleLabels: Record<string, string> = {
+  cook: "Повар",
+  bar: "Бармен",
+  waiter: "Официант",
+  dish: "Мойщица",
+  dishwasher: "Мойщица",
+  other: "Сотрудник"
+};
+
+const importSchema = z.object({
+  backup: z.object({
+    employees: z.array(z.record(z.string(), z.unknown())),
+    shifts: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
+    marks: z.record(z.string(), z.unknown()).optional(),
+    payouts: z.record(z.string(), z.unknown()).optional(),
+    scores: z.record(z.string(), z.unknown()).optional(),
+    year: z.number().optional(),
+    month: z.number().optional()
+  })
+});
+
+const scheduleQuerySchema = z.object({
+  year: z.coerce.number().int().min(2020).max(2100).optional(),
+  month: z.coerce.number().int().min(1).max(12).optional()
+});
+
+type ImportedEmployee = {
+  id: string;
+  name: string;
+  role: string;
+  hours: number | null;
+  rate: number | null;
+  payModel: "hourly" | "fixed";
+};
+
+type ImportedBackup = z.infer<typeof importSchema>["backup"];
+
+export function registerScheduleRoutes(app: FastifyInstance): void {
+  app.get("/api/schedule", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const parsed = scheduleQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_query" });
+      return;
+    }
+
+    const now = new Date();
+    const year = parsed.data.year || now.getFullYear();
+    const month = parsed.data.month || now.getMonth() + 1;
+    return getScheduleMonth(user, year, month);
+  });
+
+  app.post("/api/schedule/import", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = importSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_backup" });
+      return;
+    }
+
+    const result = await importBackup(parsed.data.backup, user.id);
+    await audit(request, "schedule_import", user.id, "schedule", "backup", result);
+    return result;
+  });
+}
+
+async function requireManager(request: FastifyRequest, reply: FastifyReply): Promise<SessionUser | undefined> {
+  const user = await requireUser(request, reply);
+  if (!user) return undefined;
+  if (user.role !== "owner" && user.role !== "manager") {
+    await reply.code(403).send({ error: "forbidden" });
+    return undefined;
+  }
+  return user;
+}
+
+async function getScheduleMonth(user: SessionUser, year: number, month: number) {
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const employeeRows = await query<{
+    id: string;
+    display_name: string;
+    role: string;
+    schedule_role: string | null;
+    default_hours: string | null;
+    hourly_rate: number | null;
+    pay_model: string | null;
+  }>(
+    `
+      SELECT id, display_name, role, schedule_role, default_hours, hourly_rate, pay_model
+      FROM employees
+      WHERE is_active = true
+        AND (
+          schedule_role IS NOT NULL
+          OR id IN (
+            SELECT employee_id
+            FROM schedule_shifts
+            WHERE work_date >= $1::date
+              AND work_date < ($1::date + interval '1 month')
+          )
+        )
+      ORDER BY
+        CASE COALESCE(schedule_role, role::text)
+          WHEN 'cook' THEN 1
+          WHEN 'bar' THEN 2
+          WHEN 'waiter' THEN 3
+          WHEN 'dish' THEN 4
+          WHEN 'dishwasher' THEN 4
+          ELSE 9
+        END,
+        display_name
+    `,
+    [start]
+  );
+
+  const shiftRows = await query<{
+    work_date: string;
+    employee_id: string;
+    planned_hours: string | null;
+    actual_end_time: string | null;
+    pay_amount: number | null;
+    pay_model: string | null;
+  }>(
+    `
+      SELECT work_date::text, employee_id, planned_hours, actual_end_time::text, pay_amount, pay_model
+      FROM schedule_shifts
+      WHERE work_date >= $1::date
+        AND work_date < ($1::date + interval '1 month')
+      ORDER BY work_date
+    `,
+    [start]
+  );
+
+  const dayRows = await query<{ work_date: string; is_deadline: boolean }>(
+    `
+      SELECT work_date::text, is_deadline
+      FROM schedule_days
+      WHERE work_date >= $1::date
+        AND work_date < ($1::date + interval '1 month')
+      ORDER BY work_date
+    `,
+    [start]
+  );
+
+  const plannedPayRows = await query<{ work_date: string; employee_id: string }>(
+    `
+      SELECT work_date::text, employee_id
+      FROM payroll_planned_days
+      WHERE work_date >= $1::date
+        AND work_date < ($1::date + interval '1 month')
+    `,
+    [start]
+  );
+
+  const canSeeAllMoney = user.role === "owner" || user.role === "manager";
+  const payoutRows = await query<{ work_date: string; employee_id: string; amount: number }>(
+    `
+      SELECT work_date::text, employee_id, amount
+      FROM payroll_payouts
+      WHERE work_date >= $1::date
+        AND work_date < ($1::date + interval '1 month')
+        AND ($2::boolean = true OR employee_id = $3::uuid)
+    `,
+    [start, canSeeAllMoney, user.id]
+  );
+
+  const scoreRows = await query<{ work_date: string; employee_id: string; score: string }>(
+    `
+      SELECT work_date::text, employee_id, score::text
+      FROM employee_scores
+      WHERE work_date >= $1::date
+        AND work_date < ($1::date + interval '1 month')
+        AND ($2::boolean = true OR employee_id = $3::uuid)
+    `,
+    [start, canSeeAllMoney, user.id]
+  );
+
+  const shiftsByDate = new Map<string, Record<string, unknown>>();
+  const employeeTotals = new Map<string, { accrued: number; paid: number; shifts: number }>();
+  const daysWithShifts = new Set<string>();
+
+  for (const row of shiftRows.rows) {
+    const date = row.work_date;
+    const item = {
+      employeeId: row.employee_id,
+      hours: row.planned_hours ? Number(row.planned_hours) : null,
+      actualEndTime: row.actual_end_time,
+      payAmount: row.pay_amount || 0,
+      payModel: row.pay_model
+    };
+    shiftsByDate.set(date, {
+      ...(shiftsByDate.get(date) || {}),
+      [row.employee_id]: item
+    });
+    daysWithShifts.add(date);
+    const total = employeeTotals.get(row.employee_id) || { accrued: 0, paid: 0, shifts: 0 };
+    total.accrued += row.pay_amount || 0;
+    total.shifts += 1;
+    employeeTotals.set(row.employee_id, total);
+  }
+
+  for (const row of payoutRows.rows) {
+    const total = employeeTotals.get(row.employee_id) || { accrued: 0, paid: 0, shifts: 0 };
+    total.paid += row.amount;
+    employeeTotals.set(row.employee_id, total);
+  }
+
+  const days = buildMonthDays(year, month).map((date) => {
+    const shifts = (shiftsByDate.get(date) || {}) as Record<string, { payAmount?: number }>;
+    const dayFot = Object.values(shifts).reduce<number>((sum, value) => sum + Number(value.payAmount || 0), 0);
+    return {
+      date,
+      isDeadline: dayRows.rows.some((row) => row.work_date === date && row.is_deadline),
+      plannedPayEmployeeIds: plannedPayRows.rows.filter((row) => row.work_date === date).map((row) => row.employee_id),
+      payouts: payoutRows.rows.filter((row) => row.work_date === date),
+      scores: scoreRows.rows.filter((row) => row.work_date === date),
+      shifts,
+      coverage: Object.keys(shifts).length,
+      fot: dayFot,
+      revenuePlan: planRange(dayFot)
+    };
+  });
+
+  const totalFot = Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.accrued, 0);
+  const totalPaid = Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.paid, 0);
+
+  return {
+    year,
+    month,
+    employees: employeeRows.rows.map((employee) => {
+      const totals = employeeTotals.get(employee.id) || { accrued: 0, paid: 0, shifts: 0 };
+      return {
+        id: employee.id,
+        name: employee.display_name,
+        role: employee.schedule_role || employee.role,
+        roleLabel: roleLabels[employee.schedule_role || employee.role] || "Сотрудник",
+        defaultHours: employee.default_hours ? Number(employee.default_hours) : null,
+        hourlyRate: employee.hourly_rate,
+        payModel: employee.pay_model,
+        totals: {
+          ...totals,
+          remaining: Math.max(0, totals.accrued - totals.paid)
+        }
+      };
+    }),
+    days,
+    summary: {
+      totalFot,
+      totalPaid,
+      totalRemaining: Math.max(0, totalFot - totalPaid),
+      workingDays: daysWithShifts.size,
+      revenuePlan: planRange(totalFot)
+    }
+  };
+}
+
+async function importBackup(backup: ImportedBackup, actorEmployeeId: string) {
+  const employees = backup.employees.map(normalizeEmployee).filter(Boolean) as ImportedEmployee[];
+  if (!employees.length) throw new Error("No employees in backup");
+
+  const dates = collectBackupDates(backup);
+  const employeeIdBySource = new Map<string, string>();
+
+  await pool.query("BEGIN");
+  try {
+    for (const employee of employees) {
+      const result = await pool.query<{ id: string }>(
+        `
+          INSERT INTO employees (
+            source_schedule_id,
+            display_name,
+            role,
+            schedule_role,
+            default_hours,
+            hourly_rate,
+            pay_model,
+            is_active
+          )
+          VALUES ($1, $2, $3::employee_role, $4, $5, $6, $7, true)
+          ON CONFLICT (source_schedule_id) DO UPDATE
+          SET display_name = excluded.display_name,
+              role = excluded.role,
+              schedule_role = excluded.schedule_role,
+              default_hours = excluded.default_hours,
+              hourly_rate = excluded.hourly_rate,
+              pay_model = excluded.pay_model,
+              is_active = true,
+              updated_at = now()
+          RETURNING id
+        `,
+        [
+          employee.id,
+          employee.name,
+          toEmployeeRole(employee.role),
+          employee.role,
+          employee.hours,
+          employee.rate,
+          employee.payModel
+        ]
+      );
+      employeeIdBySource.set(employee.id, result.rows[0].id);
+    }
+
+    if (dates.length) {
+      await pool.query("DELETE FROM payroll_payouts WHERE work_date = ANY($1::date[])", [dates]);
+      await pool.query("DELETE FROM payroll_planned_days WHERE work_date = ANY($1::date[])", [dates]);
+      await pool.query("DELETE FROM employee_scores WHERE work_date = ANY($1::date[])", [dates]);
+      await pool.query("DELETE FROM schedule_shifts WHERE work_date = ANY($1::date[])", [dates]);
+      await pool.query("DELETE FROM schedule_days WHERE work_date = ANY($1::date[])", [dates]);
+    }
+
+    let shiftCount = 0;
+    let plannedPayCount = 0;
+    let payoutCount = 0;
+    let scoreCount = 0;
+    let deadlineCount = 0;
+
+    for (const date of dates) {
+      const mark = readMark(backup.marks?.[date]);
+      if (mark.task) deadlineCount += 1;
+      await pool.query(
+        `
+          INSERT INTO schedule_days (work_date, is_deadline)
+          VALUES ($1::date, $2)
+          ON CONFLICT (work_date) DO UPDATE
+          SET is_deadline = excluded.is_deadline,
+              updated_at = now()
+        `,
+        [date, mark.task]
+      );
+
+      for (const sourceEmployeeId of mark.pay) {
+        const employeeId = employeeIdBySource.get(sourceEmployeeId);
+        if (!employeeId) continue;
+        plannedPayCount += 1;
+        await pool.query(
+          `
+            INSERT INTO payroll_planned_days (work_date, employee_id, created_by)
+            VALUES ($1::date, $2, $3)
+            ON CONFLICT (work_date, employee_id) DO NOTHING
+          `,
+          [date, employeeId, actorEmployeeId]
+        );
+      }
+    }
+
+    for (const [date, row] of Object.entries(backup.shifts || {})) {
+      if (!isDateKey(date) || !row || typeof row !== "object") continue;
+      for (const [sourceEmployeeId, rawValue] of Object.entries(row)) {
+        const employee = employees.find((item) => item.id === sourceEmployeeId);
+        const employeeId = employeeIdBySource.get(sourceEmployeeId);
+        const value = Number(rawValue);
+        if (!employee || !employeeId || !Number.isFinite(value) || value <= 0) continue;
+
+        const isFixed = employee.payModel === "fixed";
+        const plannedHours = isFixed ? null : value;
+        const payAmount = isFixed ? Math.round(value) : Math.round(value * (employee.rate || 0));
+        shiftCount += 1;
+        await pool.query(
+          `
+            INSERT INTO schedule_shifts (
+              work_date,
+              employee_id,
+              planned_hours,
+              pay_amount,
+              pay_model,
+              created_by,
+              updated_by
+            )
+            VALUES ($1::date, $2, $3, $4, $5, $6, $6)
+            ON CONFLICT (work_date, employee_id) DO UPDATE
+            SET planned_hours = excluded.planned_hours,
+                pay_amount = excluded.pay_amount,
+                pay_model = excluded.pay_model,
+                updated_by = excluded.updated_by,
+                updated_at = now()
+          `,
+          [date, employeeId, plannedHours, payAmount, employee.payModel, actorEmployeeId]
+        );
+      }
+    }
+
+    for (const [date, items] of Object.entries(backup.payouts || {})) {
+      if (!isDateKey(date) || !Array.isArray(items)) continue;
+      for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        const employeeId = employeeIdBySource.get(String((item as { employeeId?: unknown }).employeeId || ""));
+        const amount = Number((item as { amount?: unknown }).amount);
+        if (!employeeId || !Number.isFinite(amount) || amount <= 0) continue;
+        payoutCount += 1;
+        await pool.query(
+          `
+            INSERT INTO payroll_payouts (work_date, employee_id, amount, created_by)
+            VALUES ($1::date, $2, $3, $4)
+          `,
+          [date, employeeId, Math.round(amount), actorEmployeeId]
+        );
+      }
+    }
+
+    for (const [date, row] of Object.entries(backup.scores || {})) {
+      if (!isDateKey(date) || !row || typeof row !== "object") continue;
+      for (const [sourceEmployeeId, rawScore] of Object.entries(row as Record<string, unknown>)) {
+        const employeeId = employeeIdBySource.get(sourceEmployeeId);
+        const score = toScore(rawScore);
+        if (!employeeId || !score) continue;
+        scoreCount += 1;
+        await pool.query(
+          `
+            INSERT INTO employee_scores (work_date, employee_id, score, created_by)
+            VALUES ($1::date, $2, $3::score_value, $4)
+            ON CONFLICT (work_date, employee_id) DO UPDATE
+            SET score = excluded.score,
+                created_by = excluded.created_by,
+                updated_at = now()
+          `,
+          [date, employeeId, score, actorEmployeeId]
+        );
+      }
+    }
+
+    await pool.query("COMMIT");
+    return {
+      ok: true,
+      employees: employees.length,
+      dates: dates.length,
+      shifts: shiftCount,
+      plannedPaydays: plannedPayCount,
+      payouts: payoutCount,
+      scores: scoreCount,
+      deadlines: deadlineCount
+    };
+  } catch (error) {
+    await pool.query("ROLLBACK");
+    throw error;
+  }
+}
+
+function normalizeEmployee(raw: Record<string, unknown>): ImportedEmployee | undefined {
+  const id = String(raw.id || "").trim();
+  const name = String(raw.name || raw.display_name || "").trim();
+  if (!id || !name) return undefined;
+  const role = normalizeScheduleRole(String(raw.role || "other"));
+  const payModel = role === "dish" ? "fixed" : "hourly";
+  return {
+    id,
+    name,
+    role,
+    hours: numberOrNull(raw.hours),
+    rate: numberOrNull(raw.rate),
+    payModel
+  };
+}
+
+function normalizeScheduleRole(role: string): string {
+  if (role === "dishwasher") return "dish";
+  if (["cook", "bar", "waiter", "dish"].includes(role)) return role;
+  return "other";
+}
+
+function toEmployeeRole(role: string): string {
+  if (role === "dish") return "dishwasher";
+  if (["cook", "bar", "waiter"].includes(role)) return role;
+  return "other";
+}
+
+function collectBackupDates(backup: ImportedBackup): string[] {
+  const dates = new Set<string>();
+  [backup.shifts, backup.marks, backup.payouts, backup.scores].forEach((source) => {
+    Object.keys(source || {}).forEach((date) => {
+      if (isDateKey(date)) dates.add(date);
+    });
+  });
+  return Array.from(dates).sort();
+}
+
+function readMark(raw: unknown): { task: boolean; pay: string[] } {
+  if (!raw || typeof raw !== "object") return { task: false, pay: [] };
+  const mark = raw as { task?: unknown; pay?: unknown };
+  return {
+    task: Boolean(mark.task),
+    pay: Array.isArray(mark.pay) ? mark.pay.map(String).filter(Boolean) : []
+  };
+}
+
+function numberOrNull(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toScore(value: unknown): "green" | "yellow" | "red" | undefined {
+  if (value === "g" || value === "green") return "green";
+  if (value === "y" || value === "yellow") return "yellow";
+  if (value === "r" || value === "red") return "red";
+  return undefined;
+}
+
+function isDateKey(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function buildMonthDays(year: number, month: number): string[] {
+  const last = new Date(year, month, 0).getDate();
+  return Array.from({ length: last }, (_, index) => `${year}-${String(month).padStart(2, "0")}-${String(index + 1).padStart(2, "0")}`);
+}
+
+function planRange(fot: number): string {
+  if (!fot) return "0";
+  return `${shortK(fot / 0.28)}-${shortK(fot / 0.23)}`;
+}
+
+function shortK(value: number): string {
+  return `${Math.round(value / 1000)}к`;
+}

@@ -19,6 +19,7 @@ import {
 } from "./auth.js";
 import { env } from "./env.js";
 import { pool, query } from "./db.js";
+import { registerScheduleRoutes } from "./schedule.js";
 
 const pinSchema = z.object({
   pin: z.string().regex(/^\d{4,8}$/)
@@ -30,7 +31,8 @@ const publicDir = path.join(rootDir, "apps/web");
 export function buildServer() {
   const app = Fastify({
     logger: true,
-    trustProxy: true
+    trustProxy: true,
+    bodyLimit: 5 * 1024 * 1024
   });
 
   app.register(cookie);
@@ -130,6 +132,8 @@ export function buildServer() {
       shiftsCount: Number(result.rows[0].shifts_count)
     };
   });
+
+  registerScheduleRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,

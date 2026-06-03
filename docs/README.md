@@ -40,6 +40,8 @@ https://etna-35.github.io/grafik/
 
 На VPS уже подняты `Postgres`, `Redis`, `NocoDB`, `Caddy`, backend API и frontend личного кабинета с PIN-входом.
 
+Раздел `График` в ЛК уже умеет читать месяц из Postgres и импортировать JSON-бэкап текущего календаря.
+
 Рабочие ссылки:
 
 - `https://lk.no-money-no-honey.ru/` - личный кабинет;

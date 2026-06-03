@@ -33,6 +33,10 @@ let state = {
   user: null,
   services: [],
   summary: null,
+  schedule: null,
+  scheduleLoading: false,
+  scheduleError: "",
+  importResult: null,
   pin: "",
   error: ""
 };
@@ -196,6 +200,11 @@ function renderServicePage(path){
     return;
   }
 
+  if(service.code === "schedule"){
+    renderSchedulePage(service);
+    return;
+  }
+
   const statusText = service.code === "schedule" ? "резерв: GitHub Pages" : "готовится";
   const extra = service.code === "schedule"
     ? `<a class="ghost" href="https://etna-35.github.io/grafik/">Открыть текущий график</a>`
@@ -224,6 +233,205 @@ function renderServicePage(path){
     history.pushState(null, "", "/");
     render();
   });
+}
+
+function renderSchedulePage(service){
+  const today = new Date();
+  const year = state.schedule?.year || today.getFullYear();
+  const month = state.schedule?.month || today.getMonth() + 1;
+
+  if(!state.schedule && !state.scheduleLoading && !state.scheduleError){
+    loadSchedule(year, month);
+  }
+
+  const body = state.scheduleLoading
+    ? `<div class="panel"><div class="loader compact">Загружаю график</div></div>`
+    : state.scheduleError
+      ? `<div class="panel"><div class="row-title">Не удалось загрузить график</div><div class="row-sub">${escapeHtml(state.scheduleError)}</div></div>`
+      : state.schedule
+        ? renderScheduleContent(state.schedule)
+        : `<div class="panel"><div class="row-title">График пока пустой</div><div class="row-sub">Импортируй JSON-бэкап старого календаря</div></div>`;
+
+  const importBox = service.can_edit
+    ? `
+      <div class="panel import-panel">
+        <div class="row">
+          <span class="grow">
+            <span class="row-title">Импорт старого графика</span>
+            <span class="row-sub">JSON-бэкап из текущего календаря</span>
+          </span>
+          <label class="ghost file-btn">
+            Выбрать
+            <input id="scheduleImportFile" type="file" accept="application/json,.json">
+          </label>
+        </div>
+        ${state.importResult ? `<div class="import-result">${escapeHtml(state.importResult)}</div>` : ""}
+      </div>
+    `
+    : "";
+
+  app.innerHTML = `
+    <div class="phone wide">
+      <section class="screen service-page">
+        <div class="backrow">
+          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">${escapeHtml(service.title)}</h1>
+          <span class="status">Postgres</span>
+        </div>
+        ${importBox}
+        ${body}
+        <div class="panel">
+          <a class="ghost" href="https://etna-35.github.io/grafik/">Открыть старый график</a>
+        </div>
+      </section>
+    </div>
+  `;
+
+  app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+
+  const fileInput = app.querySelector("#scheduleImportFile");
+  if(fileInput){
+    fileInput.addEventListener("change", handleScheduleImport);
+  }
+}
+
+function renderScheduleContent(schedule){
+  const monthTitle = new Intl.DateTimeFormat("ru-RU", { month:"long", year:"numeric" })
+    .format(new Date(schedule.year, schedule.month - 1, 1));
+  return `
+    <div class="schedule-head">
+      <div class="hi small">${monthTitle}</div>
+      <div class="schedule-summary">
+        <div class="stat"><div class="k">ФОТ</div><div class="v">${formatMoney(schedule.summary.totalFot)}</div></div>
+        <div class="stat"><div class="k">Выдано</div><div class="v">${formatMoney(schedule.summary.totalPaid)}</div></div>
+        <div class="stat"><div class="k">План</div><div class="v">${escapeHtml(schedule.summary.revenuePlan)}</div></div>
+      </div>
+    </div>
+    ${schedule.employees.length ? renderScheduleTable(schedule) : renderEmptySchedule()}
+  `;
+}
+
+function renderEmptySchedule(){
+  return `
+    <div class="panel">
+      <div class="row-title">В базе ещё нет смен</div>
+      <div class="row-sub">После импорта здесь появится месячный график</div>
+    </div>
+  `;
+}
+
+function renderScheduleTable(schedule){
+  return `
+    <div class="schedule-wrap">
+      <table class="schedule-table">
+        <thead>
+          <tr>
+            <th>Дата</th>
+            ${schedule.employees.map((employee)=>`<th>${escapeHtml(shortName(employee.name))}</th>`).join("")}
+            <th>ФОТ</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${schedule.days.map((day)=>renderScheduleDay(day, schedule.employees)).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div class="employee-totals">
+      ${schedule.employees.map(renderEmployeeTotal).join("")}
+    </div>
+  `;
+}
+
+function renderScheduleDay(day, employees){
+  const date = new Date(`${day.date}T00:00:00`);
+  const dateLabel = new Intl.DateTimeFormat("ru-RU", { day:"2-digit", weekday:"short" }).format(date);
+  return `
+    <tr>
+      <td class="date-cell">
+        <span>${dateLabel}</span>
+        ${day.isDeadline ? `<span class="mini-mark">☆</span>` : ""}
+      </td>
+      ${employees.map((employee)=>renderShiftCell(day, employee)).join("")}
+      <td class="fot-cell">${day.fot ? formatMoney(day.fot) : ""}</td>
+    </tr>
+  `;
+}
+
+function renderShiftCell(day, employee){
+  const shift = day.shifts[employee.id];
+  const hasPayday = day.plannedPayEmployeeIds.includes(employee.id);
+  const hasPayout = day.payouts.some((payout)=>payout.employee_id === employee.id || payout.employeeId === employee.id);
+  const score = day.scores.find((item)=>item.employee_id === employee.id || item.employeeId === employee.id)?.score;
+  const classes = [
+    "shift-cell",
+    shift ? "on" : "",
+    hasPayday ? "payday" : "",
+    hasPayout ? "payout" : ""
+  ].filter(Boolean).join(" ");
+
+  const label = shift
+    ? shift.payModel === "fixed"
+      ? formatMoney(shift.payAmount)
+      : `${formatHours(shift.hours)}ч`
+    : "";
+
+  return `
+    <td class="${classes}">
+      <span>${label}</span>
+      ${score ? `<i class="score ${escapeAttr(score)}"></i>` : ""}
+    </td>
+  `;
+}
+
+function renderEmployeeTotal(employee){
+  const totals = employee.totals || {};
+  return `
+    <div class="panel total-card">
+      <div class="row">
+        <span class="grow">
+          <span class="row-title">${escapeHtml(employee.name)}</span>
+          <span class="row-sub">${escapeHtml(employee.roleLabel)} · смен ${totals.shifts || 0}</span>
+        </span>
+        <span class="money">${formatMoney(totals.accrued || 0)}</span>
+      </div>
+      <div class="row-sub">Выдано ${formatMoney(totals.paid || 0)} · остаток ${formatMoney(totals.remaining || 0)}</div>
+    </div>
+  `;
+}
+
+async function loadSchedule(year, month){
+  state.scheduleLoading = true;
+  state.scheduleError = "";
+  render();
+  try{
+    state.schedule = await apiGet(`/api/schedule?year=${year}&month=${month}`);
+  }catch(error){
+    state.scheduleError = "Проверь соединение и попробуй ещё раз";
+  }finally{
+    state.scheduleLoading = false;
+    render();
+  }
+}
+
+async function handleScheduleImport(event){
+  const file = event.target.files?.[0];
+  if(!file) return;
+  state.importResult = "Загружаю бэкап";
+  render();
+  try{
+    const backup = JSON.parse(await file.text());
+    const result = await apiPost("/api/schedule/import", { backup });
+    state.importResult = `Импортировано: сотрудники ${result.employees}, смены ${result.shifts}, выплаты ${result.payouts}`;
+    state.schedule = null;
+    state.scheduleError = "";
+    await loadSchedule(backup.year || new Date().getFullYear(), Number.isInteger(backup.month) ? backup.month + 1 : new Date().getMonth() + 1);
+  }catch(error){
+    state.importResult = "Не удалось импортировать JSON";
+    render();
+  }
 }
 
 async function logout(){
@@ -280,6 +488,17 @@ function formatMoney(value){
   return String(value);
 }
 
+function formatHours(value){
+  if(value == null) return "";
+  return Number(value).toString().replace(".5", ",5");
+}
+
+function shortName(name){
+  const parts = String(name).trim().split(/\s+/);
+  if(parts.length === 1) return parts[0].slice(0, 8);
+  return `${parts[0]} ${parts[1][0]}.`;
+}
+
 function escapeHtml(value){
   return String(value)
     .replaceAll("&", "&amp;")
@@ -326,4 +545,3 @@ function settingsIcon(){
 function arrowLeftIcon(){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="19" height="19"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>`;
 }
-

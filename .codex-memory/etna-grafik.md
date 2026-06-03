@@ -31,3 +31,5 @@ Backend должен быть слоем авторизации, прав дос
 2026-06-03 VPS первично настроен: Docker/Compose, Postgres, Redis, NocoDB, Caddy HTTPS, firewall только `22/80/443`, swap 2 GB, ежедневный backup Postgres в 03:15. Поддомены `lk`, `api`, `admin` смотрят на VPS и отдают 200.
 
 2026-06-03 развернут MVP ЛК: `apps/api` на Fastify/TypeScript, SQL migrations, argon2id PIN, httpOnly cookie sessions, frontend `apps/web`. Первый owner `Руководитель` заходит по PIN, получает сервисы `schedule`, `shift_close`, `tasks`, `payroll`, `admin`. PIN и NocoDB пароль хранятся на сервере в `/opt/etna/secrets/initial-credentials.txt`, не в git.
+
+2026-06-03 начат перенос календаря: добавлен `apps/api/src/schedule.ts`, миграция `002_schedule_import_fields.sql`, API `/api/schedule` и `/api/schedule/import`, экран `/grafik` в ЛК читает Postgres и импортирует JSON-бэкап старого календаря. Тестовый импорт проверен и очищен. Следующее: полноценное редактирование графика через API.
