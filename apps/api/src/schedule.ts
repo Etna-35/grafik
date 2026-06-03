@@ -29,6 +29,35 @@ const scheduleQuerySchema = z.object({
   month: z.coerce.number().int().min(1).max(12).optional()
 });
 
+const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+
+const employeeDateSchema = z.object({
+  workDate: dateSchema,
+  employeeId: z.string().uuid()
+});
+
+const shiftEditSchema = employeeDateSchema.extend({
+  hours: z.number().positive().max(24).optional(),
+  payAmount: z.number().int().positive().max(100000).optional()
+});
+
+const dayEditSchema = z.object({
+  workDate: dateSchema,
+  isDeadline: z.boolean()
+});
+
+const payoutCreateSchema = employeeDateSchema.extend({
+  amount: z.number().int().positive().max(1000000)
+});
+
+const payoutParamsSchema = z.object({
+  id: z.string().uuid()
+});
+
+const scoreEditSchema = employeeDateSchema.extend({
+  score: z.enum(["green", "yellow", "red"])
+});
+
 type ImportedEmployee = {
   id: string;
   name: string;
@@ -70,6 +99,177 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     const result = await importBackup(parsed.data.backup, user.id);
     await audit(request, "schedule_import", user.id, "schedule", "backup", result);
     return result;
+  });
+
+  app.put("/api/schedule/shifts", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = shiftEditSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_shift" });
+      return;
+    }
+
+    const result = await upsertShift(parsed.data, user.id);
+    await audit(request, "schedule_shift_upsert", user.id, "schedule_shift", `${parsed.data.workDate}:${parsed.data.employeeId}`, result);
+    return result;
+  });
+
+  app.delete("/api/schedule/shifts", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = employeeDateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_shift" });
+      return;
+    }
+
+    await query("DELETE FROM schedule_shifts WHERE work_date = $1::date AND employee_id = $2", [parsed.data.workDate, parsed.data.employeeId]);
+    await audit(request, "schedule_shift_delete", user.id, "schedule_shift", `${parsed.data.workDate}:${parsed.data.employeeId}`);
+    return { ok: true };
+  });
+
+  app.patch("/api/schedule/days", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = dayEditSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_day" });
+      return;
+    }
+
+    await query(
+      `
+        INSERT INTO schedule_days (work_date, is_deadline)
+        VALUES ($1::date, $2)
+        ON CONFLICT (work_date) DO UPDATE
+        SET is_deadline = excluded.is_deadline,
+            updated_at = now()
+      `,
+      [parsed.data.workDate, parsed.data.isDeadline]
+    );
+    await audit(request, "schedule_day_update", user.id, "schedule_day", parsed.data.workDate, parsed.data);
+    return { ok: true };
+  });
+
+  app.put("/api/schedule/planned-paydays", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = employeeDateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_planned_payday" });
+      return;
+    }
+
+    await ensureScheduleDay(parsed.data.workDate);
+    await query(
+      `
+        INSERT INTO payroll_planned_days (work_date, employee_id, created_by)
+        VALUES ($1::date, $2, $3)
+        ON CONFLICT (work_date, employee_id) DO NOTHING
+      `,
+      [parsed.data.workDate, parsed.data.employeeId, user.id]
+    );
+    await audit(request, "payroll_planned_day_set", user.id, "payroll_planned_day", `${parsed.data.workDate}:${parsed.data.employeeId}`);
+    return { ok: true };
+  });
+
+  app.delete("/api/schedule/planned-paydays", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = employeeDateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_planned_payday" });
+      return;
+    }
+
+    await query("DELETE FROM payroll_planned_days WHERE work_date = $1::date AND employee_id = $2", [parsed.data.workDate, parsed.data.employeeId]);
+    await audit(request, "payroll_planned_day_delete", user.id, "payroll_planned_day", `${parsed.data.workDate}:${parsed.data.employeeId}`);
+    return { ok: true };
+  });
+
+  app.post("/api/schedule/payouts", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = payoutCreateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_payout" });
+      return;
+    }
+
+    await ensureScheduleDay(parsed.data.workDate);
+    const result = await query<{ id: string }>(
+      `
+        INSERT INTO payroll_payouts (work_date, employee_id, amount, created_by)
+        VALUES ($1::date, $2, $3, $4)
+        RETURNING id
+      `,
+      [parsed.data.workDate, parsed.data.employeeId, parsed.data.amount, user.id]
+    );
+    await audit(request, "payroll_payout_create", user.id, "payroll_payout", result.rows[0].id, parsed.data);
+    return { ok: true, id: result.rows[0].id };
+  });
+
+  app.delete("/api/schedule/payouts/:id", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = payoutParamsSchema.safeParse(request.params);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_payout" });
+      return;
+    }
+
+    await query("DELETE FROM payroll_payouts WHERE id = $1", [parsed.data.id]);
+    await audit(request, "payroll_payout_delete", user.id, "payroll_payout", parsed.data.id);
+    return { ok: true };
+  });
+
+  app.put("/api/schedule/scores", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = scoreEditSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_score" });
+      return;
+    }
+
+    await ensureScheduleDay(parsed.data.workDate);
+    await query(
+      `
+        INSERT INTO employee_scores (work_date, employee_id, score, created_by)
+        VALUES ($1::date, $2, $3::score_value, $4)
+        ON CONFLICT (work_date, employee_id) DO UPDATE
+        SET score = excluded.score,
+            created_by = excluded.created_by,
+            updated_at = now()
+      `,
+      [parsed.data.workDate, parsed.data.employeeId, parsed.data.score, user.id]
+    );
+    await audit(request, "employee_score_set", user.id, "employee_score", `${parsed.data.workDate}:${parsed.data.employeeId}`, parsed.data);
+    return { ok: true };
+  });
+
+  app.delete("/api/schedule/scores", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = employeeDateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_score" });
+      return;
+    }
+
+    await query("DELETE FROM employee_scores WHERE work_date = $1::date AND employee_id = $2", [parsed.data.workDate, parsed.data.employeeId]);
+    await audit(request, "employee_score_delete", user.id, "employee_score", `${parsed.data.workDate}:${parsed.data.employeeId}`);
+    return { ok: true };
   });
 }
 
@@ -161,9 +361,9 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
   );
 
   const canSeeAllMoney = user.role === "owner" || user.role === "manager";
-  const payoutRows = await query<{ work_date: string; employee_id: string; amount: number }>(
+  const payoutRows = await query<{ id: string; work_date: string; employee_id: string; amount: number }>(
     `
-      SELECT work_date::text, employee_id, amount
+      SELECT id::text, work_date::text, employee_id, amount
       FROM payroll_payouts
       WHERE work_date >= $1::date
         AND work_date < ($1::date + interval '1 month')
@@ -237,6 +437,7 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     month,
     employees: employeeRows.rows.map((employee) => {
       const totals = employeeTotals.get(employee.id) || { accrued: 0, paid: 0, shifts: 0 };
+      const payModel = employee.pay_model || (employee.schedule_role === "dish" || employee.role === "dishwasher" ? "fixed" : "hourly");
       return {
         id: employee.id,
         name: employee.display_name,
@@ -244,7 +445,7 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
         roleLabel: roleLabels[employee.schedule_role || employee.role] || "Сотрудник",
         defaultHours: employee.default_hours ? Number(employee.default_hours) : null,
         hourlyRate: employee.hourly_rate,
-        payModel: employee.pay_model,
+        payModel,
         totals: {
           ...totals,
           remaining: Math.max(0, totals.accrued - totals.paid)
@@ -260,6 +461,80 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       revenuePlan: planRange(totalFot)
     }
   };
+}
+
+async function upsertShift(
+  data: z.infer<typeof shiftEditSchema>,
+  actorEmployeeId: string
+): Promise<{ ok: true; payAmount: number; plannedHours: number | null; payModel: string }> {
+  const employeeResult = await query<{
+    id: string;
+    default_hours: string | null;
+    hourly_rate: number | null;
+    pay_model: string | null;
+    schedule_role: string | null;
+    role: string;
+  }>(
+    `
+      SELECT id, default_hours, hourly_rate, pay_model, schedule_role, role::text
+      FROM employees
+      WHERE id = $1
+        AND is_active = true
+      LIMIT 1
+    `,
+    [data.employeeId]
+  );
+  const employee = employeeResult.rows[0];
+  if (!employee) {
+    throw new Error("Employee not found");
+  }
+
+  const payModel = employee.pay_model || (employee.schedule_role === "dish" || employee.role === "dishwasher" ? "fixed" : "hourly");
+  const hourlyRate = Number(employee.hourly_rate || 0);
+  const plannedHours = payModel === "fixed" ? null : Number(data.hours || employee.default_hours || 12);
+  const payAmount = payModel === "fixed"
+    ? Number(data.payAmount || 3000)
+    : Math.round((plannedHours || 0) * hourlyRate);
+
+  if (!Number.isFinite(payAmount) || payAmount <= 0 || (payModel !== "fixed" && (!plannedHours || plannedHours <= 0))) {
+    throw new Error("Bad shift values");
+  }
+
+  await ensureScheduleDay(data.workDate);
+  await query(
+    `
+      INSERT INTO schedule_shifts (
+        work_date,
+        employee_id,
+        planned_hours,
+        pay_amount,
+        pay_model,
+        created_by,
+        updated_by
+      )
+      VALUES ($1::date, $2, $3, $4, $5, $6, $6)
+      ON CONFLICT (work_date, employee_id) DO UPDATE
+      SET planned_hours = excluded.planned_hours,
+          pay_amount = excluded.pay_amount,
+          pay_model = excluded.pay_model,
+          updated_by = excluded.updated_by,
+          updated_at = now()
+    `,
+    [data.workDate, data.employeeId, plannedHours, payAmount, payModel, actorEmployeeId]
+  );
+
+  return { ok: true, payAmount, plannedHours, payModel };
+}
+
+async function ensureScheduleDay(workDate: string): Promise<void> {
+  await query(
+    `
+      INSERT INTO schedule_days (work_date, is_deadline)
+      VALUES ($1::date, false)
+      ON CONFLICT (work_date) DO NOTHING
+    `,
+    [workDate]
+  );
 }
 
 async function importBackup(backup: ImportedBackup, actorEmployeeId: string) {

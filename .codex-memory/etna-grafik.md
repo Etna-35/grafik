@@ -32,4 +32,6 @@ Backend должен быть слоем авторизации, прав дос
 
 2026-06-03 развернут MVP ЛК: `apps/api` на Fastify/TypeScript, SQL migrations, argon2id PIN, httpOnly cookie sessions, frontend `apps/web`. Первый owner `Руководитель` заходит по PIN, получает сервисы `schedule`, `shift_close`, `tasks`, `payroll`, `admin`. PIN и NocoDB пароль хранятся на сервере в `/opt/etna/secrets/initial-credentials.txt`, не в git.
 
-2026-06-03 начат перенос календаря: добавлен `apps/api/src/schedule.ts`, миграция `002_schedule_import_fields.sql`, API `/api/schedule` и `/api/schedule/import`, экран `/grafik` в ЛК читает Postgres и импортирует JSON-бэкап старого календаря. Тестовый импорт проверен и очищен. Следующее: полноценное редактирование графика через API.
+2026-06-03 начат перенос календаря: добавлен `apps/api/src/schedule.ts`, миграция `002_schedule_import_fields.sql`, API `/api/schedule` и `/api/schedule/import`, экран `/grafik` в ЛК читает Postgres и импортирует JSON-бэкап старого календаря. Тестовый импорт проверен и очищен.
+
+2026-06-03 добавлено редактирование календаря в ЛК через защищенный manager-only API: поставить/снять смену, изменить часы или фиксированную сумму, отметить дедлайн, назначенный день зарплаты, фактическую выплату и зеленую/желтую/красную точку оценки. Выплаты не меняют расчетный дневной ФОТ и план выручки. Интеграционный тест через публичный домен `https://lk.no-money-no-honey.ru/grafik` прошел, тестовые данные удалены. Следующее: управление сотрудниками, PIN и доступами.

@@ -36,6 +36,8 @@ let state = {
   schedule: null,
   scheduleLoading: false,
   scheduleError: "",
+  selectedScheduleCell: null,
+  scheduleSaving: false,
   importResult: null,
   pin: "",
   error: ""
@@ -279,6 +281,7 @@ function renderSchedulePage(service){
           <span class="status">Postgres</span>
         </div>
         ${importBox}
+        ${renderScheduleEditor(service)}
         ${body}
         <div class="panel">
           <a class="ghost" href="https://etna-35.github.io/grafik/">Открыть старый график</a>
@@ -296,6 +299,29 @@ function renderSchedulePage(service){
   if(fileInput){
     fileInput.addEventListener("change", handleScheduleImport);
   }
+
+  app.querySelectorAll("[data-schedule-cell]").forEach((cell)=>{
+    cell.addEventListener("click", ()=>{
+      if(!service.can_edit) return;
+      state.selectedScheduleCell = {
+        date: cell.dataset.date,
+        employeeId: cell.dataset.employee
+      };
+      render();
+    });
+  });
+
+  app.querySelectorAll("[data-month-action]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      const direction = button.dataset.monthAction === "next" ? 1 : -1;
+      const base = new Date((state.schedule?.year || year), (state.schedule?.month || month) - 1 + direction, 1);
+      state.selectedScheduleCell = null;
+      state.schedule = null;
+      loadSchedule(base.getFullYear(), base.getMonth() + 1);
+    });
+  });
+
+  bindScheduleEditor();
 }
 
 function renderScheduleContent(schedule){
@@ -303,7 +329,11 @@ function renderScheduleContent(schedule){
     .format(new Date(schedule.year, schedule.month - 1, 1));
   return `
     <div class="schedule-head">
-      <div class="hi small">${monthTitle}</div>
+      <div class="month-row">
+        <button class="iconbtn small" data-month-action="prev">${arrowLeftIcon()}</button>
+        <div class="hi small">${monthTitle}</div>
+        <button class="iconbtn small" data-month-action="next">${arrowRightIcon()}</button>
+      </div>
       <div class="schedule-summary">
         <div class="stat"><div class="k">ФОТ</div><div class="v">${formatMoney(schedule.summary.totalFot)}</div></div>
         <div class="stat"><div class="k">Выдано</div><div class="v">${formatMoney(schedule.summary.totalPaid)}</div></div>
@@ -379,11 +409,217 @@ function renderShiftCell(day, employee){
     : "";
 
   return `
-    <td class="${classes}">
+    <td class="${classes}" data-schedule-cell="1" data-date="${escapeAttr(day.date)}" data-employee="${escapeAttr(employee.id)}">
       <span>${label}</span>
       ${score ? `<i class="score ${escapeAttr(score)}"></i>` : ""}
     </td>
   `;
+}
+
+function renderScheduleEditor(service){
+  if(!service.can_edit || !state.schedule || !state.selectedScheduleCell) return "";
+  const context = selectedScheduleContext();
+  if(!context) return "";
+
+  const { day, employee, shift, employeePayouts, score } = context;
+  const isFixed = isFixedPayEmployee(employee);
+  const dateLabel = formatDateHuman(day.date);
+  const shiftValue = isFixed
+    ? Math.round(shift?.payAmount || 3000)
+    : formatInputNumber(shift?.hours || employee.defaultHours || 12);
+
+  return `
+    <div class="panel editor-panel">
+      <div class="editor-head">
+        <span class="grow">
+          <span class="row-title">${escapeHtml(employee.name)}</span>
+          <span class="row-sub">${dateLabel} · ${escapeHtml(employee.roleLabel)}</span>
+        </span>
+        <button class="iconbtn small" data-editor-action="close">×</button>
+      </div>
+
+      <div class="editor-grid">
+        <label class="field">
+          <span>${isFixed ? "Сумма смены" : "Часы"}</span>
+          <input id="shiftValue" type="number" min="0" step="${isFixed ? "100" : "0.5"}" value="${escapeAttr(shiftValue)}">
+        </label>
+        <button class="ghost brand-action" data-editor-action="save-shift">${shift ? "Сохранить" : "Поставить"}</button>
+        ${shift ? `<button class="ghost danger-action" data-editor-action="delete-shift">Снять смену</button>` : ""}
+      </div>
+
+      <div class="toggle-row">
+        <label><input id="deadlineToggle" type="checkbox" ${day.isDeadline ? "checked" : ""}> Дедлайн</label>
+        <label><input id="paydayToggle" type="checkbox" ${day.plannedPayEmployeeIds.includes(employee.id) ? "checked" : ""}> День зарплаты</label>
+      </div>
+
+      <div class="score-row">
+        <span class="row-sub">Оценка</span>
+        ${["green","yellow","red"].map((value)=>`<button class="score-pick ${value}${score === value ? " on" : ""}" data-score="${value}" title="${scoreLabel(value)}"></button>`).join("")}
+        ${score ? `<button class="ghost mini" data-editor-action="clear-score">Снять</button>` : ""}
+      </div>
+
+      <div class="payout-editor">
+        <div class="row-sub">Фактические выплаты</div>
+        ${employeePayouts.length ? employeePayouts.map((payout)=>`
+          <div class="payout-item">
+            <span>${formatMoney(payout.amount)}</span>
+            <button class="ghost mini danger-action" data-delete-payout="${escapeAttr(payout.id)}">Удалить</button>
+          </div>
+        `).join("") : `<div class="muted-line">Выплат нет</div>`}
+        <div class="payout-add">
+          <input id="payoutAmount" type="number" min="0" step="100" placeholder="сумма">
+          <button class="ghost" data-editor-action="add-payout">Добавить</button>
+        </div>
+      </div>
+
+      ${state.scheduleSaving ? `<div class="import-result">Сохраняю</div>` : ""}
+    </div>
+  `;
+}
+
+function bindScheduleEditor(){
+  const context = selectedScheduleContext();
+  if(!context) return;
+
+  const close = app.querySelector("[data-editor-action='close']");
+  if(close){
+    close.addEventListener("click", ()=>{
+      state.selectedScheduleCell = null;
+      render();
+    });
+  }
+
+  const saveShift = app.querySelector("[data-editor-action='save-shift']");
+  if(saveShift){
+    saveShift.addEventListener("click", ()=>saveSelectedShift(context));
+  }
+
+  const deleteShift = app.querySelector("[data-editor-action='delete-shift']");
+  if(deleteShift){
+    deleteShift.addEventListener("click", ()=>deleteSelectedShift(context));
+  }
+
+  const deadlineToggle = app.querySelector("#deadlineToggle");
+  if(deadlineToggle){
+    deadlineToggle.addEventListener("change", ()=>setDeadline(context.day.date, deadlineToggle.checked));
+  }
+
+  const paydayToggle = app.querySelector("#paydayToggle");
+  if(paydayToggle){
+    paydayToggle.addEventListener("change", ()=>setPayday(context.day.date, context.employee.id, paydayToggle.checked));
+  }
+
+  app.querySelectorAll("[data-score]").forEach((button)=>{
+    button.addEventListener("click", ()=>setScore(context, button.dataset.score));
+  });
+
+  const clearScore = app.querySelector("[data-editor-action='clear-score']");
+  if(clearScore){
+    clearScore.addEventListener("click", ()=>clearScoreFor(context));
+  }
+
+  const addPayout = app.querySelector("[data-editor-action='add-payout']");
+  if(addPayout){
+    addPayout.addEventListener("click", ()=>addPayoutFor(context));
+  }
+
+  app.querySelectorAll("[data-delete-payout]").forEach((button)=>{
+    button.addEventListener("click", ()=>deletePayout(button.dataset.deletePayout));
+  });
+}
+
+function selectedScheduleContext(){
+  if(!state.schedule || !state.selectedScheduleCell) return null;
+  const day = state.schedule.days.find((item)=>item.date === state.selectedScheduleCell.date);
+  const employee = state.schedule.employees.find((item)=>item.id === state.selectedScheduleCell.employeeId);
+  if(!day || !employee) return null;
+  const shift = day.shifts[employee.id] || null;
+  const employeePayouts = day.payouts.filter((payout)=>payout.employee_id === employee.id || payout.employeeId === employee.id);
+  const score = day.scores.find((item)=>item.employee_id === employee.id || item.employeeId === employee.id)?.score || null;
+  return { day, employee, shift, employeePayouts, score };
+}
+
+async function saveSelectedShift(context){
+  const value = Number(app.querySelector("#shiftValue")?.value);
+  if(!Number.isFinite(value) || value <= 0) return;
+  const body = {
+    workDate: context.day.date,
+    employeeId: context.employee.id
+  };
+  if(isFixedPayEmployee(context.employee)) body.payAmount = Math.round(value);
+  else body.hours = value;
+  await saveAndReload(()=>apiPut("/api/schedule/shifts", body));
+}
+
+async function deleteSelectedShift(context){
+  await saveAndReload(()=>apiDelete("/api/schedule/shifts", {
+    workDate: context.day.date,
+    employeeId: context.employee.id
+  }));
+}
+
+async function setDeadline(workDate, isDeadline){
+  await saveAndReload(()=>apiPatch("/api/schedule/days", { workDate, isDeadline }));
+}
+
+async function setPayday(workDate, employeeId, enabled){
+  const body = { workDate, employeeId };
+  await saveAndReload(()=>enabled
+    ? apiPut("/api/schedule/planned-paydays", body)
+    : apiDelete("/api/schedule/planned-paydays", body)
+  );
+}
+
+async function setScore(context, score){
+  if(context.score === score){
+    await clearScoreFor(context);
+    return;
+  }
+  await saveAndReload(()=>apiPut("/api/schedule/scores", {
+    workDate: context.day.date,
+    employeeId: context.employee.id,
+    score
+  }));
+}
+
+async function clearScoreFor(context){
+  await saveAndReload(()=>apiDelete("/api/schedule/scores", {
+    workDate: context.day.date,
+    employeeId: context.employee.id
+  }));
+}
+
+async function addPayoutFor(context){
+  const amount = Number(app.querySelector("#payoutAmount")?.value);
+  if(!Number.isFinite(amount) || amount <= 0) return;
+  await saveAndReload(()=>apiPost("/api/schedule/payouts", {
+    workDate: context.day.date,
+    employeeId: context.employee.id,
+    amount: Math.round(amount)
+  }));
+}
+
+async function deletePayout(id){
+  if(!id) return;
+  await saveAndReload(()=>apiDelete(`/api/schedule/payouts/${encodeURIComponent(id)}`));
+}
+
+async function saveAndReload(action){
+  if(state.scheduleSaving) return;
+  state.scheduleSaving = true;
+  render();
+  try{
+    await action();
+    const year = state.schedule?.year || new Date().getFullYear();
+    const month = state.schedule?.month || new Date().getMonth() + 1;
+    state.schedule = await apiGet(`/api/schedule?year=${year}&month=${month}`);
+    state.summary = await apiGet("/api/summary");
+  }catch(error){
+    state.scheduleError = "Не удалось сохранить";
+  }finally{
+    state.scheduleSaving = false;
+    render();
+  }
 }
 
 function renderEmployeeTotal(employee){
@@ -460,6 +696,30 @@ async function apiPost(url, body){
   return response.json();
 }
 
+async function apiPut(url, body){
+  return apiSend("PUT", url, body);
+}
+
+async function apiPatch(url, body){
+  return apiSend("PATCH", url, body);
+}
+
+async function apiDelete(url, body){
+  return apiSend("DELETE", url, body);
+}
+
+async function apiSend(method, url, body){
+  const options = {
+    method,
+    credentials:"same-origin",
+    headers:{ "Content-Type":"application/json" }
+  };
+  if(body !== undefined) options.body = JSON.stringify(body);
+  const response = await fetch(url, options);
+  if(!response.ok) throw withStatus(response);
+  return response.json();
+}
+
 function withStatus(response){
   const error = new Error(response.statusText);
   error.status = response.status;
@@ -497,6 +757,22 @@ function shortName(name){
   const parts = String(name).trim().split(/\s+/);
   if(parts.length === 1) return parts[0].slice(0, 8);
   return `${parts[0]} ${parts[1][0]}.`;
+}
+
+function formatInputNumber(value){
+  return String(Number(value || 0)).replace(",", ".");
+}
+
+function formatDateHuman(date){
+  return new Intl.DateTimeFormat("ru-RU", { day:"numeric", month:"long", weekday:"short" }).format(new Date(`${date}T00:00:00`));
+}
+
+function scoreLabel(value){
+  return { green:"Зелёная", yellow:"Жёлтая", red:"Красная" }[value] || "";
+}
+
+function isFixedPayEmployee(employee){
+  return employee.payModel === "fixed" || employee.role === "dish" || employee.role === "dishwasher";
 }
 
 function escapeHtml(value){
@@ -544,4 +820,8 @@ function settingsIcon(){
 
 function arrowLeftIcon(){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="19" height="19"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>`;
+}
+
+function arrowRightIcon(){
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="19" height="19"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
 }

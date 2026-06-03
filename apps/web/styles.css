@@ -55,6 +55,7 @@ a{color:inherit;text-decoration:none}
 .service-page{min-height:520px}
 .backrow{display:flex;align-items:center;gap:10px;margin-bottom:18px}
 .iconbtn{width:38px;height:38px;border-radius:11px;border:1px solid var(--line-strong);background:var(--card);color:var(--ink);display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--shadow);flex:none}
+.iconbtn.small{width:32px;height:32px;border-radius:10px}
 .page-title{font-family:"Playfair Display",serif;font-weight:700;font-size:21px;margin:0}
 .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:15px;box-shadow:var(--shadow)}
 .panel + .panel{margin-top:10px}
@@ -64,6 +65,9 @@ a{color:inherit;text-decoration:none}
 .row-sub{font-size:12px;color:var(--ink-soft);margin-top:3px}
 .status{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.3px;color:var(--green);border:1px solid #bcd6c4;background:#eef6ef;border-radius:999px;padding:4px 9px;white-space:nowrap}
 .ghost{border:1px solid var(--line-strong);background:transparent;border-radius:11px;padding:10px 12px;font-weight:800;color:var(--ink);cursor:pointer}
+.ghost.mini{padding:6px 9px;font-size:12px;border-radius:9px}
+.brand-action{border-color:var(--brand);color:#fff;background:var(--brand)}
+.danger-action{color:#a33a3a;border-color:#e3b8b8}
 .logout{margin-left:auto}
 .loader{padding:70px 18px;text-align:center;color:var(--ink-soft);font-size:13px;font-weight:700}
 .loader.compact{padding:20px 8px}
@@ -73,6 +77,7 @@ a{color:inherit;text-decoration:none}
 .import-result{margin-top:9px;font-size:12px;color:var(--ink-soft);font-weight:700}
 .schedule-head{margin:2px 2px 12px}
 .hi.small{font-size:20px}
+.month-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
 .schedule-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
 .schedule-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow)}
 .schedule-table{width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
@@ -97,10 +102,32 @@ a{color:inherit;text-decoration:none}
 .employee-totals{display:grid;grid-template-columns:1fr;gap:8px;margin-top:10px}
 .total-card{padding:12px}
 .money{font-weight:800;white-space:nowrap}
+.editor-panel{margin-bottom:10px}
+.editor-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
+.editor-grid{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end}
+.field{display:block;min-width:0}
+.field span{display:block;font-size:11px;color:var(--ink-soft);font-weight:800;margin:0 0 5px 2px}
+.field input,.payout-add input{width:100%;min-width:0;border:1px solid var(--line-strong);background:var(--card);border-radius:10px;padding:10px 11px;font:inherit;font-size:14px;font-weight:800;color:var(--ink)}
+.toggle-row{display:flex;gap:12px;flex-wrap:wrap;margin:12px 0 10px;color:var(--ink-soft);font-size:13px;font-weight:800}
+.toggle-row label{display:flex;align-items:center;gap:6px}
+.score-row{display:flex;align-items:center;gap:8px;margin:10px 0 12px}
+.score-pick{width:24px;height:24px;border-radius:50%;border:1px solid var(--line-strong);background:var(--card);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.score-pick::after{content:"";width:10px;height:10px;border-radius:50%;display:block;background:var(--ink-soft)}
+.score-pick.green::after{background:var(--green)}
+.score-pick.yellow::after{background:var(--gold)}
+.score-pick.red::after{background:#a33a3a}
+.score-pick.on{border-color:var(--ink);box-shadow:0 0 0 2px rgba(42,35,32,.1)}
+.payout-editor{border-top:1px solid var(--line);padding-top:10px}
+.payout-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:7px 8px;margin-top:7px;font-size:13px;font-weight:800}
+.payout-item button{margin-left:auto}
+.payout-add{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}
+.muted-line{font-size:12px;color:var(--ink-soft);margin-top:7px}
 @media (max-width:370px){
   .keypad{grid-template-columns:repeat(3,64px);gap:12px}
   .key{height:58px}
   .nav{grid-template-columns:1fr}
   .stats{grid-template-columns:1fr}
   .schedule-summary{grid-template-columns:1fr}
+  .editor-grid{grid-template-columns:1fr}
+  .payout-add{grid-template-columns:1fr}
 }
