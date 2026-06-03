@@ -300,16 +300,7 @@ function renderSchedulePage(service){
     fileInput.addEventListener("change", handleScheduleImport);
   }
 
-  app.querySelectorAll("[data-schedule-cell]").forEach((cell)=>{
-    cell.addEventListener("click", ()=>{
-      if(!service.can_edit) return;
-      state.selectedScheduleCell = {
-        date: cell.dataset.date,
-        employeeId: cell.dataset.employee
-      };
-      render();
-    });
-  });
+  bindScheduleCells(service);
 
   app.querySelectorAll("[data-month-action]").forEach((button)=>{
     button.addEventListener("click", ()=>{
@@ -616,12 +607,22 @@ function renderScheduleEditor(service){
 
       <div class="editor-grid">
         <label class="field">
-          <span>${isFixed ? "Сумма смены" : "Часы"}</span>
+          <span>${isFixed ? "Своя сумма" : "Часы"}</span>
           <input id="shiftValue" type="number" min="0" step="${isFixed ? "100" : "0.5"}" value="${escapeAttr(shiftValue)}">
         </label>
         <button class="ghost brand-action" data-editor-action="save-shift">${shift ? "Сохранить" : "Поставить"}</button>
         ${shift ? `<button class="ghost danger-action" data-editor-action="delete-shift">Снять смену</button>` : ""}
       </div>
+
+      ${isFixed ? `
+        <div class="fixed-pay-row">
+          ${[3000,4000,6000,8000].map((amount)=>`
+            <button class="fixed-pay ${Math.round(shift?.payAmount || 0) === amount ? "on" : ""}" data-fixed-pay="${amount}">
+              ${formatMoneyPlain(amount)}
+            </button>
+          `).join("")}
+        </div>
+      ` : ""}
 
       <div class="toggle-row">
         <label><input id="deadlineToggle" type="checkbox" ${day.isDeadline ? "checked" : ""}> Дедлайн</label>
@@ -653,6 +654,74 @@ function renderScheduleEditor(service){
   `;
 }
 
+function bindScheduleCells(service){
+  app.querySelectorAll("[data-schedule-cell]").forEach((cell)=>{
+    if(!service.can_edit) return;
+
+    let pressTimer = null;
+    let longPressed = false;
+
+    cell.addEventListener("pointerdown", (event)=>{
+      if(event.button && event.button !== 0) return;
+      longPressed = false;
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(()=>{
+        longPressed = true;
+        openScheduleEditor(cell);
+      }, 460);
+    });
+
+    cell.addEventListener("pointerup", (event)=>{
+      clearTimeout(pressTimer);
+      if(longPressed){
+        event.preventDefault();
+        return;
+      }
+      quickEditScheduleCell(cell);
+    });
+
+    cell.addEventListener("pointerleave", ()=>{
+      clearTimeout(pressTimer);
+    });
+
+    cell.addEventListener("contextmenu", (event)=>{
+      event.preventDefault();
+      clearTimeout(pressTimer);
+      openScheduleEditor(cell);
+    });
+  });
+}
+
+function openScheduleEditor(cell){
+  if(!cell || !cell.dataset.date || !cell.dataset.employee) return;
+  state.selectedScheduleCell = {
+    date: cell.dataset.date,
+    employeeId: cell.dataset.employee
+  };
+  render();
+}
+
+async function quickEditScheduleCell(cell){
+  if(state.scheduleSaving) return;
+  const context = scheduleContextByCell(cell);
+  if(!context) return;
+  if(isFixedPayEmployee(context.employee)){
+    openScheduleEditor(cell);
+    return;
+  }
+  state.selectedScheduleCell = null;
+  if(context.shift){
+    await deleteSelectedShift(context);
+    return;
+  }
+  await saveShiftFor(context, { hours: Number(context.employee.defaultHours || 12) });
+}
+
+function scheduleContextByCell(cell){
+  if(!state.schedule || !cell) return null;
+  return scheduleContext(cell.dataset.date, cell.dataset.employee);
+}
+
 function bindScheduleEditor(){
   const context = selectedScheduleContext();
   if(!context) return;
@@ -674,6 +743,10 @@ function bindScheduleEditor(){
   if(deleteShift){
     deleteShift.addEventListener("click", ()=>deleteSelectedShift(context));
   }
+
+  app.querySelectorAll("[data-fixed-pay]").forEach((button)=>{
+    button.addEventListener("click", ()=>saveFixedPreset(context, Number(button.dataset.fixedPay)));
+  });
 
   const deadlineToggle = app.querySelector("#deadlineToggle");
   if(deadlineToggle){
@@ -706,8 +779,13 @@ function bindScheduleEditor(){
 
 function selectedScheduleContext(){
   if(!state.schedule || !state.selectedScheduleCell) return null;
-  const day = state.schedule.days.find((item)=>item.date === state.selectedScheduleCell.date);
-  const employee = state.schedule.employees.find((item)=>item.id === state.selectedScheduleCell.employeeId);
+  return scheduleContext(state.selectedScheduleCell.date, state.selectedScheduleCell.employeeId);
+}
+
+function scheduleContext(date, employeeId){
+  if(!state.schedule || !date || !employeeId) return null;
+  const day = state.schedule.days.find((item)=>item.date === date);
+  const employee = state.schedule.employees.find((item)=>item.id === employeeId);
   if(!day || !employee) return null;
   const shift = day.shifts[employee.id] || null;
   const employeePayouts = day.payouts.filter((payout)=>payout.employee_id === employee.id || payout.employeeId === employee.id);
@@ -718,13 +796,26 @@ function selectedScheduleContext(){
 async function saveSelectedShift(context){
   const value = Number(app.querySelector("#shiftValue")?.value);
   if(!Number.isFinite(value) || value <= 0) return;
+  if(isFixedPayEmployee(context.employee)){
+    await saveShiftFor(context, { payAmount: Math.round(value) });
+    return;
+  }
+  await saveShiftFor(context, { hours: value });
+}
+
+async function saveShiftFor(context, values){
   const body = {
     workDate: context.day.date,
     employeeId: context.employee.id
   };
-  if(isFixedPayEmployee(context.employee)) body.payAmount = Math.round(value);
-  else body.hours = value;
+  if(values.payAmount != null) body.payAmount = Math.round(values.payAmount);
+  if(values.hours != null) body.hours = values.hours;
   await saveAndReload(()=>apiPut("/api/schedule/shifts", body));
+}
+
+async function saveFixedPreset(context, payAmount){
+  state.selectedScheduleCell = null;
+  await saveShiftFor(context, { payAmount });
 }
 
 async function deleteSelectedShift(context){
