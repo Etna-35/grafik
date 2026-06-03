@@ -83,7 +83,11 @@ a{color:inherit;text-decoration:none}
 .loader.compact{padding:20px 8px}
 .file-btn{position:relative;overflow:hidden}
 .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
-.import-panel{margin-bottom:10px}
+.import-panel{margin:16px 4px 0;color:var(--ink-soft);font-size:12px}
+.import-panel summary{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font-weight:800;list-style:none}
+.import-panel summary::-webkit-details-marker{display:none}
+.import-panel .mini-icon{width:20px;height:20px;background:rgba(42,35,32,.05);color:var(--ink-soft)}
+.import-body{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;padding:10px 0 0;border-top:1px solid var(--line)}
 .import-result{margin-top:9px;font-size:12px;color:var(--ink-soft);font-weight:700}
 .phone.schedule-phone{max-width:1080px;border-radius:22px}
 .schedule-screen{padding:18px 14px 28px}
@@ -97,6 +101,7 @@ a{color:inherit;text-decoration:none}
 .schedule-grid th,.schedule-grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
 .schedule-grid thead th{position:sticky;top:0;z-index:3;background:var(--card)}
 .schedule-grid .colDate{position:sticky;left:0;z-index:2;background:var(--card);min-width:68px;width:68px}
+.schedule-grid .markDate{cursor:pointer}
 .schedule-grid thead .colDate{z-index:4}
 .schedule-grid .dcell{padding:7px 6px;text-align:left;line-height:1.05}
 .schedule-grid .dcell .dnum{font-weight:800;font-size:15px}
@@ -196,6 +201,10 @@ a{color:inherit;text-decoration:none}
 .editor-panel{margin-bottom:10px}
 .editor-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px}
 .editor-grid{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:end}
+.date-editor-panel{margin-bottom:10px}
+.date-editor-grid{display:grid;grid-template-columns:auto minmax(210px,1fr) auto;gap:10px;align-items:end}
+.date-editor-grid .checkrow{height:42px}
+.save-error{margin-bottom:10px;color:#a33a3a;border-color:#e3b8b8;font-size:13px;font-weight:800}
 .field{display:block;min-width:0}
 .field span{display:block;font-size:11px;color:var(--ink-soft);font-weight:800;margin:0 0 5px 2px}
 .field input,.payout-add input{width:100%;min-width:0;border:1px solid var(--line-strong);background:var(--card);border-radius:10px;padding:10px 11px;font:inherit;font-size:14px;font-weight:800;color:var(--ink)}
@@ -274,6 +283,7 @@ a{color:inherit;text-decoration:none}
   .admin-layout{grid-template-columns:1fr}
   .admin-employees{max-height:260px}
   .admin-fields,.schedule-settings{grid-template-columns:1fr 1fr}
+  .date-editor-grid{grid-template-columns:1fr}
 }
 @media (max-width:370px){
   .keypad{grid-template-columns:repeat(3,64px);gap:12px}
@@ -282,6 +292,7 @@ a{color:inherit;text-decoration:none}
   .stats{grid-template-columns:1fr}
   .schedule-summary{grid-template-columns:1fr}
   .editor-grid{grid-template-columns:1fr}
+  .date-editor-grid{grid-template-columns:1fr}
   .payout-add{grid-template-columns:1fr}
   .admin-layout{grid-template-columns:1fr}
   .admin-fields,.schedule-settings{grid-template-columns:1fr}

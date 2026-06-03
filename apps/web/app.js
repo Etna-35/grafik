@@ -36,7 +36,10 @@ let state = {
   schedule: null,
   scheduleLoading: false,
   scheduleError: "",
+  scheduleSaveError: "",
   selectedScheduleCell: null,
+  selectedScheduleDate: null,
+  selectedDateEmployeeId: null,
   scheduleSaving: false,
   admin: null,
   adminLoading: false,
@@ -216,10 +219,8 @@ function renderServicePage(path){
     return;
   }
 
-  const statusText = service.code === "schedule" ? "резерв: GitHub Pages" : "готовится";
-  const extra = service.code === "schedule"
-    ? `<a class="ghost" href="https://etna-35.github.io/grafik/">Открыть текущий график</a>`
-    : "";
+  const statusText = "готовится";
+  const extra = "";
 
   app.innerHTML = `
     <div class="phone">
@@ -628,23 +629,7 @@ function renderSchedulePage(service){
         ? renderScheduleContent(state.schedule)
         : `<div class="panel"><div class="row-title">График пока пустой</div><div class="row-sub">Импортируй JSON-бэкап старого календаря</div></div>`;
 
-  const importBox = service.can_edit
-    ? `
-      <div class="panel import-panel">
-        <div class="row">
-          <span class="grow">
-            <span class="row-title">Импорт старого графика</span>
-            <span class="row-sub">JSON-бэкап из текущего календаря</span>
-          </span>
-          <label class="ghost file-btn">
-            Выбрать
-            <input id="scheduleImportFile" type="file" accept="application/json,.json">
-          </label>
-        </div>
-        ${state.importResult ? `<div class="import-result">${escapeHtml(state.importResult)}</div>` : ""}
-      </div>
-    `
-    : "";
+  const importBox = renderScheduleImport(service);
 
   app.innerHTML = `
     <div class="phone wide schedule-phone">
@@ -654,12 +639,11 @@ function renderSchedulePage(service){
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
           <span class="status">Postgres</span>
         </div>
-        ${importBox}
         ${renderScheduleEditor(service)}
+        ${renderScheduleDateEditor(service)}
+        ${state.scheduleSaveError ? `<div class="panel save-error">${escapeHtml(state.scheduleSaveError)}</div>` : ""}
         ${body}
-        <div class="panel">
-          <a class="ghost" href="https://etna-35.github.io/grafik/">Открыть старый график</a>
-        </div>
+        ${importBox}
       </section>
     </div>
   `;
@@ -675,18 +659,41 @@ function renderSchedulePage(service){
   }
 
   bindScheduleCells(service);
+  bindScheduleDates(service);
 
   app.querySelectorAll("[data-month-action]").forEach((button)=>{
     button.addEventListener("click", ()=>{
       const direction = button.dataset.monthAction === "next" ? 1 : -1;
       const base = new Date((state.schedule?.year || year), (state.schedule?.month || month) - 1 + direction, 1);
       state.selectedScheduleCell = null;
+      state.selectedScheduleDate = null;
       state.schedule = null;
       loadSchedule(base.getFullYear(), base.getMonth() + 1);
     });
   });
 
   bindScheduleEditor();
+  bindScheduleDateEditor();
+}
+
+function renderScheduleImport(service){
+  if(!service.can_edit) return "";
+  return `
+    <details class="import-panel">
+      <summary>
+        <span class="mini-icon">${uploadIcon()}</span>
+        <span>Импорт JSON</span>
+      </summary>
+      <div class="import-body">
+        <span class="row-sub">Запасная функция для старого JSON-бэкапа</span>
+        <label class="ghost file-btn">
+          Выбрать файл
+          <input id="scheduleImportFile" type="file" accept="application/json,.json">
+        </label>
+        ${state.importResult ? `<div class="import-result">${escapeHtml(state.importResult)}</div>` : ""}
+      </div>
+    </details>
+  `;
 }
 
 function renderScheduleContent(schedule){
@@ -750,7 +757,7 @@ function renderScheduleDay(day, employees, canSeeMoney){
     && date.getDate() === today.getDate();
   return `
     <tr class="${isWeekend ? "we" : ""} ${isToday ? "today" : ""}">
-      <td class="colDate markDate">
+      <td class="colDate markDate" data-schedule-date="${escapeAttr(day.date)}">
         <div class="dcell">
           <span class="dnum">${date.getDate()}</span>
           <span class="dwd">${weekdayShort(date)}</span>
@@ -962,7 +969,7 @@ function renderScheduleEditor(service){
   const context = selectedScheduleContext();
   if(!context) return "";
 
-  const { day, employee, shift, employeePayouts, score } = context;
+  const { day, employee, shift } = context;
   const isFixed = isFixedPayEmployee(employee);
   const dateLabel = formatDateHuman(day.date);
   const shiftValue = isFixed
@@ -974,7 +981,7 @@ function renderScheduleEditor(service){
       <div class="editor-head">
         <span class="grow">
           <span class="row-title">${escapeHtml(employee.name)}</span>
-          <span class="row-sub">${dateLabel} · ${escapeHtml(employee.roleLabel)}</span>
+          <span class="row-sub">${dateLabel} · ${isFixed ? "ставка смены" : "нестандартные часы"}</span>
         </span>
         <button class="iconbtn small" data-editor-action="close">×</button>
       </div>
@@ -998,15 +1005,52 @@ function renderScheduleEditor(service){
         </div>
       ` : ""}
 
-      <div class="toggle-row">
-        <label><input id="deadlineToggle" type="checkbox" ${day.isDeadline ? "checked" : ""}> Дедлайн</label>
-        <label><input id="paydayToggle" type="checkbox" ${day.plannedPayEmployeeIds.includes(employee.id) ? "checked" : ""}> День зарплаты</label>
+      ${state.scheduleSaving ? `<div class="import-result">Сохраняю</div>` : ""}
+    </div>
+  `;
+}
+
+function renderScheduleDateEditor(service){
+  if(!service.can_edit || !state.schedule || !state.selectedScheduleDate) return "";
+  const context = selectedDateContext();
+  if(!context) return "";
+
+  const { day, employee, employeePayouts, score } = context;
+  const dateLabel = formatDateHuman(day.date);
+
+  return `
+    <div class="panel date-editor-panel">
+      <div class="editor-head">
+        <span class="grow">
+          <span class="row-title">${dateLabel}</span>
+          <span class="row-sub">Выплаты, оценки, зарплатные дни и дедлайн</span>
+        </span>
+        <button class="iconbtn small" data-date-action="close">×</button>
+      </div>
+
+      <div class="date-editor-grid">
+        <label class="checkrow deadline-check">
+          <input id="dateDeadlineToggle" type="checkbox" ${day.isDeadline ? "checked" : ""}>
+          <span>Дедлайн</span>
+        </label>
+        <label class="field employee-select">
+          <span>Сотрудник</span>
+          <select id="dateEmployeeSelect">
+            ${state.schedule.employees.map((item)=>`
+              <option value="${escapeAttr(item.id)}" ${item.id === employee.id ? "selected" : ""}>${escapeHtml(item.name)}</option>
+            `).join("")}
+          </select>
+        </label>
+        <label class="checkrow payday-check">
+          <input id="datePaydayToggle" type="checkbox" ${day.plannedPayEmployeeIds.includes(employee.id) ? "checked" : ""}>
+          <span>День зарплаты</span>
+        </label>
       </div>
 
       <div class="score-row">
         <span class="row-sub">Оценка</span>
-        ${["green","yellow","red"].map((value)=>`<button class="score-pick ${value}${score === value ? " on" : ""}" data-score="${value}" title="${scoreLabel(value)}"></button>`).join("")}
-        ${score ? `<button class="ghost mini" data-editor-action="clear-score">Снять</button>` : ""}
+        ${["green","yellow","red"].map((value)=>`<button class="score-pick ${value}${score === value ? " on" : ""}" data-date-score="${value}" title="${scoreLabel(value)}"></button>`).join("")}
+        ${score ? `<button class="ghost mini" data-date-action="clear-score">Снять</button>` : ""}
       </div>
 
       <div class="payout-editor">
@@ -1014,12 +1058,12 @@ function renderScheduleEditor(service){
         ${employeePayouts.length ? employeePayouts.map((payout)=>`
           <div class="payout-item">
             <span>${formatMoney(payout.amount)}</span>
-            <button class="ghost mini danger-action" data-delete-payout="${escapeAttr(payout.id)}">Удалить</button>
+            <button class="ghost mini danger-action" data-date-delete-payout="${escapeAttr(payout.id)}">Удалить</button>
           </div>
         `).join("") : `<div class="muted-line">Выплат нет</div>`}
         <div class="payout-add">
-          <input id="payoutAmount" type="number" min="0" step="100" placeholder="сумма">
-          <button class="ghost" data-editor-action="add-payout">Добавить</button>
+          <input id="datePayoutAmount" type="number" min="0" step="100" placeholder="сумма">
+          <button class="ghost" data-date-action="add-payout">Добавить</button>
         </div>
       </div>
 
@@ -1066,12 +1110,37 @@ function bindScheduleCells(service){
   });
 }
 
+function bindScheduleDates(service){
+  app.querySelectorAll("[data-schedule-date]").forEach((cell)=>{
+    if(!service.can_edit) return;
+    cell.addEventListener("click", ()=>{
+      openDateEditor(cell.dataset.scheduleDate);
+    });
+  });
+}
+
 function openScheduleEditor(cell){
   if(!cell || !cell.dataset.date || !cell.dataset.employee) return;
   state.selectedScheduleCell = {
     date: cell.dataset.date,
     employeeId: cell.dataset.employee
   };
+  state.selectedScheduleDate = null;
+  state.scheduleSaveError = "";
+  render();
+}
+
+function openDateEditor(date){
+  if(!state.schedule || !date) return;
+  const day = state.schedule.days.find((item)=>item.date === date);
+  if(!day) return;
+  const currentEmployee = state.schedule.employees.find((employee)=>employee.id === state.selectedDateEmployeeId);
+  const firstShiftEmployeeId = Object.keys(day.shifts || {})[0];
+  const firstEmployee = currentEmployee || state.schedule.employees.find((employee)=>employee.id === firstShiftEmployeeId) || state.schedule.employees[0];
+  state.selectedScheduleCell = null;
+  state.selectedScheduleDate = date;
+  state.selectedDateEmployeeId = firstEmployee?.id || null;
+  state.scheduleSaveError = "";
   render();
 }
 
@@ -1121,39 +1190,71 @@ function bindScheduleEditor(){
   app.querySelectorAll("[data-fixed-pay]").forEach((button)=>{
     button.addEventListener("click", ()=>saveFixedPreset(context, Number(button.dataset.fixedPay)));
   });
+}
 
-  const deadlineToggle = app.querySelector("#deadlineToggle");
+function bindScheduleDateEditor(){
+  const context = selectedDateContext();
+  if(!context) return;
+
+  const close = app.querySelector("[data-date-action='close']");
+  if(close){
+    close.addEventListener("click", ()=>{
+      state.selectedScheduleDate = null;
+      render();
+    });
+  }
+
+  const employeeSelect = app.querySelector("#dateEmployeeSelect");
+  if(employeeSelect){
+    employeeSelect.addEventListener("change", ()=>{
+      state.selectedDateEmployeeId = employeeSelect.value;
+      render();
+    });
+  }
+
+  const deadlineToggle = app.querySelector("#dateDeadlineToggle");
   if(deadlineToggle){
     deadlineToggle.addEventListener("change", ()=>setDeadline(context.day.date, deadlineToggle.checked));
   }
 
-  const paydayToggle = app.querySelector("#paydayToggle");
+  const paydayToggle = app.querySelector("#datePaydayToggle");
   if(paydayToggle){
     paydayToggle.addEventListener("change", ()=>setPayday(context.day.date, context.employee.id, paydayToggle.checked));
   }
 
-  app.querySelectorAll("[data-score]").forEach((button)=>{
-    button.addEventListener("click", ()=>setScore(context, button.dataset.score));
+  app.querySelectorAll("[data-date-score]").forEach((button)=>{
+    button.addEventListener("click", ()=>setScore(context, button.dataset.dateScore));
   });
 
-  const clearScore = app.querySelector("[data-editor-action='clear-score']");
+  const clearScore = app.querySelector("[data-date-action='clear-score']");
   if(clearScore){
     clearScore.addEventListener("click", ()=>clearScoreFor(context));
   }
 
-  const addPayout = app.querySelector("[data-editor-action='add-payout']");
+  const addPayout = app.querySelector("[data-date-action='add-payout']");
   if(addPayout){
-    addPayout.addEventListener("click", ()=>addPayoutFor(context));
+    addPayout.addEventListener("click", ()=>addPayoutFor(context, "#datePayoutAmount"));
   }
 
-  app.querySelectorAll("[data-delete-payout]").forEach((button)=>{
-    button.addEventListener("click", ()=>deletePayout(button.dataset.deletePayout));
+  app.querySelectorAll("[data-date-delete-payout]").forEach((button)=>{
+    button.addEventListener("click", ()=>deletePayout(button.dataset.dateDeletePayout));
   });
 }
 
 function selectedScheduleContext(){
   if(!state.schedule || !state.selectedScheduleCell) return null;
   return scheduleContext(state.selectedScheduleCell.date, state.selectedScheduleCell.employeeId);
+}
+
+function selectedDateContext(){
+  if(!state.schedule || !state.selectedScheduleDate) return null;
+  const day = state.schedule.days.find((item)=>item.date === state.selectedScheduleDate);
+  if(!day) return null;
+  const employee = state.schedule.employees.find((item)=>item.id === state.selectedDateEmployeeId) || state.schedule.employees[0];
+  if(!employee) return null;
+  const employeePayouts = day.payouts.filter((payout)=>payout.employee_id === employee.id || payout.employeeId === employee.id);
+  const score = day.scores.find((item)=>item.employee_id === employee.id || item.employeeId === employee.id)?.score || null;
+  return { day, employee, employeePayouts, score };
 }
 
 function scheduleContext(date, employeeId){
@@ -1230,8 +1331,8 @@ async function clearScoreFor(context){
   }));
 }
 
-async function addPayoutFor(context){
-  const amount = Number(app.querySelector("#payoutAmount")?.value);
+async function addPayoutFor(context, inputSelector = "#payoutAmount"){
+  const amount = Number(app.querySelector(inputSelector)?.value);
   if(!Number.isFinite(amount) || amount <= 0) return;
   await saveAndReload(()=>apiPost("/api/schedule/payouts", {
     workDate: context.day.date,
@@ -1248,6 +1349,7 @@ async function deletePayout(id){
 async function saveAndReload(action){
   if(state.scheduleSaving) return;
   state.scheduleSaving = true;
+  state.scheduleSaveError = "";
   render();
   try{
     await action();
@@ -1255,8 +1357,9 @@ async function saveAndReload(action){
     const month = state.schedule?.month || new Date().getMonth() + 1;
     state.schedule = await apiGet(`/api/schedule?year=${year}&month=${month}`);
     state.summary = await apiGet("/api/summary");
+    state.scheduleError = "";
   }catch(error){
-    state.scheduleError = "Не удалось сохранить";
+    state.scheduleSaveError = "Не удалось сохранить";
   }finally{
     state.scheduleSaving = false;
     render();
@@ -1282,6 +1385,7 @@ function renderEmployeeTotal(employee){
 async function loadSchedule(year, month){
   state.scheduleLoading = true;
   state.scheduleError = "";
+  state.scheduleSaveError = "";
   render();
   try{
     state.schedule = await apiGet(`/api/schedule?year=${year}&month=${month}`);
@@ -1352,10 +1456,12 @@ async function apiDelete(url, body){
 async function apiSend(method, url, body){
   const options = {
     method,
-    credentials:"same-origin",
-    headers:{ "Content-Type":"application/json" }
+    credentials:"same-origin"
   };
-  if(body !== undefined) options.body = JSON.stringify(body);
+  if(body !== undefined){
+    options.headers = { "Content-Type":"application/json" };
+    options.body = JSON.stringify(body);
+  }
   const response = await fetch(url, options);
   if(!response.ok) throw await withStatus(response);
   return response.json();
@@ -1547,4 +1653,8 @@ function arrowLeftIcon(){
 
 function arrowRightIcon(){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="19" height="19"><path d="M5 12h14M12 5l7 7-7 7"/></svg>`;
+}
+
+function uploadIcon(){
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M12 3v12M7 8l5-5 5 5M5 21h14"/></svg>`;
 }
