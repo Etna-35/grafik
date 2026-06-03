@@ -273,8 +273,8 @@ function renderSchedulePage(service){
     : "";
 
   app.innerHTML = `
-    <div class="phone wide">
-      <section class="screen service-page">
+    <div class="phone wide schedule-phone">
+      <section class="screen service-page schedule-screen">
         <div class="backrow">
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
@@ -325,30 +325,21 @@ function renderSchedulePage(service){
 }
 
 function renderScheduleContent(schedule){
-  const monthTitle = new Intl.DateTimeFormat("ru-RU", { month:"long", year:"numeric" })
-    .format(new Date(schedule.year, schedule.month - 1, 1));
+  const monthTitle = formatScheduleMonth(schedule.year, schedule.month);
+  const totals = buildScheduleTotals(schedule);
   return `
-    <div class="schedule-head">
-      <div class="month-row">
-        <button class="iconbtn small" data-month-action="prev">${arrowLeftIcon()}</button>
-        <div class="hi small">${monthTitle}</div>
-        <button class="iconbtn small" data-month-action="next">${arrowRightIcon()}</button>
-      </div>
-      <div class="schedule-summary">
-        ${schedule.canSeeMoney
-          ? `
-            <div class="stat"><div class="k">ФОТ</div><div class="v">${formatMoney(schedule.summary.totalFot)}</div></div>
-            <div class="stat"><div class="k">Выдано</div><div class="v">${formatMoney(schedule.summary.totalPaid)}</div></div>
-            <div class="stat"><div class="k">План</div><div class="v">${escapeHtml(schedule.summary.revenuePlan)}</div></div>
-          `
-          : `
-            <div class="stat"><div class="k">Начислено</div><div class="v">${formatMoney(schedule.summary.totalFot)}</div></div>
-            <div class="stat"><div class="k">Выдано</div><div class="v">${formatMoney(schedule.summary.totalPaid)}</div></div>
-            <div class="stat"><div class="k">Остаток</div><div class="v">${formatMoney(schedule.summary.totalRemaining)}</div></div>
-          `}
-      </div>
+    <div class="monthbar">
+      <button class="btn icon" data-month-action="prev">‹</button>
+      <div class="mname">${monthTitle}</div>
+      <button class="btn icon" data-month-action="next">›</button>
     </div>
+    ${renderMoneySummary(schedule, totals)}
     ${schedule.employees.length ? renderScheduleTable(schedule) : renderEmptySchedule()}
+    <h2 class="sec">Итоги за месяц</h2>
+    ${renderRoleTotals(schedule, totals)}
+    <div class="cards">
+      ${renderSummaryCards(schedule, totals)}
+    </div>
   `;
 }
 
@@ -362,38 +353,48 @@ function renderEmptySchedule(){
 }
 
 function renderScheduleTable(schedule){
+  const totals = buildScheduleTotals(schedule);
   return `
-    <div class="schedule-wrap">
-      <table class="schedule-table">
+    <div class="gridwrap">
+      <table class="schedule-grid">
         <thead>
           <tr>
-            <th>Дата</th>
-            ${schedule.employees.map((employee)=>`<th>${escapeHtml(shortName(employee.name))}</th>`).join("")}
-            ${schedule.canSeeMoney ? `<th>ФОТ</th>` : ""}
+            <th class="colDate"><div class="dcell"><div class="dwd">дата</div></div></th>
+            ${schedule.employees.map(renderEmployeeHeader).join("")}
+            <th class="colSum"><div class="dcell"><div class="dwd">Σ</div></div></th>
+            ${schedule.canSeeMoney ? `<th class="colMoney"><div class="dcell"><div class="dwd">ФОТ</div></div></th><th class="colPlan"><div class="dcell"><div class="dwd">План</div></div></th>` : ""}
           </tr>
         </thead>
         <tbody>
           ${schedule.days.map((day)=>renderScheduleDay(day, schedule.employees, schedule.canSeeMoney)).join("")}
         </tbody>
+        <tfoot>
+          ${renderScheduleFooter(schedule, totals)}
+        </tfoot>
       </table>
-    </div>
-    <div class="employee-totals">
-      ${schedule.employees.filter((employee)=>schedule.canSeeMoney || employee.id === state.user?.id).map(renderEmployeeTotal).join("")}
     </div>
   `;
 }
 
 function renderScheduleDay(day, employees, canSeeMoney){
   const date = new Date(`${day.date}T00:00:00`);
-  const dateLabel = new Intl.DateTimeFormat("ru-RU", { day:"2-digit", weekday:"short" }).format(date);
+  const isWeekend = date.getDay() === 0 || date.getDay() === 6;
+  const today = new Date();
+  const isToday = date.getFullYear() === today.getFullYear()
+    && date.getMonth() === today.getMonth()
+    && date.getDate() === today.getDate();
   return `
-    <tr>
-      <td class="date-cell">
-        <span>${dateLabel}</span>
-        ${day.isDeadline ? `<span class="mini-mark">☆</span>` : ""}
+    <tr class="${isWeekend ? "we" : ""} ${isToday ? "today" : ""}">
+      <td class="colDate markDate">
+        <div class="dcell">
+          <span class="dnum">${date.getDate()}</span>
+          <span class="dwd">${weekdayShort(date)}</span>
+          ${day.isDeadline ? `<div class="dmarks"><span class="markIcon star" title="Дедлайн">☆</span></div>` : ""}
+        </div>
       </td>
       ${employees.map((employee)=>renderShiftCell(day, employee)).join("")}
-      ${canSeeMoney ? `<td class="fot-cell">${day.fot ? formatMoney(day.fot) : ""}</td>` : ""}
+      <td class="colSum"><span class="cv">${day.coverage || ""}</span></td>
+      ${canSeeMoney ? `<td class="colMoney"><span class="mv">${day.fot ? formatMoneyPlain(day.fot) : ""}</span></td><td class="colPlan"><span class="pv">${day.fot ? escapeHtml(day.revenuePlan) : ""}</span></td>` : ""}
     </tr>
   `;
 }
@@ -404,24 +405,191 @@ function renderShiftCell(day, employee){
   const hasPayout = day.payouts.some((payout)=>payout.employee_id === employee.id || payout.employeeId === employee.id);
   const score = day.scores.find((item)=>item.employee_id === employee.id || item.employeeId === employee.id)?.score;
   const classes = [
-    "shift-cell",
+    "cell",
     shift ? "on" : "",
     hasPayday ? "payday" : "",
-    hasPayout ? "payout" : ""
+    hasPayout && shift ? "payout" : "",
+    hasPayout && !shift ? "payoutEmpty" : ""
   ].filter(Boolean).join(" ");
 
   const label = shift
-    ? shift.payModel === "fixed"
-      ? shift.payAmount == null ? "•" : formatMoney(shift.payAmount)
-      : shift.hours == null ? "•" : `${formatHours(shift.hours)}ч`
+    ? isFixedShift(employee, shift)
+      ? shift.payAmount == null ? "✓" : compactCellMoney(shift.payAmount)
+      : shift.hours == null ? "•" : formatHours(shift.hours)
     : "";
+  const valueClass = isFixedShift(employee, shift) ? "h fx" : "h";
 
   return `
     <td class="${classes}" data-schedule-cell="1" data-date="${escapeAttr(day.date)}" data-employee="${escapeAttr(employee.id)}">
-      <span>${label}</span>
-      ${score ? `<i class="score ${escapeAttr(score)}"></i>` : ""}
+      <span class="${valueClass}" style="${shift ? `background:${roleColor(employee.role)}` : ""}">${label}</span>
+      ${renderScoreDots(score)}
     </td>
   `;
+}
+
+function renderEmployeeHeader(employee){
+  const sub = isFixedPayEmployee(employee) ? "фикс" : `${formatHours(employee.defaultHours || 12)}ч`;
+  return `
+    <th class="emp" title="${escapeAttr(employee.name)}">
+      <div class="nm">${escapeHtml(shortScheduleName(employee.name))}</div>
+      <div class="rl">${escapeHtml(sub)}</div>
+      <div class="bar" style="background:${roleColor(employee.role)}"></div>
+    </th>
+  `;
+}
+
+function renderScheduleFooter(schedule, totals){
+  return `
+    <tr>
+      <td class="colDate"><div class="dcell">ИТОГО</div></td>
+      ${schedule.employees.map((employee)=>{
+        const total = totals.byEmployee.get(employee.id) || emptyEmployeeTotal();
+        const second = isFixedPayEmployee(employee) ? "смен" : `${formatHours(total.hours)}ч`;
+        return `
+          <td class="tt">
+            <div class="sh" style="color:${roleColor(employee.role)}">${total.shifts || ""}</div>
+            <div class="hr">${second}</div>
+            ${total.remaining != null ? `<div class="pay">${formatMoneyPlain(total.remaining)}</div>` : ""}
+          </td>
+        `;
+      }).join("")}
+      <td class="colSum"></td>
+      ${schedule.canSeeMoney ? `
+        <td class="colMoney tt">
+          <div class="sh" style="color:var(--brand)">${formatMoneyPlain(schedule.summary.totalFot)}</div>
+          <div class="hr">ФОТ</div>
+          <div class="paid">выд ${formatMoneyPlain(schedule.summary.totalPaid)}</div>
+          <div class="rest">ост ${formatMoneyPlain(schedule.summary.totalRemaining)}</div>
+        </td>
+        <td class="colPlan tt">
+          <div class="sh">${escapeHtml(schedule.summary.revenuePlan || "0")}</div>
+          <div class="hr">план</div>
+        </td>
+      ` : ""}
+    </tr>
+  `;
+}
+
+function renderMoneySummary(schedule){
+  if(schedule.canSeeMoney){
+    return `
+      <div class="moneySummary">
+        <div class="msmain">
+          <div class="mslabel">ФОТ за месяц</div>
+          <div class="msbig">${formatMoneyPlain(schedule.summary.totalFot)} ₽</div>
+        </div>
+        <div class="msrow">
+          <span>Дней с сменами: <b>${schedule.summary.workingDays || 0}</b></span>
+          <span>План выручки при ФОТ 23-28%: <b>${escapeHtml(schedule.summary.revenuePlan || "0")}</b></span>
+          <span>Выдано: <b>${formatMoneyPlain(schedule.summary.totalPaid)} ₽</b></span>
+          <span>Остаток: <b>${formatMoneyPlain(schedule.summary.totalRemaining)} ₽</b></span>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="moneySummary employee-money">
+      <div class="msmain">
+        <div class="mslabel">Мой расчет</div>
+        <div class="msbig">${formatMoneyPlain(schedule.summary.totalRemaining)} ₽</div>
+      </div>
+      <div class="msrow">
+        <span>Начислено: <b>${formatMoneyPlain(schedule.summary.totalFot)} ₽</b></span>
+        <span>Выдано: <b>${formatMoneyPlain(schedule.summary.totalPaid)} ₽</b></span>
+        <span>Остаток: <b>${formatMoneyPlain(schedule.summary.totalRemaining)} ₽</b></span>
+      </div>
+    </div>
+  `;
+}
+
+function renderRoleTotals(schedule, totals){
+  const items = Array.from(totals.byRole.entries())
+    .filter(([, total])=>total.shifts > 0)
+    .map(([role, total])=>{
+      const hours = role === "dish" || role === "dishwasher" ? "" : ` · ${formatHours(total.hours)}ч`;
+      const money = schedule.canSeeMoney ? ` · ${formatMoneyPlain(total.pay)} ₽` : "";
+      return `
+        <span class="rt">
+          <span class="dot" style="background:${roleColor(role)}"></span>
+          ${escapeHtml(rolePlural(role))}: <b>${total.shifts}</b> смен${hours}${money}
+        </span>
+      `;
+    })
+    .join("");
+  return `<div class="roleTotals">${items}</div>`;
+}
+
+function renderSummaryCards(schedule, totals){
+  return schedule.employees
+    .filter((employee)=>schedule.canSeeMoney || employee.id === state.user?.id)
+    .map((employee)=>{
+      const total = totals.byEmployee.get(employee.id) || emptyEmployeeTotal();
+      const showMoney = total.remaining != null;
+      return `
+        <div class="scard" style="border-left-color:${roleColor(employee.role)}">
+          <div class="nm">${escapeHtml(employee.name)}</div>
+          <div class="rl">${escapeHtml(employee.roleLabel)}</div>
+          <div class="nums">
+            <div><span class="big" style="color:${roleColor(employee.role)}">${total.shifts}</span><span class="unit">смен</span></div>
+            ${isFixedPayEmployee(employee) ? "" : `<div><span class="big">${formatHours(total.hours)}</span><span class="unit">часов</span></div>`}
+            ${showMoney ? `<div><span class="big pay" style="color:var(--brand)">${formatMoneyPlain(total.remaining)}</span><span class="unit">₽ к выплате</span></div>` : ""}
+            ${showMoney && total.paid ? `<div class="payMeta">начислено ${formatMoneyPlain(total.pay)} ₽ · выдано ${formatMoneyPlain(total.paid)} ₽</div>` : ""}
+            ${scoreStatsHtml(total.scores)}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function buildScheduleTotals(schedule){
+  const byEmployee = new Map();
+  const byRole = new Map();
+  schedule.employees.forEach((employee)=>{
+    byEmployee.set(employee.id, emptyEmployeeTotal());
+    if(!byRole.has(employee.role)) byRole.set(employee.role, { shifts:0, hours:0, pay:0 });
+  });
+
+  schedule.days.forEach((day)=>{
+    schedule.employees.forEach((employee)=>{
+      const shift = day.shifts[employee.id];
+      if(!shift) return;
+      const total = byEmployee.get(employee.id) || emptyEmployeeTotal();
+      total.shifts += 1;
+      if(!isFixedShift(employee, shift)) total.hours += Number(shift.hours || 0);
+      if(shift.payAmount != null) total.pay += Number(shift.payAmount || 0);
+      byEmployee.set(employee.id, total);
+
+      const roleTotal = byRole.get(employee.role) || { shifts:0, hours:0, pay:0 };
+      roleTotal.shifts += 1;
+      if(!isFixedShift(employee, shift)) roleTotal.hours += Number(shift.hours || 0);
+      if(shift.payAmount != null) roleTotal.pay += Number(shift.payAmount || 0);
+      byRole.set(employee.role, roleTotal);
+    });
+
+    day.payouts.forEach((payout)=>{
+      const employeeId = payout.employee_id || payout.employeeId;
+      const total = byEmployee.get(employeeId);
+      if(total) total.paid += Number(payout.amount || 0);
+    });
+
+    day.scores.forEach((score)=>{
+      const employeeId = score.employee_id || score.employeeId;
+      const total = byEmployee.get(employeeId);
+      if(total && score.score in total.scores) total.scores[score.score] += 1;
+    });
+  });
+
+  byEmployee.forEach((total)=>{
+    total.remaining = total.pay == null || total.paid == null ? null : Math.max(0, total.pay - total.paid);
+  });
+
+  return { byEmployee, byRole };
+}
+
+function emptyEmployeeTotal(){
+  return { shifts:0, hours:0, pay:0, paid:0, remaining:0, scores:{ green:0, yellow:0, red:0 } };
 }
 
 function renderScheduleEditor(service){
@@ -775,12 +943,88 @@ function formatDateHuman(date){
   return new Intl.DateTimeFormat("ru-RU", { day:"numeric", month:"long", weekday:"short" }).format(new Date(`${date}T00:00:00`));
 }
 
+function formatScheduleMonth(year, month){
+  const months = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+  return `${months[month - 1] || ""} ${year}`;
+}
+
+function weekdayShort(date){
+  return ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"][date.getDay()];
+}
+
 function scoreLabel(value){
   return { green:"Зелёная", yellow:"Жёлтая", red:"Красная" }[value] || "";
 }
 
 function isFixedPayEmployee(employee){
   return employee.payModel === "fixed" || employee.role === "dish" || employee.role === "dishwasher";
+}
+
+function isFixedShift(employee, shift){
+  return shift?.payModel === "fixed" || isFixedPayEmployee(employee);
+}
+
+function roleColor(role){
+  return {
+    cook:"var(--cook)",
+    bar:"var(--bar)",
+    waiter:"var(--waiter)",
+    dish:"var(--dish)",
+    dishwasher:"var(--dish)",
+    owner:"var(--brand)",
+    manager:"var(--brand)",
+    other:"var(--ink-soft)"
+  }[role] || "var(--ink-soft)";
+}
+
+function rolePlural(role){
+  return {
+    cook:"Повары",
+    bar:"Бармены",
+    waiter:"Официанты",
+    dish:"Мойщицы",
+    dishwasher:"Мойщицы",
+    owner:"Руководство",
+    manager:"Управляющие",
+    other:"Сотрудники"
+  }[role] || "Сотрудники";
+}
+
+function shortScheduleName(name){
+  const trimmed = String(name).trim();
+  if(trimmed.length <= 7) return trimmed;
+  const first = trimmed.split(/\s+/)[0] || trimmed;
+  return first.length <= 8 ? first : `${first.slice(0, 7)}…`;
+}
+
+function formatMoneyPlain(value){
+  return Math.round(Number(value || 0)).toLocaleString("ru-RU");
+}
+
+function compactCellMoney(value){
+  const amount = Number(value || 0);
+  if(amount >= 1000) return `${Math.round(amount / 1000)}к`;
+  return String(Math.round(amount));
+}
+
+function renderScoreDots(score){
+  const cls = scoreDotClass(score);
+  return cls ? `<span class="scoreDots"><span class="scoreDot ${cls}"></span></span>` : "";
+}
+
+function scoreDotClass(score){
+  return { green:"g", yellow:"y", red:"r", g:"g", y:"y", r:"r" }[score] || "";
+}
+
+function scoreStatsHtml(scores){
+  if(!scores || (!scores.green && !scores.yellow && !scores.red)) return "";
+  return `
+    <div class="scoreStats">
+      <span><i class="scoreDot g"></i>${scores.green || 0}</span>
+      <span><i class="scoreDot y"></i>${scores.yellow || 0}</span>
+      <span><i class="scoreDot r"></i>${scores.red || 0}</span>
+    </div>
+  `;
 }
 
 function escapeHtml(value){

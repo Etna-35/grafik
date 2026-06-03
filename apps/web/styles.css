@@ -6,6 +6,16 @@
   --line:#e6ddcf;
   --line-strong:#d8ccb8;
   --brand:#8f2433;
+  --cook:#9d2235;
+  --bar:#2f6f6b;
+  --waiter:#b07a1e;
+  --dish:#5b6b86;
+  --payout:#287a50;
+  --payday:#8f2433;
+  --score-good:#287a50;
+  --score-mid:#b98a22;
+  --score-bad:#a33a3a;
+  --weekend:#efe6d6;
   --green:#2f6f4f;
   --gold:#b07a1e;
   --teal:#2f6f6b;
@@ -75,6 +85,87 @@ a{color:inherit;text-decoration:none}
 .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
 .import-panel{margin-bottom:10px}
 .import-result{margin-top:9px;font-size:12px;color:var(--ink-soft);font-weight:700}
+.phone.schedule-phone{max-width:1080px;border-radius:22px}
+.schedule-screen{padding:18px 14px 28px}
+.monthbar{display:flex;align-items:center;gap:8px;margin:0 2px 12px}
+.monthbar .mname{flex:1;text-align:center;font-weight:800;font-size:16px;text-transform:capitalize}
+.btn{border:1px solid var(--line-strong);background:var(--card);color:var(--ink);border-radius:11px;padding:9px 12px;font:inherit;font-weight:700;font-size:14px;cursor:pointer;box-shadow:var(--shadow);transition:transform .08s ease,background .15s;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+.btn:active{transform:scale(.96)}
+.btn.icon{width:42px;text-align:center;padding:9px 0;font-size:18px;line-height:1}
+.gridwrap{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:auto;-webkit-overflow-scrolling:touch;max-height:70vh}
+.schedule-grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-content;font-size:12px}
+.schedule-grid th,.schedule-grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+.schedule-grid thead th{position:sticky;top:0;z-index:3;background:var(--card)}
+.schedule-grid .colDate{position:sticky;left:0;z-index:2;background:var(--card);min-width:68px;width:68px}
+.schedule-grid thead .colDate{z-index:4}
+.schedule-grid .dcell{padding:7px 6px;text-align:left;line-height:1.05}
+.schedule-grid .dcell .dnum{font-weight:800;font-size:15px}
+.schedule-grid .dcell .dwd{font-size:10px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.3px}
+.schedule-grid .dmarks{display:flex;gap:3px;align-items:center;margin-top:3px;min-height:11px}
+.markIcon{display:inline-flex;align-items:center;justify-content:center;min-width:13px;height:13px;padding:0 3px;color:var(--ink);font-size:10px;font-weight:800;line-height:1;border:1px solid var(--line-strong);border-radius:8px;background:rgba(255,255,255,.46)}
+.markIcon.star{font-size:11px;font-weight:700}
+.schedule-grid tr.we .colDate,.schedule-grid tr.we td.cell{background:var(--weekend)}
+.schedule-grid tr.we .dcell .dwd{color:var(--brand)}
+.schedule-grid tr.today .colDate{box-shadow:inset 3px 0 0 var(--brand)}
+.schedule-grid th.emp{min-width:48px;width:48px;padding:7px 3px 8px;vertical-align:bottom;cursor:default}
+.schedule-grid th.emp .nm{font-weight:800;font-size:12px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:46px;margin:0 auto}
+.schedule-grid th.emp .bar{height:4px;border-radius:3px;margin:5px 4px 0}
+.schedule-grid th.emp .rl{font-size:9px;color:var(--ink-soft);margin-top:2px}
+.schedule-grid td.cell{text-align:center;cursor:pointer;height:40px;user-select:none;position:relative;min-width:48px;width:48px}
+.schedule-grid td.cell .h{display:inline-flex;align-items:center;justify-content:center;width:34px;height:28px;border-radius:8px;font-weight:800;font-size:13px;position:relative;overflow:hidden;z-index:1}
+.schedule-grid td.cell.on .h{color:#fff}
+.schedule-grid td.cell .h.fx{font-size:10px;font-weight:800;letter-spacing:0}
+.schedule-grid td.cell.payday::before{content:"";position:absolute;inset:1px;border:2px solid var(--payday);border-radius:5px;background:rgba(143,36,51,.1);pointer-events:none;z-index:0}
+.schedule-grid td.cell .scoreDots{position:absolute;left:50%;bottom:2px;transform:translateX(-50%);display:flex;gap:2px;align-items:center;justify-content:center;z-index:2;pointer-events:none}
+.scoreDot{display:inline-block;width:5px;height:5px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,253,249,.86)}
+.scoreDot.g{background:var(--score-good)}
+.scoreDot.y{background:var(--score-mid)}
+.scoreDot.r{background:var(--score-bad)}
+.schedule-grid td.cell.payout .h{box-shadow:inset 0 0 0 2px var(--payout),inset 0 0 0 4px rgba(255,253,249,.68)}
+.schedule-grid td.cell.payout .h::after,.schedule-grid td.cell.payoutEmpty .h::after{content:"";position:absolute;right:0;top:0;width:10px;height:10px;background:var(--payout);border-left:2px solid rgba(255,253,249,.92);border-bottom:2px solid rgba(255,253,249,.92);border-radius:0 8px 0 6px}
+.schedule-grid td.cell.payoutEmpty .h{box-shadow:inset 0 0 0 2px var(--payout);background:transparent}
+.schedule-grid .colSum{min-width:36px;width:36px;text-align:center;background:#faf5ec}
+.schedule-grid thead .colSum{background:#faf5ec}
+.schedule-grid .colSum .cv{font-weight:800;font-size:12px;color:var(--ink-soft)}
+.schedule-grid .colMoney{min-width:64px;width:64px;text-align:right;background:#fbf3ea;padding-right:8px}
+.schedule-grid thead .colMoney{background:#fbf3ea}
+.schedule-grid .colMoney .mv{font-weight:800;font-size:11px;color:var(--brand)}
+.schedule-grid .colPlan{min-width:76px;width:76px;text-align:right;background:#f7f1e8;padding-right:8px}
+.schedule-grid thead .colPlan{background:#f7f1e8}
+.schedule-grid .colPlan .pv{font-weight:800;font-size:11px;color:var(--ink)}
+.schedule-grid tfoot td{position:sticky;bottom:0;background:#fbf6ee;z-index:2;border-top:2px solid var(--line-strong)}
+.schedule-grid tfoot .colDate{z-index:3;background:#fbf6ee;font-weight:800;font-size:11px}
+.schedule-grid tfoot td.tt{text-align:center;font-weight:800;line-height:1.15;padding:5px 2px}
+.schedule-grid tfoot td.tt .sh{font-size:13px}
+.schedule-grid tfoot td.tt .hr{font-size:10px;color:var(--ink-soft);font-weight:700}
+.schedule-grid tfoot td.tt .pay{font-size:11px;font-weight:800;color:var(--brand);margin-top:1px}
+.schedule-grid tfoot .colMoney.tt{text-align:right;padding-right:8px}
+.schedule-grid tfoot .colMoney .paid{font-size:9px;color:#4f8a64;text-align:right;font-weight:700;margin-top:1px}
+.schedule-grid tfoot .colMoney .rest{font-size:9px;color:var(--ink-soft);text-align:right;font-weight:700;margin-top:1px}
+.schedule-grid tfoot .colPlan.tt{text-align:right;padding-right:8px}
+.moneySummary{background:linear-gradient(135deg,#fff8f0,#fffdf9);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:14px 16px;margin:0 2px 12px}
+.moneySummary.employee-money{background:var(--card)}
+.moneySummary .msmain{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.moneySummary .mslabel{font-size:12px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;font-weight:800}
+.moneySummary .msbig{font-family:"Playfair Display",serif;font-weight:700;font-size:26px;color:var(--brand);white-space:nowrap}
+.moneySummary .msrow{display:flex;flex-wrap:wrap;gap:6px 16px;margin-top:8px;font-size:12px;color:var(--ink-soft)}
+.moneySummary .msrow b{color:var(--ink)}
+.sec{font-family:"Playfair Display",serif;font-size:17px;margin:22px 4px 10px;font-weight:700}
+.roleTotals{display:flex;flex-wrap:wrap;gap:8px;margin:6px 4px 0;font-size:12px;color:var(--ink-soft)}
+.roleTotals .rt{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:4px 10px}
+.roleTotals .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:middle}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:9px;margin-top:10px}
+.scard{background:var(--card);border:1px solid var(--line);border-left-width:4px;border-radius:12px;padding:10px 12px;box-shadow:var(--shadow);min-width:0;overflow:hidden}
+.scard .nm{font-weight:800;font-size:14px;line-height:1.15}
+.scard .rl{font-size:11px;color:var(--ink-soft);margin-bottom:7px}
+.scard .nums{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:flex-end}
+.scard .nums>div{min-width:58px;max-width:100%}
+.scard .big{display:inline-block;max-width:100%;font-size:21px;font-weight:800;line-height:1;overflow-wrap:anywhere}
+.scard .big.pay{font-size:19px}
+.scard .unit{font-size:11px;color:var(--ink-soft);margin-left:3px;white-space:nowrap}
+.scard .payMeta{width:100%;font-size:10px;color:var(--ink-soft);margin-top:5px;line-height:1.25}
+.scard .scoreStats{width:100%;display:flex;gap:9px;align-items:center;margin-top:6px;font-size:11px;color:var(--ink-soft)}
+.scard .scoreStats span{display:inline-flex;gap:4px;align-items:center;font-weight:800}
 .schedule-head{margin:2px 2px 12px}
 .hi.small{font-size:20px}
 .month-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
