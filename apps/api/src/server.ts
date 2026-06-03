@@ -21,6 +21,7 @@ import { env } from "./env.js";
 import { pool, query } from "./db.js";
 import { registerAdminRoutes } from "./admin.js";
 import { registerScheduleRoutes } from "./schedule.js";
+import { registerShiftClosingRoutes } from "./shiftClosing.js";
 
 const pinSchema = z.object({
   pin: z.string().regex(/^\d{4,8}$/)
@@ -33,7 +34,7 @@ export function buildServer() {
   const app = Fastify({
     logger: true,
     trustProxy: true,
-    bodyLimit: 5 * 1024 * 1024
+    bodyLimit: 16 * 1024 * 1024
   });
 
   app.register(cookie);
@@ -136,6 +137,7 @@ export function buildServer() {
 
   registerScheduleRoutes(app);
   registerAdminRoutes(app);
+  registerShiftClosingRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,

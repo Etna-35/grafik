@@ -14,6 +14,8 @@
 - `display_name`;
 - `role`;
 - `is_active`;
+- `is_hookah_master`;
+- `hookah_rate`;
 - `created_at`;
 - `updated_at`.
 
@@ -186,23 +188,106 @@ PIN в открытом виде не хранится.
 
 ## Закрытие смены
 
-### shift_reports
+### shift_closings
 
-Отчет закрытия смены.
+Отчет закрытия смены. Это новая структурированная замена старой логики `RestForm` + Google Sheets/Apps Script.
 
-Поля зависят от переносимого функционала `RestForm`, но базово нужны:
+Одна запись соответствует одной рабочей дате. Если смена закрывается до `06:00`, рабочая дата относится к предыдущему дню.
+
+Поля ввода:
 
 - `id`;
 - `work_date`;
-- `employee_id`;
-- `revenue_total`;
-- `cash_total`;
-- `expenses_total`;
+- `submitted_by`;
+- `hookah_employee_id`;
+- `opening_cash_actual`;
+- `terminal_1`;
+- `terminal_2`;
+- `netmonet`;
+- `yandex_food`;
+- `cash_revenue`;
+- `transfer_revenue`;
+- `wash_cost`;
+- `hookah_count`;
+- `taxi_amount`;
+- `collection_amount`;
+- `closing_cash_actual`;
 - `comment`;
-- `submitted_at`;
+- `created_at`;
+- `updated_at`;
+- `submitted_at`.
+
+Расчетные поля backend:
+
+- `opening_cash_expected`;
+- `opening_cash_diff`;
+- `cashless_total`;
+- `revenue_total`;
+- `hookah_rate`;
+- `hookah_payout`;
+- `extra_expenses_total`;
+- `closing_cash_expected`;
+- `closing_cash_diff`;
+- `revenue_plan`;
+- `revenue_plan_percent`;
+- `cash_diff_limit`;
+- `taxi_limit`.
+
+Правила:
+
+- `opening_cash_expected` берется из `closing_cash_actual` предыдущей закрытой смены;
+- `cashless_total = terminal_1 + terminal_2 + netmonet + yandex_food`;
+- `revenue_total = cashless_total + cash_revenue + transfer_revenue`;
+- `hookah_payout = hookah_count * hookah_rate`;
+- `closing_cash_expected = opening_cash_actual + cash_revenue + transfer_revenue - wash_cost - hookah_payout - extra_expenses_total - collection_amount`;
+- `taxi_amount` не вычитается из кассы;
+- `revenue_plan` берется из модуля `График`;
+- Telegram не блокирует закрытие смены.
+
+### shift_closing_extra_expenses
+
+Динамический список дополнительных расходов.
+
+Поля:
+
+- `id`;
+- `shift_closing_id`;
+- `amount`;
+- `comment`;
 - `created_at`.
 
-На старте можно оставить совместимость с текущим `RestForm` и постепенно перенести запись из Google Sheets в Postgres.
+### shift_closing_photos
+
+Фото чеков и подтверждений.
+
+Поля:
+
+- `id`;
+- `shift_closing_id`;
+- `photo_type` (`terminal_1`, `terminal_2`, `shift_close`, `other`);
+- `filename`;
+- `mime_type`;
+- `size_bytes`;
+- `data`;
+- `uploaded_by`;
+- `created_at`.
+
+### shift_closing_telegram_reports
+
+История попыток отправки отчетов в Telegram.
+
+Поля:
+
+- `id`;
+- `shift_closing_id`;
+- `audience` (`manager`, `team`);
+- `status` (`sent`, `failed`, `skipped`);
+- `format`;
+- `message_text`;
+- `telegram_message_id`;
+- `error`;
+- `sent_at`;
+- `created_at`.
 
 ## Аудит
 

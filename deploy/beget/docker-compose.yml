@@ -50,6 +50,9 @@ services:
       PUBLIC_GRAFIK_URL: ${PUBLIC_GRAFIK_URL}
       OWNER_NAME: ${OWNER_NAME}
       OWNER_PIN: ${OWNER_PIN}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_MANAGER_CHAT_ID: ${TELEGRAM_MANAGER_CHAT_ID:-}
+      TELEGRAM_TEAM_CHAT_ID: ${TELEGRAM_TEAM_CHAT_ID:-}
     networks:
       internal:
         aliases:

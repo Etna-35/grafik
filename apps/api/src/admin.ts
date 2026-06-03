@@ -23,6 +23,8 @@ const employeeBaseSchema = z.object({
   defaultHours: z.number().min(0).max(24).nullable(),
   hourlyRate: z.number().int().min(0).max(100000).nullable(),
   payModel: payModelSchema.nullable(),
+  isHookahMaster: z.boolean(),
+  hookahRate: z.number().int().min(0).max(100000).nullable(),
   services: z.array(serviceAccessSchema).max(20)
 });
 
@@ -55,6 +57,8 @@ type EmployeeRow = {
   default_hours: string | null;
   hourly_rate: number | null;
   pay_model: string | null;
+  is_hookah_master: boolean;
+  hookah_rate: number;
   has_pin: boolean;
 };
 
@@ -199,6 +203,8 @@ async function getAdminEmployees() {
           e.default_hours,
           e.hourly_rate,
           e.pay_model,
+          e.is_hookah_master,
+          e.hookah_rate,
           EXISTS(SELECT 1 FROM employee_auth a WHERE a.employee_id = e.id) AS has_pin
         FROM employees e
         ORDER BY e.is_active DESC,
@@ -243,6 +249,8 @@ async function getAdminEmployees() {
       defaultHours: employee.default_hours ? Number(employee.default_hours) : null,
       hourlyRate: employee.hourly_rate,
       payModel: employee.pay_model,
+      isHookahMaster: employee.is_hookah_master,
+      hookahRate: employee.hookah_rate,
       hasPin: employee.has_pin,
       services: services.map((service) => {
         const access = accessRows.rows.find((row) => row.employee_id === employee.id && row.code === service.code);
@@ -271,9 +279,11 @@ async function createEmployee(data: z.infer<typeof createEmployeeSchema>) {
           schedule_role,
           default_hours,
           hourly_rate,
-          pay_model
+          pay_model,
+          is_hookah_master,
+          hookah_rate
         )
-        VALUES ($1, $2::employee_role, $3, $4, $5, $6, $7)
+        VALUES ($1, $2::employee_role, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
       `,
       [
@@ -283,7 +293,9 @@ async function createEmployee(data: z.infer<typeof createEmployeeSchema>) {
         data.scheduleRole,
         data.defaultHours,
         data.hourlyRate,
-        data.payModel
+        data.payModel,
+        data.isHookahMaster,
+        data.hookahRate || 0
       ]
     );
     const employeeId = result.rows[0].id;
@@ -318,6 +330,8 @@ async function updateEmployee(employeeId: string, data: z.infer<typeof updateEmp
             default_hours = $6,
             hourly_rate = $7,
             pay_model = $8,
+            is_hookah_master = $9,
+            hookah_rate = $10,
             updated_at = now()
         WHERE id = $1
       `,
@@ -329,7 +343,9 @@ async function updateEmployee(employeeId: string, data: z.infer<typeof updateEmp
         data.scheduleRole,
         data.defaultHours,
         data.hourlyRate,
-        data.payModel
+        data.payModel,
+        data.isHookahMaster,
+        data.hookahRate || 0
       ]
     );
 

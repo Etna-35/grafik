@@ -41,6 +41,13 @@ let state = {
   selectedScheduleDate: null,
   selectedDateEmployeeId: null,
   scheduleSaving: false,
+  shiftClosingInit: null,
+  shiftClosingRecord: null,
+  shiftClosingForm: null,
+  shiftClosingPhotos: {},
+  shiftClosingLoading: false,
+  shiftClosingSaving: false,
+  shiftClosingError: "",
   admin: null,
   adminLoading: false,
   adminError: "",
@@ -212,6 +219,10 @@ function renderServicePage(path){
 
   if(service.code === "schedule"){
     renderSchedulePage(service);
+    return;
+  }
+  if(service.code === "shift_close"){
+    renderShiftClosingPage(service);
     return;
   }
   if(service.code === "admin"){
@@ -393,6 +404,17 @@ function renderEmployeeForm(admin){
         </label>
       </div>
 
+      <div class="admin-fields hookah-settings">
+        <label class="checkrow active-toggle">
+          <input name="isHookahMaster" type="checkbox" ${employee.isHookahMaster ? "checked" : ""}>
+          <span>Кальянщик</span>
+        </label>
+        <label class="field">
+          <span>Ставка за кальян</span>
+          <input name="hookahRate" type="number" min="0" step="50" value="${employee.hookahRate ?? ""}" placeholder="300">
+        </label>
+      </div>
+
       <div class="access-box">
         <div class="row-title">Доступы</div>
         <div class="row-sub">Раздел виден сотруднику только при включённом доступе</div>
@@ -535,6 +557,8 @@ function collectAdminEmployeeForm(isNew){
     defaultHours: numberOrNull(form.elements.defaultHours.value),
     hourlyRate: integerOrNull(form.elements.hourlyRate.value),
     payModel: form.elements.payModel.value || null,
+    isHookahMaster: form.elements.isHookahMaster.checked,
+    hookahRate: integerOrNull(form.elements.hookahRate.value),
     services: Array.from(app.querySelectorAll("[data-admin-service]")).map((row)=>{
       const canEdit = row.querySelector("input[name='canEdit']").checked;
       const canView = row.querySelector("input[name='canView']").checked || canEdit;
@@ -560,6 +584,8 @@ function emptyAdminEmployee(services){
     defaultHours: 12,
     hourlyRate: 250,
     payModel: "hourly",
+    isHookahMaster: false,
+    hookahRate: 300,
     hasPin: false,
     services: services.map((service)=>({
       code: service.code,
@@ -610,6 +636,429 @@ function adminErrorText(error){
   if(error.code === "cannot_disable_self") return "Нельзя отключить самого себя";
   if(error.code === "cannot_remove_own_admin") return "Нельзя снять свою админку";
   return error.status === 403 ? "Недостаточно прав" : "Не удалось сохранить";
+}
+
+function renderShiftClosingPage(service){
+  if(!state.shiftClosingInit && !state.shiftClosingLoading && !state.shiftClosingError){
+    loadShiftClosing();
+  }
+
+  const body = state.shiftClosingLoading
+    ? `<div class="panel"><div class="loader compact">Загружаю смену</div></div>`
+    : state.shiftClosingError && !state.shiftClosingInit
+      ? `<div class="panel"><div class="row-title">Не удалось загрузить закрытие смены</div><div class="row-sub">${escapeHtml(state.shiftClosingError)}</div></div>`
+      : state.shiftClosingInit && state.shiftClosingForm
+        ? renderShiftClosingForm()
+        : "";
+
+  app.innerHTML = `
+    <div class="phone wide shift-close-phone">
+      <section class="screen service-page shift-close-screen">
+        <div class="backrow">
+          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">${escapeHtml(service.title)}</h1>
+          <span class="status">Postgres</span>
+        </div>
+        ${body}
+      </section>
+    </div>
+  `;
+
+  app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+
+  bindShiftClosingForm();
+}
+
+function renderShiftClosingForm(){
+  const init = state.shiftClosingInit;
+  const form = state.shiftClosingForm;
+  const preview = computeShiftClosingPreview(form, init);
+  const existing = state.shiftClosingRecord;
+  const cashDiffOk = Math.abs(preview.closingCashDiff) <= init.cashDiffLimit;
+  const planWidth = Math.max(0, Math.min(100, Math.round(preview.revenuePlanPercent || 0)));
+
+  return `
+    <form id="shiftClosingForm" class="shift-close-form">
+      <header class="shift-close-head">
+        <div>
+          <div class="whorow">
+            <span class="chip"><span class="dot"></span>${escapeHtml(firstName(init.user.displayName))}</span>
+            <span class="chip muted">смена за ${escapeHtml(formatDateHuman(init.workDate))}</span>
+          </div>
+          ${existing ? `<div class="row-sub">Запись уже есть, изменения обновят закрытие смены</div>` : ""}
+        </div>
+        ${existing ? `<button class="ghost mini" type="button" data-shift-action="send-telegram">Telegram</button>` : ""}
+      </header>
+
+      <h2 class="sec">Касса на открытии</h2>
+      ${autoRow("Откр. (расч.)", preview.openingCashExpected)}
+      ${moneyField("openingCashActual", "Откр. (факт) — пересчитай кассу", form.openingCashActual)}
+      ${autoRow("Откр. Δ", preview.openingCashDiff)}
+
+      <h2 class="sec">Доходы</h2>
+      <div class="two">
+        ${moneyField("terminal1", "Терминал 1", form.terminal1)}
+        ${moneyField("terminal2", "Терминал 2", form.terminal2)}
+      </div>
+      <div class="two">
+        ${moneyField("netmonet", "Нетмонет", form.netmonet)}
+        ${moneyField("yandexFood", "Яндекс.Еда", form.yandexFood)}
+      </div>
+      ${autoRow("Безнал итого", preview.cashlessTotal)}
+      <div class="two">
+        ${moneyField("cashRevenue", "Наличные", form.cashRevenue)}
+        ${moneyField("transferRevenue", "Переводы", form.transferRevenue)}
+      </div>
+      ${resultRow("Выручка итого", preview.revenueTotal, "big")}
+
+      <h2 class="sec">Расходы из кассы</h2>
+      ${moneyField("washCost", "Мойка", form.washCost)}
+      <div class="two">
+        ${numberField("hookahCount", "Кальяны, шт", form.hookahCount)}
+        ${autoField(`Выпл. кальяны (${preview.hookahCount} × ${formatMoneyPlain(preview.hookahRate)})`, preview.hookahPayout)}
+      </div>
+      <div class="extra-box">
+        <div class="extra-head">
+          <span class="row-title">Доп. расходы</span>
+          <button class="ghost mini" type="button" data-shift-action="add-expense">Добавить</button>
+        </div>
+        ${form.extraExpenses.map((expense, index)=>`
+          <div class="extra-row" data-expense-row="${index}">
+            <input name="extraAmount" type="number" min="0" step="1" value="${expense.amount || ""}" placeholder="сумма">
+            <input name="extraComment" type="text" value="${escapeAttr(expense.comment || "")}" placeholder="комментарий">
+            <button class="ghost mini danger-action" type="button" data-remove-expense="${index}">×</button>
+          </div>
+        `).join("") || `<div class="muted-line">Дополнительных расходов нет</div>`}
+      </div>
+      ${autoRow("Доп. расходы итого", preview.extraExpensesTotal)}
+
+      <h2 class="sec">Прочее</h2>
+      ${moneyField("taxiAmount", "Такси", form.taxiAmount)}
+      <div class="hint">Не вычитается из кассы. Предел на смену — ${formatMoneyPlain(init.taxiLimit)} ₽.</div>
+
+      <h2 class="sec">Инкассация</h2>
+      ${moneyField("collectionAmount", "Изъято из кассы", form.collectionAmount)}
+
+      <h2 class="sec">Касса на закрытии</h2>
+      ${moneyField("closingCashActual", "Остаток (факт) — пересчитай кассу", form.closingCashActual)}
+      ${autoRow("Остаток (расч.)", preview.closingCashExpected)}
+      ${resultRow("Разница", preview.closingCashDiff, cashDiffOk ? "ok" : "warn", cashDiffOk ? `в пределах нормы (порог ${formatMoneyPlain(init.cashDiffLimit)} ₽)` : `выше порога ${formatMoneyPlain(init.cashDiffLimit)} ₽`)}
+
+      <h2 class="sec">План / факт</h2>
+      ${autoRow("План выручки", preview.revenuePlan)}
+      <div class="bar"><i style="width:${planWidth}%"></i></div>
+      <div class="hint">Выполнение плана — ${formatPercent(preview.revenuePlanPercent)}</div>
+
+      <h2 class="sec">Фото чеков</h2>
+      <div class="photo-grid">
+        ${photoInput("terminal_1", "Терминал 1")}
+        ${photoInput("terminal_2", "Терминал 2")}
+        ${photoInput("shift_close", "Закрытие смены")}
+        ${photoInput("other", "Другое")}
+      </div>
+      ${existing?.photos?.length ? `<div class="hint">Загружено фото: ${existing.photos.length}</div>` : ""}
+
+      <h2 class="sec">Комментарий</h2>
+      <label class="field">
+        <textarea name="comment" class="inp ta" placeholder="Комментарий к смене">${escapeHtml(form.comment || "")}</textarea>
+      </label>
+
+      ${state.shiftClosingError ? `<div class="error shift-error">${escapeHtml(state.shiftClosingError)}</div>` : ""}
+
+      <div class="shift-footer">
+        <button class="btn brand-action" type="submit">${existing ? "Обновить смену" : "Закрыть смену"}</button>
+        <div class="tg">Отчёт уйдёт в Telegram руководителю и команде, если Telegram подключён</div>
+      </div>
+    </form>
+  `;
+}
+
+function moneyField(name, label, value){
+  return `
+    <label class="field">
+      <span>${escapeHtml(label)}</span>
+      <input class="inp" name="${name}" data-shift-money="${name}" type="number" min="0" step="1" value="${Number(value || 0)}">
+    </label>
+  `;
+}
+
+function numberField(name, label, value){
+  return `
+    <label class="field">
+      <span>${escapeHtml(label)}</span>
+      <input class="inp" name="${name}" data-shift-money="${name}" type="number" min="0" step="1" value="${Number(value || 0)}">
+    </label>
+  `;
+}
+
+function autoField(label, value){
+  return `
+    <div class="field">
+      <span>${escapeHtml(label)}</span>
+      <div class="inp auto-inp">${formatMoneyPlain(value)} ₽</div>
+    </div>
+  `;
+}
+
+function autoRow(label, value){
+  return `
+    <div class="auto">
+      <span class="l">${escapeHtml(label)}</span>
+      <span class="badge">авто</span>
+      <span class="v">${formatMoneyPlain(value)} ₽</span>
+    </div>
+  `;
+}
+
+function resultRow(label, value, variant = "", sub = ""){
+  return `
+    <div class="result ${variant}">
+      <div class="l">${escapeHtml(label)}${sub ? `<span class="sub">${escapeHtml(sub)}</span>` : ""}</div>
+      <div class="v">${formatMoneyPlain(value)} ₽</div>
+    </div>
+  `;
+}
+
+function photoInput(type, label){
+  const selected = state.shiftClosingPhotos[type];
+  return `
+    <label class="photo-input">
+      <span>${escapeHtml(label)}</span>
+      <input type="file" accept="image/*" data-photo-type="${type}">
+      <b>${selected ? escapeHtml(selected.filename) : "Выбрать фото"}</b>
+    </label>
+  `;
+}
+
+function bindShiftClosingForm(){
+  const form = app.querySelector("#shiftClosingForm");
+  if(!form || !state.shiftClosingForm) return;
+
+  form.addEventListener("submit", (event)=>{
+    event.preventDefault();
+    submitShiftClosing();
+  });
+
+  app.querySelectorAll("[data-shift-money]").forEach((input)=>{
+    input.addEventListener("input", ()=>{
+      state.shiftClosingForm[input.name] = integerOrNull(input.value) || 0;
+    });
+    input.addEventListener("change", ()=>{
+      collectShiftClosingForm();
+      render();
+    });
+  });
+
+  app.querySelector("[data-shift-action='add-expense']")?.addEventListener("click", ()=>{
+    collectShiftClosingForm();
+    state.shiftClosingForm.extraExpenses.push({ amount:0, comment:"" });
+    render();
+  });
+
+  app.querySelectorAll("[data-remove-expense]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      collectShiftClosingForm();
+      state.shiftClosingForm.extraExpenses.splice(Number(button.dataset.removeExpense), 1);
+      render();
+    });
+  });
+
+  app.querySelectorAll("[data-photo-type]").forEach((input)=>{
+    input.addEventListener("change", ()=>handleShiftPhoto(input));
+  });
+
+  app.querySelector("[data-shift-action='send-telegram']")?.addEventListener("click", resendShiftTelegram);
+}
+
+async function loadShiftClosing(){
+  state.shiftClosingLoading = true;
+  state.shiftClosingError = "";
+  render();
+  try{
+    const init = await apiGet("/api/shift-closing/init");
+    state.shiftClosingInit = init;
+    state.shiftClosingRecord = init.existing;
+    state.shiftClosingForm = shiftClosingFormFrom(init, init.existing);
+    state.shiftClosingPhotos = {};
+  }catch(error){
+    state.shiftClosingError = error.status === 403 ? "Нет доступа к закрытию смены" : "Проверь соединение и попробуй ещё раз";
+  }finally{
+    state.shiftClosingLoading = false;
+    render();
+  }
+}
+
+function shiftClosingFormFrom(init, record){
+  const values = record?.values || {};
+  return {
+    workDate: record?.workDate || init.workDate,
+    openingCashActual: values.openingCashActual ?? init.openingCashExpected ?? 0,
+    terminal1: values.terminal1 || 0,
+    terminal2: values.terminal2 || 0,
+    netmonet: values.netmonet || 0,
+    yandexFood: values.yandexFood || 0,
+    cashRevenue: values.cashRevenue || 0,
+    transferRevenue: values.transferRevenue || 0,
+    washCost: values.washCost || 0,
+    hookahCount: values.hookahCount || 0,
+    taxiAmount: values.taxiAmount || 0,
+    collectionAmount: values.collectionAmount || 0,
+    closingCashActual: values.closingCashActual || 0,
+    extraExpenses: (record?.extraExpenses || []).map((expense)=>({
+      amount: expense.amount || 0,
+      comment: expense.comment || ""
+    })),
+    comment: values.comment || ""
+  };
+}
+
+function collectShiftClosingForm(){
+  const form = app.querySelector("#shiftClosingForm");
+  if(!form || !state.shiftClosingForm) return state.shiftClosingForm;
+
+  const next = { ...state.shiftClosingForm };
+  ["openingCashActual","terminal1","terminal2","netmonet","yandexFood","cashRevenue","transferRevenue","washCost","hookahCount","taxiAmount","collectionAmount","closingCashActual"].forEach((field)=>{
+    next[field] = integerOrNull(form.elements[field]?.value) || 0;
+  });
+  next.comment = form.elements.comment?.value || "";
+  next.extraExpenses = Array.from(app.querySelectorAll("[data-expense-row]")).map((row)=>({
+    amount: integerOrNull(row.querySelector("input[name='extraAmount']")?.value) || 0,
+    comment: row.querySelector("input[name='extraComment']")?.value || ""
+  })).filter((expense)=>expense.amount > 0 || expense.comment.trim());
+  state.shiftClosingForm = next;
+  return next;
+}
+
+function computeShiftClosingPreview(form, init){
+  const extraExpensesTotal = (form.extraExpenses || []).reduce((sum, expense)=>sum + Number(expense.amount || 0), 0);
+  const hookahRate = Number(init.hookahEmployee?.rate || 0);
+  const hookahCount = Number(form.hookahCount || 0);
+  const cashlessTotal = Number(form.terminal1 || 0) + Number(form.terminal2 || 0) + Number(form.netmonet || 0) + Number(form.yandexFood || 0);
+  const revenueTotal = cashlessTotal + Number(form.cashRevenue || 0) + Number(form.transferRevenue || 0);
+  const hookahPayout = hookahCount * hookahRate;
+  const closingCashExpected =
+    Number(form.openingCashActual || 0)
+    + Number(form.cashRevenue || 0)
+    + Number(form.transferRevenue || 0)
+    - Number(form.washCost || 0)
+    - hookahPayout
+    - extraExpensesTotal
+    - Number(form.collectionAmount || 0);
+  const revenuePlan = Number(init.revenuePlan || 0);
+  return {
+    openingCashExpected: Number(init.openingCashExpected || 0),
+    openingCashDiff: Number(form.openingCashActual || 0) - Number(init.openingCashExpected || 0),
+    hookahCount,
+    hookahRate,
+    cashlessTotal,
+    revenueTotal,
+    hookahPayout,
+    extraExpensesTotal,
+    closingCashExpected,
+    closingCashDiff: Number(form.closingCashActual || 0) - closingCashExpected,
+    revenuePlan,
+    revenuePlanPercent: revenuePlan > 0 ? (revenueTotal / revenuePlan) * 100 : 0
+  };
+}
+
+async function handleShiftPhoto(input){
+  const file = input.files?.[0];
+  if(!file) return;
+  const dataUrl = await readFileAsDataUrl(file);
+  state.shiftClosingPhotos[input.dataset.photoType] = {
+    filename: file.name,
+    mimeType: file.type || "application/octet-stream",
+    dataUrl
+  };
+  render();
+}
+
+function readFileAsDataUrl(file){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onload = ()=>resolve(String(reader.result || ""));
+    reader.onerror = ()=>reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function submitShiftClosing(){
+  if(state.shiftClosingSaving) return;
+  const form = collectShiftClosingForm();
+  state.shiftClosingSaving = true;
+  state.shiftClosingError = "";
+  render();
+  try{
+    const payload = shiftClosingPayload(form);
+    const record = state.shiftClosingRecord?.id
+      ? await apiPatch(`/api/shift-closing/${encodeURIComponent(state.shiftClosingRecord.id)}`, payload)
+      : await apiPost("/api/shift-closing", payload);
+    state.shiftClosingRecord = record;
+    await uploadShiftPhotos(record.id);
+    state.shiftClosingInit = await apiGet("/api/shift-closing/init");
+    state.shiftClosingRecord = state.shiftClosingInit.existing || record;
+    state.shiftClosingForm = shiftClosingFormFrom(state.shiftClosingInit, state.shiftClosingRecord);
+    state.shiftClosingPhotos = {};
+  }catch(error){
+    state.shiftClosingError = error.code === "shift_already_closed" ? "Смена за эту дату уже закрыта" : "Не удалось закрыть смену";
+  }finally{
+    state.shiftClosingSaving = false;
+    render();
+  }
+}
+
+function shiftClosingPayload(form){
+  return {
+    workDate: form.workDate,
+    openingCashActual: Number(form.openingCashActual || 0),
+    terminal1: Number(form.terminal1 || 0),
+    terminal2: Number(form.terminal2 || 0),
+    netmonet: Number(form.netmonet || 0),
+    yandexFood: Number(form.yandexFood || 0),
+    cashRevenue: Number(form.cashRevenue || 0),
+    transferRevenue: Number(form.transferRevenue || 0),
+    washCost: Number(form.washCost || 0),
+    hookahCount: Number(form.hookahCount || 0),
+    taxiAmount: Number(form.taxiAmount || 0),
+    collectionAmount: Number(form.collectionAmount || 0),
+    closingCashActual: Number(form.closingCashActual || 0),
+    extraExpenses: (form.extraExpenses || []).map((expense)=>({
+      amount: Number(expense.amount || 0),
+      comment: expense.comment || ""
+    })),
+    comment: form.comment || ""
+  };
+}
+
+async function uploadShiftPhotos(shiftClosingId){
+  const entries = Object.entries(state.shiftClosingPhotos || {});
+  for(const [photoType, photo] of entries){
+    await apiPost(`/api/shift-closing/${encodeURIComponent(shiftClosingId)}/photos`, {
+      photoType,
+      filename: photo.filename,
+      mimeType: photo.mimeType,
+      dataUrl: photo.dataUrl
+    });
+  }
+}
+
+async function resendShiftTelegram(){
+  if(!state.shiftClosingRecord?.id || state.shiftClosingSaving) return;
+  state.shiftClosingSaving = true;
+  state.shiftClosingError = "";
+  render();
+  try{
+    await apiPost(`/api/shift-closing/${encodeURIComponent(state.shiftClosingRecord.id)}/send-telegram-report`, { audience:"both" });
+    state.shiftClosingRecord = await apiGet(`/api/shift-closing/${encodeURIComponent(state.shiftClosingRecord.id)}`);
+  }catch(error){
+    state.shiftClosingError = "Не удалось отправить Telegram";
+  }finally{
+    state.shiftClosingSaving = false;
+    render();
+  }
 }
 
 function renderSchedulePage(service){
@@ -1576,6 +2025,10 @@ function shortScheduleName(name){
 
 function formatMoneyPlain(value){
   return Math.round(Number(value || 0)).toLocaleString("ru-RU");
+}
+
+function formatPercent(value){
+  return `${Math.round(Number(value || 0))}%`;
 }
 
 function compactCellMoney(value){

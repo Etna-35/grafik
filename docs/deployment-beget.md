@@ -284,6 +284,7 @@ NC_SITE_URL=https://admin.no-money-no-honey.ru
 
 Когда появится backend, будут добавлены отдельные переменные для сессий, PIN-хеширования и публичных URL API/frontend.
 Backend уже использует `SESSION_SECRET`, `PIN_PEPPER`, `OWNER_NAME`, `OWNER_PIN`, `COOKIE_SECURE`, `PUBLIC_GRAFIK_URL`.
+Для Telegram-отчетов закрытия смены можно добавить `TELEGRAM_BOT_TOKEN`, `TELEGRAM_MANAGER_CHAT_ID`, `TELEGRAM_TEAM_CHAT_ID`. Если эти переменные не заданы или Telegram недоступен, закрытие смены не блокируется, а попытка отправки сохраняется как `skipped` или `failed`.
 
 ## Первичная установка сервера
 

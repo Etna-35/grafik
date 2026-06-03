@@ -22,6 +22,8 @@ export const env = {
   cookieDomain: process.env.COOKIE_DOMAIN || undefined,
   publicGrafikUrl: optional("PUBLIC_GRAFIK_URL", "https://etna-35.github.io/grafik/"),
   ownerName: optional("OWNER_NAME", "Руководитель"),
-  ownerPin: process.env.OWNER_PIN
+  ownerPin: process.env.OWNER_PIN,
+  telegramBotToken: process.env.TELEGRAM_BOT_TOKEN || "",
+  telegramManagerChatId: process.env.TELEGRAM_MANAGER_CHAT_ID || "",
+  telegramTeamChatId: process.env.TELEGRAM_TEAM_CHAT_ID || ""
 };
-

@@ -23,7 +23,7 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;min-height:100%;background:#ece3d4;color:var(--ink);font-family:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-feature-settings:"tnum" 1}
-button,a,input,select{font:inherit}
+button,a,input,select,textarea{font:inherit}
 a{color:inherit;text-decoration:none}
 .app-shell{min-height:100vh;display:flex;justify-content:center;padding:14px}
 .phone{width:100%;max-width:430px;min-height:calc(100vh - 28px);background:var(--paper);border:1px solid var(--line-strong);border-radius:28px;box-shadow:0 18px 50px rgba(60,40,20,.18),0 2px 0 #fff inset;overflow:hidden}
@@ -89,6 +89,44 @@ a{color:inherit;text-decoration:none}
 .import-panel .mini-icon{width:20px;height:20px;background:rgba(42,35,32,.05);color:var(--ink-soft)}
 .import-body{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:9px;padding:10px 0 0;border-top:1px solid var(--line)}
 .import-result{margin-top:9px;font-size:12px;color:var(--ink-soft);font-weight:700}
+.shift-close-phone{max-width:760px}
+.shift-close-screen{padding:18px 14px 28px}
+.shift-close-form{max-width:720px;margin:0 auto}
+.shift-close-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:0 2px 4px}
+.whorow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.55);border-radius:999px;padding:4px 11px;font-size:12px;font-weight:800;color:var(--ink)}
+.chip.muted{color:var(--ink-soft)}
+.chip .dot{width:8px;height:8px;border-radius:50%;background:var(--brand)}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.auto{display:flex;align-items:center;gap:8px;margin:0 2px 9px;background:#efe9dd;border:1px solid var(--line);border-radius:11px;padding:10px 13px}
+.auto .l{font-size:13px;color:var(--ink-soft);font-weight:700}
+.auto .v{margin-left:auto;font-weight:800;font-size:15px}
+.badge{font-size:9px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-soft);border:1px solid var(--line-strong);border-radius:6px;padding:1px 5px}
+.result{display:flex;align-items:center;gap:8px;margin:2px 2px 9px;background:var(--card);border:1px solid var(--line-strong);border-left:4px solid var(--brand);border-radius:11px;padding:12px 13px;box-shadow:var(--shadow)}
+.result .l{font-weight:800;font-size:14px}
+.result .v{margin-left:auto;font-weight:800;font-size:19px;white-space:nowrap}
+.result.big .v{font-size:22px}
+.result.ok{border-left-color:var(--green)}
+.result.ok .v{color:var(--green)}
+.result.warn{border-left-color:#a33a3a}
+.result.warn .v{color:#a33a3a}
+.result .sub{display:block;font-size:11px;color:var(--ink-soft);font-weight:700;margin-top:2px}
+.hint{font-size:11px;color:var(--ink-soft);margin:-4px 4px 10px;line-height:1.4}
+.bar{height:9px;border-radius:6px;background:#eadfce;overflow:hidden;margin:8px 2px 4px}
+.bar>i{display:block;height:100%;border-radius:6px;background:var(--brand)}
+.extra-box{border:1px solid var(--line);background:rgba(255,253,249,.58);border-radius:11px;padding:11px;margin:0 2px 9px}
+.extra-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.extra-row{display:grid;grid-template-columns:110px 1fr auto;gap:7px;margin-top:7px}
+.extra-row input{min-width:0;border:1px solid var(--line-strong);background:var(--card);border-radius:9px;padding:9px 10px;font-size:13px;font-weight:800;color:var(--ink)}
+.photo-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:0 2px 10px}
+.photo-input{display:block;border:1px solid var(--line);background:var(--card);border-radius:11px;padding:10px;box-shadow:var(--shadow);cursor:pointer}
+.photo-input input{display:none}
+.photo-input span{display:block;font-size:11px;color:var(--ink-soft);font-weight:800;margin-bottom:4px}
+.photo-input b{display:block;font-size:12px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.shift-footer{padding:12px 2px 2px}
+.shift-footer .btn{width:100%;padding:14px;border:1px solid var(--brand);font-size:15px;font-weight:800}
+.shift-error{margin:8px 2px;text-align:left}
+.auto-inp{background:#efe9dd;border-color:var(--line);box-shadow:none}
 .phone.schedule-phone{max-width:1080px;border-radius:22px}
 .schedule-screen{padding:18px 14px 28px}
 .monthbar{display:flex;align-items:center;gap:8px;margin:0 2px 12px}
@@ -207,7 +245,8 @@ a{color:inherit;text-decoration:none}
 .save-error{margin-bottom:10px;color:#a33a3a;border-color:#e3b8b8;font-size:13px;font-weight:800}
 .field{display:block;min-width:0}
 .field span{display:block;font-size:11px;color:var(--ink-soft);font-weight:800;margin:0 0 5px 2px}
-.field input,.payout-add input{width:100%;min-width:0;border:1px solid var(--line-strong);background:var(--card);border-radius:10px;padding:10px 11px;font:inherit;font-size:14px;font-weight:800;color:var(--ink)}
+.field input,.field textarea,.payout-add input{width:100%;min-width:0;border:1px solid var(--line-strong);background:var(--card);border-radius:10px;padding:10px 11px;font:inherit;font-size:14px;font-weight:800;color:var(--ink)}
+.field textarea{min-height:72px;resize:vertical;font-weight:600}
 .field select{width:100%;min-width:0;border:1px solid var(--line-strong);background:var(--card);border-radius:10px;padding:10px 11px;font:inherit;font-size:14px;font-weight:800;color:var(--ink)}
 .admin-phone{max-width:980px}
 .admin-screen{padding:18px 14px 28px}
@@ -262,12 +301,13 @@ a{color:inherit;text-decoration:none}
   .service-page{min-height:100vh}
   .pin-wrap{min-height:calc(100vh - 90px);justify-content:center;padding-top:0}
   .phone.schedule-phone .schedule-screen{max-width:none;padding:22px 24px 34px}
+  .shift-close-screen{max-width:860px;padding:24px 32px 38px}
   .admin-screen{max-width:1280px;padding:24px 32px 38px}
   .backrow{margin-bottom:16px}
   .gridwrap{max-height:calc(100vh - 250px);border-radius:8px;box-shadow:0 1px 2px rgba(60,40,20,.05)}
   .schedule-grid th.emp{min-width:52px;width:52px}
   .schedule-grid td.cell{min-width:52px;width:52px}
-  .moneySummary,.panel,.stat,.navcard,.scard,.roleTotals .rt,.admin-employee,.access-row,.field input,.field select,.payout-add input{border-radius:8px}
+  .moneySummary,.panel,.stat,.navcard,.scard,.roleTotals .rt,.admin-employee,.access-row,.field input,.field textarea,.field select,.payout-add input{border-radius:8px}
   .panel,.stat,.navcard,.scard,.moneySummary{box-shadow:0 1px 2px rgba(60,40,20,.05)}
   .nav{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
   .navcard{min-height:104px}
@@ -290,6 +330,7 @@ a{color:inherit;text-decoration:none}
   .key{height:58px}
   .nav{grid-template-columns:1fr}
   .stats{grid-template-columns:1fr}
+  .two,.photo-grid,.extra-row{grid-template-columns:1fr}
   .schedule-summary{grid-template-columns:1fr}
   .editor-grid{grid-template-columns:1fr}
   .date-editor-grid{grid-template-columns:1fr}
