@@ -335,9 +335,17 @@ function renderScheduleContent(schedule){
         <button class="iconbtn small" data-month-action="next">${arrowRightIcon()}</button>
       </div>
       <div class="schedule-summary">
-        <div class="stat"><div class="k">ФОТ</div><div class="v">${formatMoney(schedule.summary.totalFot)}</div></div>
-        <div class="stat"><div class="k">Выдано</div><div class="v">${formatMoney(schedule.summary.totalPaid)}</div></div>
-        <div class="stat"><div class="k">План</div><div class="v">${escapeHtml(schedule.summary.revenuePlan)}</div></div>
+        ${schedule.canSeeMoney
+          ? `
+            <div class="stat"><div class="k">ФОТ</div><div class="v">${formatMoney(schedule.summary.totalFot)}</div></div>
+            <div class="stat"><div class="k">Выдано</div><div class="v">${formatMoney(schedule.summary.totalPaid)}</div></div>
+            <div class="stat"><div class="k">План</div><div class="v">${escapeHtml(schedule.summary.revenuePlan)}</div></div>
+          `
+          : `
+            <div class="stat"><div class="k">Начислено</div><div class="v">${formatMoney(schedule.summary.totalFot)}</div></div>
+            <div class="stat"><div class="k">Выдано</div><div class="v">${formatMoney(schedule.summary.totalPaid)}</div></div>
+            <div class="stat"><div class="k">Остаток</div><div class="v">${formatMoney(schedule.summary.totalRemaining)}</div></div>
+          `}
       </div>
     </div>
     ${schedule.employees.length ? renderScheduleTable(schedule) : renderEmptySchedule()}
@@ -361,21 +369,21 @@ function renderScheduleTable(schedule){
           <tr>
             <th>Дата</th>
             ${schedule.employees.map((employee)=>`<th>${escapeHtml(shortName(employee.name))}</th>`).join("")}
-            <th>ФОТ</th>
+            ${schedule.canSeeMoney ? `<th>ФОТ</th>` : ""}
           </tr>
         </thead>
         <tbody>
-          ${schedule.days.map((day)=>renderScheduleDay(day, schedule.employees)).join("")}
+          ${schedule.days.map((day)=>renderScheduleDay(day, schedule.employees, schedule.canSeeMoney)).join("")}
         </tbody>
       </table>
     </div>
     <div class="employee-totals">
-      ${schedule.employees.map(renderEmployeeTotal).join("")}
+      ${schedule.employees.filter((employee)=>schedule.canSeeMoney || employee.id === state.user?.id).map(renderEmployeeTotal).join("")}
     </div>
   `;
 }
 
-function renderScheduleDay(day, employees){
+function renderScheduleDay(day, employees, canSeeMoney){
   const date = new Date(`${day.date}T00:00:00`);
   const dateLabel = new Intl.DateTimeFormat("ru-RU", { day:"2-digit", weekday:"short" }).format(date);
   return `
@@ -385,7 +393,7 @@ function renderScheduleDay(day, employees){
         ${day.isDeadline ? `<span class="mini-mark">☆</span>` : ""}
       </td>
       ${employees.map((employee)=>renderShiftCell(day, employee)).join("")}
-      <td class="fot-cell">${day.fot ? formatMoney(day.fot) : ""}</td>
+      ${canSeeMoney ? `<td class="fot-cell">${day.fot ? formatMoney(day.fot) : ""}</td>` : ""}
     </tr>
   `;
 }
@@ -404,8 +412,8 @@ function renderShiftCell(day, employee){
 
   const label = shift
     ? shift.payModel === "fixed"
-      ? formatMoney(shift.payAmount)
-      : `${formatHours(shift.hours)}ч`
+      ? shift.payAmount == null ? "•" : formatMoney(shift.payAmount)
+      : shift.hours == null ? "•" : `${formatHours(shift.hours)}ч`
     : "";
 
   return `

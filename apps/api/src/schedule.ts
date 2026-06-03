@@ -378,9 +378,9 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       FROM employee_scores
       WHERE work_date >= $1::date
         AND work_date < ($1::date + interval '1 month')
-        AND ($2::boolean = true OR employee_id = $3::uuid)
+        AND $2::boolean = true
     `,
-    [start, canSeeAllMoney, user.id]
+    [start, canSeeAllMoney]
   );
 
   const shiftsByDate = new Map<string, Record<string, unknown>>();
@@ -389,11 +389,12 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
 
   for (const row of shiftRows.rows) {
     const date = row.work_date;
+    const isOwnShift = row.employee_id === user.id;
     const item = {
       employeeId: row.employee_id,
       hours: row.planned_hours ? Number(row.planned_hours) : null,
       actualEndTime: row.actual_end_time,
-      payAmount: row.pay_amount || 0,
+      payAmount: canSeeAllMoney || isOwnShift ? row.pay_amount || 0 : null,
       payModel: row.pay_model
     };
     shiftsByDate.set(date, {
@@ -419,36 +420,47 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     return {
       date,
       isDeadline: dayRows.rows.some((row) => row.work_date === date && row.is_deadline),
-      plannedPayEmployeeIds: plannedPayRows.rows.filter((row) => row.work_date === date).map((row) => row.employee_id),
+      plannedPayEmployeeIds: plannedPayRows.rows
+        .filter((row) => row.work_date === date && (canSeeAllMoney || row.employee_id === user.id))
+        .map((row) => row.employee_id),
       payouts: payoutRows.rows.filter((row) => row.work_date === date),
       scores: scoreRows.rows.filter((row) => row.work_date === date),
       shifts,
       coverage: Object.keys(shifts).length,
-      fot: dayFot,
-      revenuePlan: planRange(dayFot)
+      fot: canSeeAllMoney ? dayFot : null,
+      revenuePlan: canSeeAllMoney ? planRange(dayFot) : null
     };
   });
 
-  const totalFot = Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.accrued, 0);
-  const totalPaid = Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.paid, 0);
+  const ownTotals = employeeTotals.get(user.id) || { accrued: 0, paid: 0, shifts: 0 };
+  const totalFot = canSeeAllMoney
+    ? Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.accrued, 0)
+    : ownTotals.accrued;
+  const totalPaid = canSeeAllMoney
+    ? Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.paid, 0)
+    : ownTotals.paid;
 
   return {
     year,
     month,
+    canSeeMoney: canSeeAllMoney,
     employees: employeeRows.rows.map((employee) => {
       const totals = employeeTotals.get(employee.id) || { accrued: 0, paid: 0, shifts: 0 };
       const payModel = employee.pay_model || (employee.schedule_role === "dish" || employee.role === "dishwasher" ? "fixed" : "hourly");
+      const isOwnEmployee = employee.id === user.id;
       return {
         id: employee.id,
         name: employee.display_name,
         role: employee.schedule_role || employee.role,
         roleLabel: roleLabels[employee.schedule_role || employee.role] || "Сотрудник",
         defaultHours: employee.default_hours ? Number(employee.default_hours) : null,
-        hourlyRate: employee.hourly_rate,
-        payModel,
+        hourlyRate: canSeeAllMoney || isOwnEmployee ? employee.hourly_rate : null,
+        payModel: canSeeAllMoney || isOwnEmployee ? payModel : null,
         totals: {
-          ...totals,
-          remaining: Math.max(0, totals.accrued - totals.paid)
+          shifts: totals.shifts,
+          accrued: canSeeAllMoney || isOwnEmployee ? totals.accrued : null,
+          paid: canSeeAllMoney || isOwnEmployee ? totals.paid : null,
+          remaining: canSeeAllMoney || isOwnEmployee ? Math.max(0, totals.accrued - totals.paid) : null
         }
       };
     }),
@@ -458,7 +470,7 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       totalPaid,
       totalRemaining: Math.max(0, totalFot - totalPaid),
       workingDays: daysWithShifts.size,
-      revenuePlan: planRange(totalFot)
+      revenuePlan: canSeeAllMoney ? planRange(totalFot) : null
     }
   };
 }
