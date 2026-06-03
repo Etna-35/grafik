@@ -19,6 +19,7 @@ import {
 } from "./auth.js";
 import { env } from "./env.js";
 import { pool, query } from "./db.js";
+import { registerAdminRoutes } from "./admin.js";
 import { registerScheduleRoutes } from "./schedule.js";
 
 const pinSchema = z.object({
@@ -134,6 +135,7 @@ export function buildServer() {
   });
 
   registerScheduleRoutes(app);
+  registerAdminRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,

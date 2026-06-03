@@ -7,7 +7,7 @@ const services = [
   ["shift_close", "Закрытие смены", "/smena"],
   ["tasks", "Задачи", "/tasks"],
   ["payroll", "Выплаты", "/payroll"],
-  ["admin", "Админка", "https://admin.no-money-no-honey.ru"]
+  ["admin", "Админка", "/admin"]
 ] as const;
 
 async function main(): Promise<void> {
@@ -84,4 +84,3 @@ main()
   .finally(async () => {
     await pool.end();
   });
-

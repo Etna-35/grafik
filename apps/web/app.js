@@ -23,7 +23,7 @@ const serviceMeta = {
   },
   admin: {
     accent: "var(--ink)",
-    description: "Управление",
+    description: "Сотрудники и права",
     icon: settingsIcon
   }
 };
@@ -38,6 +38,11 @@ let state = {
   scheduleError: "",
   selectedScheduleCell: null,
   scheduleSaving: false,
+  admin: null,
+  adminLoading: false,
+  adminError: "",
+  selectedAdminEmployeeId: "new",
+  adminSaving: false,
   importResult: null,
   pin: "",
   error: ""
@@ -184,7 +189,7 @@ function renderHub(){
 function renderServiceCard(service){
   const meta = serviceMeta[service.code] || serviceMeta.schedule;
   return `
-    <button class="navcard" style="border-left-color:${meta.accent}" data-url="${escapeAttr(service.url)}">
+    <button class="navcard" style="border-left-color:${meta.accent}" data-url="${escapeAttr(serviceUrl(service))}">
       <span class="icon" style="color:${meta.accent};background:${tintFor(service.code)}">${meta.icon()}</span>
       <span>
         <span class="t">${escapeHtml(service.title)}</span>
@@ -195,7 +200,7 @@ function renderServiceCard(service){
 }
 
 function renderServicePage(path){
-  const service = state.services.find((item)=>item.url === path);
+  const service = serviceForPath(path);
   if(!service){
     history.replaceState(null, "", "/");
     renderHub();
@@ -204,6 +209,10 @@ function renderServicePage(path){
 
   if(service.code === "schedule"){
     renderSchedulePage(service);
+    return;
+  }
+  if(service.code === "admin"){
+    renderAdminPage(service);
     return;
   }
 
@@ -235,6 +244,371 @@ function renderServicePage(path){
     history.pushState(null, "", "/");
     render();
   });
+}
+
+function serviceUrl(service){
+  return service.code === "admin" ? "/admin" : service.url;
+}
+
+function serviceForPath(path){
+  if(path === "/admin"){
+    return state.services.find((item)=>item.code === "admin") || null;
+  }
+  return state.services.find((item)=>item.url === path) || null;
+}
+
+function renderAdminPage(service){
+  if(!state.admin && !state.adminLoading && !state.adminError){
+    loadAdmin();
+  }
+
+  const body = state.adminLoading
+    ? `<div class="panel"><div class="loader compact">Загружаю сотрудников</div></div>`
+    : state.adminError && !state.admin
+      ? `<div class="panel"><div class="row-title">Не удалось загрузить админку</div><div class="row-sub">${escapeHtml(state.adminError)}</div></div>`
+      : state.admin
+        ? renderAdminContent(state.admin)
+        : "";
+
+  app.innerHTML = `
+    <div class="phone wide admin-phone">
+      <section class="screen service-page admin-screen">
+        <div class="backrow">
+          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">${escapeHtml(service.title)}</h1>
+          <span class="status">ЛК</span>
+        </div>
+        ${body}
+        <div class="panel admin-tech">
+          <span class="grow">
+            <span class="row-title">Техническая база</span>
+            <span class="row-sub">NocoDB остаётся для ручной проверки таблиц</span>
+          </span>
+          <a class="ghost" href="https://admin.no-money-no-honey.ru/">Открыть</a>
+        </div>
+      </section>
+    </div>
+  `;
+
+  app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+
+  bindAdminPage();
+}
+
+function renderAdminContent(admin){
+  return `
+    <div class="admin-layout">
+      <div class="panel admin-list">
+        <div class="admin-list-head">
+          <span>
+            <span class="row-title">Сотрудники</span>
+            <span class="row-sub">${admin.employees.length} в базе</span>
+          </span>
+          <button class="ghost mini" data-action="admin-new">Добавить</button>
+        </div>
+        <div class="admin-employees">
+          <button class="admin-employee ${state.selectedAdminEmployeeId === "new" ? "on" : ""}" data-admin-employee="new">
+            <span class="adm-name">Новый сотрудник</span>
+            <span class="adm-meta">PIN и доступы</span>
+          </button>
+          ${admin.employees.map((employee)=>`
+            <button class="admin-employee ${state.selectedAdminEmployeeId === employee.id ? "on" : ""} ${employee.isActive ? "" : "off"}" data-admin-employee="${escapeAttr(employee.id)}">
+              <span class="adm-name">${escapeHtml(employee.displayName)}</span>
+              <span class="adm-meta">${escapeHtml(employee.roleLabel)} · ${employee.hasPin ? "PIN есть" : "без PIN"}</span>
+            </button>
+          `).join("")}
+        </div>
+      </div>
+      <div class="panel admin-form-panel">
+        ${renderEmployeeForm(admin)}
+      </div>
+    </div>
+  `;
+}
+
+function renderEmployeeForm(admin){
+  const isNew = state.selectedAdminEmployeeId === "new";
+  const employee = isNew
+    ? emptyAdminEmployee(admin.services)
+    : admin.employees.find((item)=>item.id === state.selectedAdminEmployeeId) || emptyAdminEmployee(admin.services);
+
+  return `
+    <form id="employeeForm" class="admin-form">
+      <div class="editor-head">
+        <span class="grow">
+          <span class="row-title">${isNew ? "Добавить сотрудника" : escapeHtml(employee.displayName)}</span>
+          <span class="row-sub">${isNew ? "Создание входа в личный кабинет" : "Редактирование карточки и доступов"}</span>
+        </span>
+        <span class="admin-save-state">${state.adminSaving ? "Сохраняю" : ""}</span>
+      </div>
+
+      <div class="admin-fields">
+        <label class="field">
+          <span>Имя</span>
+          <input name="displayName" type="text" value="${escapeAttr(employee.displayName)}" autocomplete="off" required>
+        </label>
+        <label class="field">
+          <span>Роль</span>
+          <select name="role">
+            ${roleOptions().map((option)=>`<option value="${option.value}" ${employee.role === option.value ? "selected" : ""}>${option.label}</option>`).join("")}
+          </select>
+        </label>
+        <label class="field">
+          <span>${isNew ? "PIN" : "Новый PIN"}</span>
+          <input name="pin" type="password" inputmode="numeric" maxlength="4" pattern="\\d{4}" placeholder="${isNew ? "4 цифры" : "не менять"}" ${isNew ? "required" : ""}>
+        </label>
+        <label class="checkrow active-toggle">
+          <input name="isActive" type="checkbox" ${employee.isActive ? "checked" : ""}>
+          <span>Активен</span>
+        </label>
+      </div>
+
+      <div class="admin-fields schedule-settings">
+        <label class="field">
+          <span>В графике</span>
+          <select name="scheduleRole">
+            <option value="" ${!employee.scheduleRole ? "selected" : ""}>Не показывать</option>
+            ${scheduleRoleOptions().map((option)=>`<option value="${option.value}" ${employee.scheduleRole === option.value ? "selected" : ""}>${option.label}</option>`).join("")}
+          </select>
+        </label>
+        <label class="field">
+          <span>Оплата</span>
+          <select name="payModel">
+            <option value="" ${!employee.payModel ? "selected" : ""}>Авто</option>
+            <option value="hourly" ${employee.payModel === "hourly" ? "selected" : ""}>Почасовая</option>
+            <option value="fixed" ${employee.payModel === "fixed" ? "selected" : ""}>Фикс</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Часы</span>
+          <input name="defaultHours" type="number" min="0" max="24" step="0.5" value="${employee.defaultHours ?? ""}" placeholder="12">
+        </label>
+        <label class="field">
+          <span>Ставка/час</span>
+          <input name="hourlyRate" type="number" min="0" step="50" value="${employee.hourlyRate ?? ""}" placeholder="250">
+        </label>
+      </div>
+
+      <div class="access-box">
+        <div class="row-title">Доступы</div>
+        <div class="row-sub">Раздел виден сотруднику только при включённом доступе</div>
+        <div class="access-grid">
+          ${admin.services.map((service)=>renderServiceAccess(service, employee)).join("")}
+        </div>
+      </div>
+
+      ${state.adminError ? `<div class="error admin-form-error">${escapeHtml(state.adminError)}</div>` : ""}
+
+      <div class="admin-actions">
+        <button class="ghost brand-action" type="submit">${isNew ? "Создать" : "Сохранить"}</button>
+        ${isNew ? "" : `<button class="ghost" type="button" data-action="admin-reset">Сбросить</button>`}
+      </div>
+    </form>
+  `;
+}
+
+function renderServiceAccess(service, employee){
+  const access = employee.services.find((item)=>item.code === service.code) || { canView:false, canEdit:false };
+  return `
+    <div class="access-row" data-admin-service="${escapeAttr(service.code)}">
+      <div class="access-title">
+        <span class="mini-icon" style="color:${(serviceMeta[service.code] || serviceMeta.schedule).accent}">${(serviceMeta[service.code] || serviceMeta.schedule).icon()}</span>
+        <span>${escapeHtml(service.title)}</span>
+      </div>
+      <label><input name="canView" type="checkbox" ${access.canView ? "checked" : ""}> Видит</label>
+      <label><input name="canEdit" type="checkbox" ${access.canEdit ? "checked" : ""}> Меняет</label>
+    </div>
+  `;
+}
+
+function bindAdminPage(){
+  if(!state.admin) return;
+
+  const newButton = app.querySelector("[data-action='admin-new']");
+  if(newButton){
+    newButton.addEventListener("click", ()=>{
+      state.selectedAdminEmployeeId = "new";
+      state.adminError = "";
+      render();
+    });
+  }
+
+  app.querySelectorAll("[data-admin-employee]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      state.selectedAdminEmployeeId = button.dataset.adminEmployee;
+      state.adminError = "";
+      render();
+    });
+  });
+
+  const form = app.querySelector("#employeeForm");
+  if(form){
+    form.addEventListener("submit", (event)=>{
+      event.preventDefault();
+      saveAdminEmployee();
+    });
+  }
+
+  const reset = app.querySelector("[data-action='admin-reset']");
+  if(reset){
+    reset.addEventListener("click", render);
+  }
+
+  const role = app.querySelector("select[name='role']");
+  const scheduleRole = app.querySelector("select[name='scheduleRole']");
+  const payModel = app.querySelector("select[name='payModel']");
+  if(role && scheduleRole && payModel){
+    role.addEventListener("change", ()=>{
+      if(role.value === "dishwasher"){
+        scheduleRole.value = "dish";
+        payModel.value = "fixed";
+      }else if(["cook","bar","waiter"].includes(role.value) && !scheduleRole.value){
+        scheduleRole.value = role.value;
+        payModel.value = "hourly";
+      }
+    });
+  }
+}
+
+async function loadAdmin(){
+  state.adminLoading = true;
+  state.adminError = "";
+  render();
+  try{
+    state.admin = await apiGet("/api/admin/employees");
+  }catch(error){
+    state.adminError = "Проверь права доступа и соединение";
+  }finally{
+    state.adminLoading = false;
+    render();
+  }
+}
+
+async function saveAdminEmployee(){
+  if(state.adminSaving) return;
+  const isNew = state.selectedAdminEmployeeId === "new";
+  const body = collectAdminEmployeeForm(isNew);
+  if(!body) return;
+
+  state.adminSaving = true;
+  state.adminError = "";
+  render();
+  try{
+    const result = isNew
+      ? await apiPost("/api/admin/employees", body)
+      : await apiPatch(`/api/admin/employees/${encodeURIComponent(state.selectedAdminEmployeeId)}`, body);
+    state.selectedAdminEmployeeId = result.id;
+    state.admin = await apiGet("/api/admin/employees");
+    state.summary = await apiGet("/api/summary");
+  }catch(error){
+    state.adminError = adminErrorText(error);
+  }finally{
+    state.adminSaving = false;
+    render();
+  }
+}
+
+function collectAdminEmployeeForm(isNew){
+  const form = app.querySelector("#employeeForm");
+  if(!form) return null;
+  const pin = form.elements.pin.value.trim();
+  if(isNew && !/^\d{4}$/.test(pin)){
+    state.adminError = "PIN должен быть из 4 цифр";
+    render();
+    return null;
+  }
+  if(pin && !/^\d{4}$/.test(pin)){
+    state.adminError = "Новый PIN должен быть из 4 цифр";
+    render();
+    return null;
+  }
+
+  const body = {
+    displayName: form.elements.displayName.value.trim(),
+    role: form.elements.role.value,
+    isActive: form.elements.isActive.checked,
+    scheduleRole: form.elements.scheduleRole.value || null,
+    defaultHours: numberOrNull(form.elements.defaultHours.value),
+    hourlyRate: integerOrNull(form.elements.hourlyRate.value),
+    payModel: form.elements.payModel.value || null,
+    services: Array.from(app.querySelectorAll("[data-admin-service]")).map((row)=>{
+      const canEdit = row.querySelector("input[name='canEdit']").checked;
+      const canView = row.querySelector("input[name='canView']").checked || canEdit;
+      return {
+        code: row.dataset.adminService,
+        canView,
+        canEdit
+      };
+    })
+  };
+  if(pin) body.pin = pin;
+  return body;
+}
+
+function emptyAdminEmployee(services){
+  return {
+    id: "new",
+    displayName: "",
+    role: "other",
+    roleLabel: "Сотрудник",
+    isActive: true,
+    scheduleRole: "waiter",
+    defaultHours: 12,
+    hourlyRate: 250,
+    payModel: "hourly",
+    hasPin: false,
+    services: services.map((service)=>({
+      code: service.code,
+      title: service.title,
+      canView: service.code === "schedule",
+      canEdit: false
+    }))
+  };
+}
+
+function roleOptions(){
+  return [
+    { value:"other", label:"Сотрудник" },
+    { value:"waiter", label:"Официант" },
+    { value:"bar", label:"Бармен" },
+    { value:"cook", label:"Повар" },
+    { value:"dishwasher", label:"Мойщица" },
+    { value:"manager", label:"Управляющий" },
+    { value:"owner", label:"Руководитель" }
+  ];
+}
+
+function scheduleRoleOptions(){
+  return [
+    { value:"waiter", label:"Официант" },
+    { value:"bar", label:"Бармен" },
+    { value:"cook", label:"Повар" },
+    { value:"dish", label:"Мойщица" },
+    { value:"other", label:"Другое" }
+  ];
+}
+
+function numberOrNull(value){
+  if(value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function integerOrNull(value){
+  if(value === "") return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.round(number) : null;
+}
+
+function adminErrorText(error){
+  if(error.code === "pin_exists") return "Такой PIN уже используется";
+  if(error.code === "employee_exists") return "Сотрудник с таким именем уже есть";
+  if(error.code === "cannot_disable_self") return "Нельзя отключить самого себя";
+  if(error.code === "cannot_remove_own_admin") return "Нельзя снять свою админку";
+  return error.status === 403 ? "Недостаточно прав" : "Не удалось сохранить";
 }
 
 function renderSchedulePage(service){
@@ -948,7 +1322,7 @@ async function logout(){
 
 async function apiGet(url){
   const response = await fetch(url, { credentials:"same-origin" });
-  if(!response.ok) throw withStatus(response);
+  if(!response.ok) throw await withStatus(response);
   return response.json();
 }
 
@@ -959,7 +1333,7 @@ async function apiPost(url, body){
     headers:{ "Content-Type":"application/json" },
     body:JSON.stringify(body)
   });
-  if(!response.ok) throw withStatus(response);
+  if(!response.ok) throw await withStatus(response);
   return response.json();
 }
 
@@ -983,13 +1357,19 @@ async function apiSend(method, url, body){
   };
   if(body !== undefined) options.body = JSON.stringify(body);
   const response = await fetch(url, options);
-  if(!response.ok) throw withStatus(response);
+  if(!response.ok) throw await withStatus(response);
   return response.json();
 }
 
-function withStatus(response){
+async function withStatus(response){
   const error = new Error(response.statusText);
   error.status = response.status;
+  try{
+    const body = await response.json();
+    error.code = body?.error;
+  }catch{
+    error.code = "";
+  }
   return error;
 }
 
