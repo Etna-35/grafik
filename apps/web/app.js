@@ -548,10 +548,7 @@ function renderRequisitionContent(){
 
 function renderRequisitionCatalog(){
   const categories = requisitionCategoriesForKind(state.requisitionKind);
-  const items = requisitionFilteredItems();
-  const selectedCategory = categories.find((category)=>category.id === state.requisitionCategoryId);
   const allCount = requisitionItemsForKind(state.requisitionKind).length;
-  const cartTotal = requisitionCartItems().length;
 
   return `
     <div class="req-toolbar">
@@ -575,6 +572,18 @@ function renderRequisitionCatalog(){
       `).join("")}
     </div>
 
+    <div data-req-results>
+      ${renderRequisitionCatalogResults()}
+    </div>
+  `;
+}
+
+function renderRequisitionCatalogResults(){
+  const categories = requisitionCategoriesForKind(state.requisitionKind);
+  const items = requisitionFilteredItems();
+  const selectedCategory = categories.find((category)=>category.id === state.requisitionCategoryId);
+  const cartTotal = requisitionCartItems().length;
+  return `
     <div class="req-current">
       <span>${selectedCategory ? escapeHtml(selectedCategory.name) : "Все позиции"}</span>
       <b>${items.length}</b>
@@ -796,30 +805,12 @@ function bindRequisitionPage(){
   if(search){
     search.addEventListener("input", ()=>{
       state.requisitionSearch = search.value;
-      render();
+      updateRequisitionCatalogResults();
     });
   }
 
-  app.querySelectorAll("[data-req-add]").forEach((button)=>{
-    button.addEventListener("click", ()=>addRequisitionCatalogItem(button.dataset.reqAdd));
-  });
-  app.querySelectorAll("[data-req-inc]").forEach((button)=>{
-    button.addEventListener("click", ()=>changeRequisitionEntry(button.dataset.reqInc, 1));
-  });
-  app.querySelectorAll("[data-req-dec]").forEach((button)=>{
-    button.addEventListener("click", ()=>changeRequisitionEntry(button.dataset.reqDec, -1));
-  });
-  app.querySelectorAll("[data-req-remove]").forEach((button)=>{
-    button.addEventListener("click", ()=>removeRequisitionEntry(button.dataset.reqRemove));
-  });
-
-  const openCart = app.querySelector("[data-req-open-cart]");
-  if(openCart){
-    openCart.addEventListener("click", ()=>{
-      state.requisitionTab = "cart";
-      render();
-    });
-  }
+  bindRequisitionCatalogControls();
+  bindRequisitionCartControls();
 
   const freeForm = app.querySelector("#requisitionFreeForm");
   if(freeForm){
@@ -846,6 +837,39 @@ function bindRequisitionPage(){
   app.querySelectorAll("[data-req-status]").forEach((select)=>{
     select.addEventListener("change", ()=>changeRequisitionStatus(select.dataset.reqStatus, select.value));
   });
+}
+
+function bindRequisitionCatalogControls(){
+  app.querySelectorAll("[data-req-add]").forEach((button)=>{
+    button.addEventListener("click", ()=>addRequisitionCatalogItem(button.dataset.reqAdd));
+  });
+  app.querySelectorAll("[data-req-inc]").forEach((button)=>{
+    button.addEventListener("click", ()=>changeRequisitionEntry(button.dataset.reqInc, 1));
+  });
+  app.querySelectorAll("[data-req-dec]").forEach((button)=>{
+    button.addEventListener("click", ()=>changeRequisitionEntry(button.dataset.reqDec, -1));
+  });
+
+  const openCart = app.querySelector("[data-req-open-cart]");
+  if(openCart){
+    openCart.addEventListener("click", ()=>{
+      state.requisitionTab = "cart";
+      render();
+    });
+  }
+}
+
+function bindRequisitionCartControls(){
+  app.querySelectorAll("[data-req-remove]").forEach((button)=>{
+    button.addEventListener("click", ()=>removeRequisitionEntry(button.dataset.reqRemove));
+  });
+}
+
+function updateRequisitionCatalogResults(){
+  const results = app.querySelector("[data-req-results]");
+  if(!results) return;
+  results.innerHTML = renderRequisitionCatalogResults();
+  bindRequisitionCatalogControls();
 }
 
 async function loadRequisitionData(){
@@ -1325,7 +1349,7 @@ function renderEmployeeForm(admin){
         </label>
         <label class="field">
           <span>Ставка/час</span>
-          <input name="hourlyRate" type="number" min="0" step="50" value="${employee.hourlyRate ?? ""}" placeholder="250">
+          <input name="hourlyRate" type="number" min="0" step="1" value="${employee.hourlyRate ?? ""}" placeholder="250">
         </label>
       </div>
 
@@ -1336,7 +1360,7 @@ function renderEmployeeForm(admin){
         </label>
         <label class="field">
           <span>Ставка за кальян</span>
-          <input name="hookahRate" type="number" min="0" step="50" value="${employee.hookahRate ?? ""}" placeholder="300">
+          <input name="hookahRate" type="number" min="0" step="1" value="${employee.hookahRate ?? ""}" placeholder="300">
         </label>
       </div>
 
