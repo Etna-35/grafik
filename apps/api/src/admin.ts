@@ -75,8 +75,9 @@ const serviceOrderSql = `
     WHEN 'schedule' THEN 1
     WHEN 'shift_close' THEN 2
     WHEN 'tasks' THEN 3
-    WHEN 'payroll' THEN 4
-    WHEN 'admin' THEN 5
+    WHEN 'requisition' THEN 4
+    WHEN 'payroll' THEN 5
+    WHEN 'admin' THEN 6
     ELSE 99
   END,
   title

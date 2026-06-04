@@ -6,6 +6,7 @@ const services = [
   ["schedule", "График", "/grafik"],
   ["shift_close", "Закрытие смены", "/smena"],
   ["tasks", "Задачи", "/tasks"],
+  ["requisition", "Заявка продуктов", "/zayavka"],
   ["payroll", "Выплаты", "/payroll"],
   ["admin", "Админка", "/admin"]
 ] as const;

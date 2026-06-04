@@ -16,6 +16,11 @@ const serviceMeta = {
     description: "Поручения",
     icon: starIcon
   },
+  requisition: {
+    accent: "var(--green)",
+    description: "Продукты и хозтовары",
+    icon: boxIcon
+  },
   payroll: {
     accent: "var(--green)",
     description: "Начисления",
@@ -49,6 +54,19 @@ let state = {
   tasksLoading: false,
   tasksError: "",
   tasksSaving: false,
+  requisitionCatalog: null,
+  requisitionHistory: null,
+  requisitionLoading: false,
+  requisitionError: "",
+  requisitionNotice: "",
+  requisitionSaving: false,
+  requisitionTab: "catalog",
+  requisitionKind: "product",
+  requisitionCategoryId: "all",
+  requisitionSearch: "",
+  requisitionCart: {},
+  requisitionComment: "",
+  requisitionUrgent: false,
   shiftClosingInit: null,
   shiftClosingRecord: null,
   shiftClosingForm: null,
@@ -255,6 +273,10 @@ function renderServicePage(path){
   }
   if(service.code === "tasks"){
     renderTasksPage(service);
+    return;
+  }
+  if(service.code === "requisition"){
+    renderRequisitionPage(service);
     return;
   }
   if(service.code === "payroll"){
@@ -471,6 +493,555 @@ async function saveTasksAction(action){
     state.tasksSaving = false;
     render();
   }
+}
+
+function renderRequisitionPage(service){
+  if(!state.requisitionCatalog && !state.requisitionLoading && !state.requisitionError){
+    loadRequisitionData();
+  }
+
+  const body = state.requisitionLoading && !state.requisitionCatalog
+    ? `<div class="panel"><div class="loader compact">Загружаю каталог</div></div>`
+    : state.requisitionError && !state.requisitionCatalog
+      ? `<div class="panel"><div class="row-title">Не удалось загрузить заявку</div><div class="row-sub">${escapeHtml(state.requisitionError)}</div></div>`
+      : state.requisitionCatalog
+        ? renderRequisitionContent()
+        : "";
+
+  app.innerHTML = `
+    <div class="phone wide requisition-phone">
+      <section class="screen service-page requisition-screen">
+        <div class="backrow">
+          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">${escapeHtml(service.title)}</h1>
+          <span class="status">Postgres</span>
+        </div>
+        ${body}
+      </section>
+    </div>
+  `;
+
+  app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+
+  bindRequisitionPage();
+}
+
+function renderRequisitionContent(){
+  const total = requisitionCartItems().length;
+  return `
+    <div class="req-note">
+      Заявка — это список потребностей для закупа. Она не списывает бюджет и не влияет на фудкост.
+    </div>
+    <div class="req-tabs">
+      <button class="${state.requisitionTab === "catalog" ? "on" : ""}" data-req-tab="catalog">Каталог</button>
+      <button class="${state.requisitionTab === "cart" ? "on" : ""}" data-req-tab="cart">Моя заявка ${total ? `<b>${total}</b>` : ""}</button>
+    </div>
+    ${state.requisitionTab === "catalog" ? renderRequisitionCatalog() : renderRequisitionCart()}
+    ${state.requisitionNotice ? `<div class="req-notice">${escapeHtml(state.requisitionNotice)}</div>` : ""}
+    ${state.requisitionError ? `<div class="error req-error">${escapeHtml(state.requisitionError)}</div>` : ""}
+  `;
+}
+
+function renderRequisitionCatalog(){
+  const categories = requisitionCategoriesForKind(state.requisitionKind);
+  const items = requisitionFilteredItems();
+  const selectedCategory = categories.find((category)=>category.id === state.requisitionCategoryId);
+  const allCount = requisitionItemsForKind(state.requisitionKind).length;
+  const cartTotal = requisitionCartItems().length;
+
+  return `
+    <div class="req-toolbar">
+      <div class="req-segment">
+        <button class="${state.requisitionKind === "product" ? "on" : ""}" data-req-kind="product">Продукты</button>
+        <button class="${state.requisitionKind === "household" ? "on" : ""}" data-req-kind="household">Хозтовары</button>
+      </div>
+      <label class="req-search">
+        <input type="search" value="${escapeAttr(state.requisitionSearch)}" placeholder="Поиск по каталогу" data-req-search autocomplete="off">
+      </label>
+    </div>
+
+    <div class="req-categories">
+      <button class="req-chip ${state.requisitionCategoryId === "all" ? "on" : ""}" data-req-category="all">
+        <i></i><span>Все</span><b>${allCount}</b>
+      </button>
+      ${categories.map((category)=>`
+        <button class="req-chip ${state.requisitionCategoryId === category.id ? "on" : ""}" data-req-category="${escapeAttr(category.id)}">
+          <i style="background:${escapeAttr(category.color)}"></i><span>${escapeHtml(category.name)}</span><b>${category.itemCount}</b>
+        </button>
+      `).join("")}
+    </div>
+
+    <div class="req-current">
+      <span>${selectedCategory ? escapeHtml(selectedCategory.name) : "Все позиции"}</span>
+      <b>${items.length}</b>
+    </div>
+
+    <div class="req-items">
+      ${items.length ? items.map(renderRequisitionItem).join("") : `<div class="panel muted-line">Ничего не найдено</div>`}
+    </div>
+
+    ${cartTotal ? `
+      <div class="req-sticky">
+        <button class="brand-action req-submit-link" data-req-open-cart>
+          В заявке ${cartTotal} ${pluralize(cartTotal, "позиция", "позиции", "позиций")} · Оформить
+        </button>
+      </div>
+    ` : ""}
+  `;
+}
+
+function renderRequisitionItem(item){
+  const entry = state.requisitionCart[item.id];
+  return `
+    <div class="req-item ${entry ? "selected" : ""}">
+      <span class="req-marker" style="background:${escapeAttr(item.categoryColor)}"></span>
+      <span class="req-item-main">
+        <b>${escapeHtml(item.name)}</b>
+        <small>${escapeHtml(item.categoryName)} · ${escapeHtml(item.unit)}</small>
+      </span>
+      ${entry ? `
+        <span class="req-stepper">
+          <button type="button" data-req-dec="${escapeAttr(item.id)}">-</button>
+          <b>${formatQty(entry.qty)} ${escapeHtml(entry.unit)}</b>
+          <button type="button" data-req-inc="${escapeAttr(item.id)}">+</button>
+        </span>
+      ` : `
+        <button class="req-add" type="button" data-req-add="${escapeAttr(item.id)}">+</button>
+      `}
+    </div>
+  `;
+}
+
+function renderRequisitionCart(){
+  const items = requisitionCartItems();
+  const productItems = items.filter((item)=>item.kind === "product");
+  const householdItems = items.filter((item)=>item.kind === "household");
+  const historyData = state.requisitionHistory || { requisitions:[], canManage:false };
+  return `
+    <div class="req-summary">
+      <div>
+        <span>Автор</span>
+        <b>${escapeHtml(state.user.displayName)}</b>
+      </div>
+      <div>
+        <span>Всего</span>
+        <b>${items.length}</b>
+      </div>
+      <div>
+        <span>Продукты</span>
+        <b>${productItems.length}</b>
+      </div>
+      <div>
+        <span>Хоз</span>
+        <b>${householdItems.length}</b>
+      </div>
+    </div>
+
+    ${renderFreeRequisitionPanel()}
+
+    <form id="requisitionSendForm">
+      <div class="req-cart-groups">
+        ${renderRequisitionCartGroup("Продукты", productItems)}
+        ${renderRequisitionCartGroup("Хозтовары", householdItems)}
+      </div>
+
+      <label class="field req-comment">
+        <span>Комментарий</span>
+        <textarea name="comment" maxlength="700" placeholder="Что важно учесть">${escapeHtml(state.requisitionComment)}</textarea>
+      </label>
+
+      <label class="checkrow req-urgent">
+        <input name="urgent" type="checkbox" ${state.requisitionUrgent ? "checked" : ""}>
+        <span>Срочно</span>
+      </label>
+
+      <button class="brand-action req-submit-link" type="submit" ${items.length && !state.requisitionSaving ? "" : "disabled"}>
+        ${state.requisitionSaving ? "Отправляю" : "Отправить заявку"}
+      </button>
+    </form>
+
+    <h2 class="sec">История заявок</h2>
+    <div class="req-history">
+      ${historyData.requisitions.length ? historyData.requisitions.map((record)=>renderRequisitionRecord(record, historyData.canManage)).join("") : `<div class="panel muted-line">Заявок пока нет</div>`}
+    </div>
+  `;
+}
+
+function renderFreeRequisitionPanel(){
+  const categories = requisitionCategoriesForKind(state.requisitionKind);
+  return `
+    <form class="panel req-free" id="requisitionFreeForm">
+      <div class="row-title">Другое</div>
+      <div class="row-sub">Если позиции нет в каталоге, добавь её свободной строкой</div>
+      <div class="req-free-grid">
+        <label class="field">
+          <span>Тип</span>
+          <select name="freeKind">
+            <option value="product" ${state.requisitionKind === "product" ? "selected" : ""}>Продукты</option>
+            <option value="household" ${state.requisitionKind === "household" ? "selected" : ""}>Хозтовары</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Категория</span>
+          <select name="freeCategory">
+            ${categories.map((category)=>`<option value="${escapeAttr(category.name)}">${escapeHtml(category.name)}</option>`).join("")}
+          </select>
+        </label>
+        <label class="field req-free-name">
+          <span>Название</span>
+          <input name="freeName" type="text" maxlength="140" autocomplete="off" placeholder="Например, редкая специя">
+        </label>
+        <label class="field">
+          <span>Кол-во</span>
+          <input name="freeQty" type="number" min="0.1" max="9999" step="0.1" value="1">
+        </label>
+        <label class="field">
+          <span>Ед.</span>
+          <input name="freeUnit" type="text" maxlength="30" value="шт">
+        </label>
+        <button class="ghost" type="submit">Добавить</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderRequisitionCartGroup(title, items){
+  return `
+    <div class="req-cart-group">
+      <div class="req-group-title"><span>${title}</span><b>${items.length}</b></div>
+      ${items.length ? items.map(renderRequisitionCartLine).join("") : `<div class="muted-line">Пока пусто</div>`}
+    </div>
+  `;
+}
+
+function renderRequisitionCartLine(item){
+  return `
+    <div class="req-cart-line">
+      <span class="req-item-main">
+        <b>${escapeHtml(item.name)}</b>
+        <small>${escapeHtml(item.categoryName)} · ${escapeHtml(item.unit)}</small>
+      </span>
+      <span class="req-stepper">
+        <button type="button" data-req-dec="${escapeAttr(item.key)}">-</button>
+        <b>${formatQty(item.qty)} ${escapeHtml(item.unit)}</b>
+        <button type="button" data-req-inc="${escapeAttr(item.key)}">+</button>
+      </span>
+      <button class="ghost mini" type="button" data-req-remove="${escapeAttr(item.key)}">Убрать</button>
+    </div>
+  `;
+}
+
+function renderRequisitionRecord(record, canManage){
+  return `
+    <div class="req-record">
+      <div class="req-record-head">
+        <span>
+          <b>${escapeHtml(record.authorName || "Сотрудник")}</b>
+          <small>${escapeHtml(formatDateTimeHuman(record.createdAt))}${record.urgent ? " · срочно" : ""}</small>
+        </span>
+        ${canManage ? `
+          <select data-req-status="${escapeAttr(record.id)}">
+            ${requisitionStatusOptions().map((option)=>`
+              <option value="${option.value}" ${record.status === option.value ? "selected" : ""}>${option.label}</option>
+            `).join("")}
+          </select>
+        ` : `<i class="req-status ${escapeAttr(record.status)}">${escapeHtml(record.statusLabel)}</i>`}
+      </div>
+      <div class="req-record-meta">
+        ${record.totalLines} ${pluralize(record.totalLines, "позиция", "позиции", "позиций")} · продукты ${record.productLines} · хоз ${record.householdLines}
+      </div>
+      <div class="req-record-lines">
+        ${(record.lines || []).slice(0, 8).map((line)=>`
+          <span>${escapeHtml(line.name)} <b>${formatQty(line.qty)} ${escapeHtml(line.unit)}</b></span>
+        `).join("")}
+        ${(record.lines || []).length > 8 ? `<span>ещё ${(record.lines || []).length - 8}</span>` : ""}
+      </div>
+      ${record.comment ? `<div class="req-record-comment">${escapeHtml(record.comment)}</div>` : ""}
+    </div>
+  `;
+}
+
+function bindRequisitionPage(){
+  app.querySelectorAll("[data-req-tab]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      state.requisitionTab = button.dataset.reqTab;
+      state.requisitionError = "";
+      state.requisitionNotice = "";
+      render();
+    });
+  });
+
+  app.querySelectorAll("[data-req-kind]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      state.requisitionKind = button.dataset.reqKind;
+      state.requisitionCategoryId = "all";
+      state.requisitionSearch = "";
+      state.requisitionError = "";
+      render();
+    });
+  });
+
+  app.querySelectorAll("[data-req-category]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      state.requisitionCategoryId = button.dataset.reqCategory;
+      render();
+    });
+  });
+
+  const search = app.querySelector("[data-req-search]");
+  if(search){
+    search.addEventListener("input", ()=>{
+      state.requisitionSearch = search.value;
+      render();
+    });
+  }
+
+  app.querySelectorAll("[data-req-add]").forEach((button)=>{
+    button.addEventListener("click", ()=>addRequisitionCatalogItem(button.dataset.reqAdd));
+  });
+  app.querySelectorAll("[data-req-inc]").forEach((button)=>{
+    button.addEventListener("click", ()=>changeRequisitionEntry(button.dataset.reqInc, 1));
+  });
+  app.querySelectorAll("[data-req-dec]").forEach((button)=>{
+    button.addEventListener("click", ()=>changeRequisitionEntry(button.dataset.reqDec, -1));
+  });
+  app.querySelectorAll("[data-req-remove]").forEach((button)=>{
+    button.addEventListener("click", ()=>removeRequisitionEntry(button.dataset.reqRemove));
+  });
+
+  const openCart = app.querySelector("[data-req-open-cart]");
+  if(openCart){
+    openCart.addEventListener("click", ()=>{
+      state.requisitionTab = "cart";
+      render();
+    });
+  }
+
+  const freeForm = app.querySelector("#requisitionFreeForm");
+  if(freeForm){
+    const kind = freeForm.elements.freeKind;
+    kind.addEventListener("change", ()=>{
+      state.requisitionKind = kind.value;
+      state.requisitionCategoryId = "all";
+      render();
+    });
+    freeForm.addEventListener("submit", (event)=>{
+      event.preventDefault();
+      addFreeRequisitionItem(freeForm);
+    });
+  }
+
+  const sendForm = app.querySelector("#requisitionSendForm");
+  if(sendForm){
+    sendForm.addEventListener("submit", (event)=>{
+      event.preventDefault();
+      sendRequisition(sendForm);
+    });
+  }
+
+  app.querySelectorAll("[data-req-status]").forEach((select)=>{
+    select.addEventListener("change", ()=>changeRequisitionStatus(select.dataset.reqStatus, select.value));
+  });
+}
+
+async function loadRequisitionData(){
+  state.requisitionLoading = true;
+  state.requisitionError = "";
+  state.requisitionNotice = "";
+  render();
+  try{
+    const [catalog, historyData] = await Promise.all([
+      apiGet("/api/requisitions/catalog"),
+      apiGet("/api/requisitions")
+    ]);
+    state.requisitionCatalog = catalog;
+    state.requisitionHistory = historyData;
+    ensureRequisitionKindHasCategories();
+  }catch(error){
+    state.requisitionError = error.status === 403 ? "Нет доступа к заявке" : "Проверь соединение и попробуй ещё раз";
+  }finally{
+    state.requisitionLoading = false;
+    render();
+  }
+}
+
+async function refreshRequisitionData(){
+  const [catalog, historyData] = await Promise.all([
+    apiGet("/api/requisitions/catalog"),
+    apiGet("/api/requisitions")
+  ]);
+  state.requisitionCatalog = catalog;
+  state.requisitionHistory = historyData;
+  ensureRequisitionKindHasCategories();
+}
+
+function ensureRequisitionKindHasCategories(){
+  if(requisitionCategoriesForKind(state.requisitionKind).length) return;
+  const hasProducts = requisitionCategoriesForKind("product").length;
+  state.requisitionKind = hasProducts ? "product" : "household";
+  state.requisitionCategoryId = "all";
+}
+
+function requisitionCategoriesForKind(kind){
+  return (state.requisitionCatalog?.categories || []).filter((category)=>category.kind === kind && category.itemCount > 0);
+}
+
+function requisitionItemsForKind(kind){
+  return (state.requisitionCatalog?.items || []).filter((item)=>item.kind === kind);
+}
+
+function requisitionFilteredItems(){
+  const search = state.requisitionSearch.trim().toLowerCase().replaceAll("ё", "е");
+  return requisitionItemsForKind(state.requisitionKind).filter((item)=>{
+    if(state.requisitionCategoryId !== "all" && item.categoryId !== state.requisitionCategoryId) return false;
+    if(!search) return true;
+    return `${item.name} ${item.categoryName}`.toLowerCase().replaceAll("ё", "е").includes(search);
+  });
+}
+
+function addRequisitionCatalogItem(id){
+  const item = (state.requisitionCatalog?.items || []).find((candidate)=>candidate.id === id);
+  if(!item) return;
+  const current = state.requisitionCart[id];
+  state.requisitionCart = {
+    ...state.requisitionCart,
+    [id]: current ? { ...current, qty: current.qty + 1 } : {
+      key:id,
+      catalogItemId:id,
+      freeName:"",
+      name:item.name,
+      qty:1,
+      unit:item.unit,
+      kind:item.kind,
+      categoryName:item.categoryName
+    }
+  };
+  state.requisitionNotice = "";
+  render();
+}
+
+function changeRequisitionEntry(key, delta){
+  const current = state.requisitionCart[key];
+  if(!current) return;
+  const qty = Math.round((Number(current.qty || 0) + delta) * 10) / 10;
+  if(qty <= 0){
+    removeRequisitionEntry(key);
+    return;
+  }
+  state.requisitionCart = {
+    ...state.requisitionCart,
+    [key]: { ...current, qty }
+  };
+  render();
+}
+
+function removeRequisitionEntry(key){
+  if(!state.requisitionCart[key]) return;
+  const next = { ...state.requisitionCart };
+  delete next[key];
+  state.requisitionCart = next;
+  render();
+}
+
+function addFreeRequisitionItem(form){
+  const freeName = form.elements.freeName.value.trim();
+  const qty = Number(form.elements.freeQty.value);
+  const unit = form.elements.freeUnit.value.trim() || "шт";
+  const kind = form.elements.freeKind.value;
+  const categoryName = form.elements.freeCategory.value;
+  if(!freeName || !Number.isFinite(qty) || qty <= 0){
+    state.requisitionError = "Заполни название и количество";
+    render();
+    return;
+  }
+  const key = `free:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  state.requisitionCart = {
+    ...state.requisitionCart,
+    [key]: {
+      key,
+      catalogItemId:null,
+      freeName,
+      name:freeName,
+      qty:Math.round(qty * 100) / 100,
+      unit,
+      kind,
+      categoryName
+    }
+  };
+  state.requisitionError = "";
+  state.requisitionNotice = "";
+  form.reset();
+  render();
+}
+
+async function sendRequisition(form){
+  const items = requisitionCartItems();
+  if(state.requisitionSaving || !items.length) return;
+  state.requisitionSaving = true;
+  state.requisitionError = "";
+  state.requisitionNotice = "";
+  state.requisitionComment = form.elements.comment.value.trim();
+  state.requisitionUrgent = form.elements.urgent.checked;
+  render();
+  try{
+    await apiPost("/api/requisitions", {
+      comment: state.requisitionComment,
+      urgent: state.requisitionUrgent,
+      lines: items.map((item)=>({
+        catalogItemId: item.catalogItemId,
+        freeName: item.freeName,
+        qty: item.qty,
+        unit: item.unit,
+        kind: item.kind,
+        categoryName: item.categoryName
+      }))
+    });
+    state.requisitionCart = {};
+    state.requisitionComment = "";
+    state.requisitionUrgent = false;
+    state.requisitionNotice = "Заявка отправлена";
+    await refreshRequisitionData();
+  }catch(error){
+    state.requisitionError = error.code === "forbidden_catalog_item" || error.code === "forbidden_category"
+      ? "Эта категория недоступна для твоей роли"
+      : "Не удалось отправить заявку";
+  }finally{
+    state.requisitionSaving = false;
+    render();
+  }
+}
+
+async function changeRequisitionStatus(id, status){
+  if(state.requisitionSaving || !id || !status) return;
+  state.requisitionSaving = true;
+  state.requisitionError = "";
+  state.requisitionNotice = "";
+  render();
+  try{
+    await apiPatch(`/api/requisitions/${encodeURIComponent(id)}`, { status });
+    await refreshRequisitionData();
+  }catch(error){
+    state.requisitionError = "Не удалось изменить статус";
+  }finally{
+    state.requisitionSaving = false;
+    render();
+  }
+}
+
+function requisitionCartItems(){
+  return Object.values(state.requisitionCart || {});
+}
+
+function requisitionStatusOptions(){
+  return [
+    { value:"new", label:"Новая" },
+    { value:"accepted", label:"Принята" },
+    { value:"purchased", label:"Закуплена" },
+    { value:"rejected", label:"Отклонена" }
+  ];
 }
 
 function renderPayrollPage(service){
@@ -2210,6 +2781,12 @@ async function logout(){
   state.scheduleEditUnlocked = false;
   state.payroll = null;
   state.tasks = null;
+  state.requisitionCatalog = null;
+  state.requisitionHistory = null;
+  state.requisitionCart = {};
+  state.requisitionComment = "";
+  state.requisitionUrgent = false;
+  state.requisitionNotice = "";
   history.replaceState(null, "", "/");
   render();
 }
@@ -2308,6 +2885,25 @@ function formatInputNumber(value){
 
 function formatDateHuman(date){
   return new Intl.DateTimeFormat("ru-RU", { day:"numeric", month:"long", weekday:"short" }).format(new Date(`${date}T00:00:00`));
+}
+
+function formatDateTimeHuman(value){
+  const date = new Date(value);
+  if(Number.isNaN(date.getTime())) return "";
+  return new Intl.DateTimeFormat("ru-RU", { day:"numeric", month:"short", hour:"2-digit", minute:"2-digit" }).format(date);
+}
+
+function formatQty(value){
+  return String(Number(value || 0)).replace(".", ",").replace(/,0$/, "");
+}
+
+function pluralize(value, one, few, many){
+  const n = Math.abs(Number(value || 0));
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if(mod10 === 1 && mod100 !== 11) return one;
+  if(mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return few;
+  return many;
 }
 
 function formatScheduleMonth(year, month){
@@ -2416,6 +3012,7 @@ function tintFor(code){
     schedule:"rgba(143,36,51,.08)",
     shift_close:"rgba(47,111,107,.08)",
     tasks:"rgba(176,122,30,.1)",
+    requisition:"rgba(47,111,79,.1)",
     payroll:"rgba(47,111,79,.09)",
     admin:"rgba(42,35,32,.08)"
   }[code] || "rgba(143,36,51,.08)";
@@ -2435,6 +3032,10 @@ function starIcon(){
 
 function rubleIcon(){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 11h8a4 4 0 0 0 0-8h-7v18M7 15h9M7 19h6"/></svg>`;
+}
+
+function boxIcon(){
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v9l9 5 9-5V8M12 13v9"/></svg>`;
 }
 
 function settingsIcon(){
