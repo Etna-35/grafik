@@ -25,6 +25,7 @@ import { registerShiftClosingRoutes } from "./shiftClosing.js";
 import { registerPayrollRoutes } from "./payroll.js";
 import { registerRequisitionRoutes } from "./requisitions.js";
 import { registerTaskRoutes } from "./tasks.js";
+import { registerTrainingRoutes } from "./training.js";
 
 const pinSchema = z.object({
   pin: z.string().regex(/^\d{4,8}$/)
@@ -144,6 +145,7 @@ export function buildServer() {
   registerPayrollRoutes(app);
   registerTaskRoutes(app);
   registerRequisitionRoutes(app);
+  registerTrainingRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,

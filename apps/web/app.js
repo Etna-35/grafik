@@ -16,6 +16,11 @@ const serviceMeta = {
     description: "Поручения",
     icon: starIcon
   },
+  training: {
+    accent: "var(--brand)",
+    description: "База знаний",
+    icon: bookIcon
+  },
   requisition: {
     accent: "var(--green)",
     description: "Продукты и хозтовары",
@@ -54,6 +59,11 @@ let state = {
   tasksLoading: false,
   tasksError: "",
   tasksSaving: false,
+  training: null,
+  trainingLoading: false,
+  trainingError: "",
+  trainingSaving: false,
+  selectedTrainingChapterId: "",
   requisitionCatalog: null,
   requisitionHistory: null,
   requisitionLoading: false,
@@ -276,6 +286,10 @@ function renderServicePage(path){
     renderTasksPage(service);
     return;
   }
+  if(service.code === "training"){
+    renderTrainingPage(service);
+    return;
+  }
   if(service.code === "requisition"){
     renderRequisitionPage(service);
     return;
@@ -315,6 +329,285 @@ function renderServicePage(path){
     history.pushState(null, "", "/");
     render();
   });
+}
+
+function renderTrainingPage(service){
+  if(!state.training && !state.trainingLoading && !state.trainingError){
+    loadTraining();
+  }
+
+  const body = state.trainingLoading && !state.training
+    ? `<div class="panel"><div class="loader compact">Загружаю обучение</div></div>`
+    : state.trainingError && !state.training
+      ? `<div class="panel"><div class="row-title">Не удалось загрузить обучение</div><div class="row-sub">${escapeHtml(state.trainingError)}</div></div>`
+      : state.training
+        ? renderTrainingContent(state.training)
+        : "";
+
+  app.innerHTML = `
+    <div class="phone wide training-phone">
+      <section class="screen service-page training-screen">
+        <div class="backrow">
+          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">${escapeHtml(service.title)}</h1>
+          <span class="status">Postgres</span>
+        </div>
+        ${body}
+      </section>
+    </div>
+  `;
+
+  app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+
+  bindTrainingPage();
+}
+
+function renderTrainingContent(training){
+  const chapters = trainingChapters(training);
+  const selected = selectedTrainingChapter(training, chapters);
+  return `
+    <div class="training-hero">
+      <div>
+        <span class="training-kicker">База знаний официанта</span>
+        <h2>${escapeHtml(training.modules?.[0]?.title || "Обучение")}</h2>
+        <p>${escapeHtml(training.modules?.[0]?.description || "Материалы для стажировки и повторения стандартов.")}</p>
+      </div>
+      <div class="training-progress">
+        <b>${training.progress?.percent || 0}%</b>
+        <span>${training.progress?.readChapters || 0} из ${training.progress?.totalChapters || 0} глав прочитано</span>
+      </div>
+    </div>
+
+    ${training.canManage ? renderTrainingManager(training) : ""}
+
+    <div class="training-layout">
+      <aside class="training-side">
+        ${renderTrainingRoute(training.route, chapters)}
+        <h2 class="sec">Главы</h2>
+        <div class="training-chapters">
+          ${chapters.map((chapter)=>renderTrainingChapterButton(chapter, selected?.id)).join("") || `<div class="panel muted-line">Главы пока не добавлены</div>`}
+        </div>
+      </aside>
+      <main class="training-main">
+        ${selected ? renderTrainingChapter(selected) : `<div class="panel muted-line">Выберите главу</div>`}
+      </main>
+    </div>
+    ${state.trainingError ? `<div class="error">${escapeHtml(state.trainingError)}</div>` : ""}
+  `;
+}
+
+function renderTrainingManager(training){
+  const dashboard = training.dashboard || {};
+  const employees = dashboard.employees || [];
+  return `
+    <section class="training-manager">
+      <div class="training-manager-head">
+        <div>
+          <h2 class="sec">Руководителю</h2>
+          <div class="row-sub">Прогресс чтения базы знаний по сотрудникам с доступом к разделу</div>
+        </div>
+        <a class="ghost mini" href="https://admin.no-money-no-honey.ru/">Редактировать в NocoDB</a>
+      </div>
+      <div class="training-metrics">
+        <div><span>Глав</span><b>${dashboard.totalChapters || 0}</b></div>
+        <div><span>Сотрудников</span><b>${dashboard.employeesTotal || 0}</b></div>
+        <div><span>Завершили</span><b>${dashboard.completedTotal || 0}</b></div>
+        <div><span>Средний прогресс</span><b>${dashboard.averagePercent || 0}%</b></div>
+      </div>
+      <div class="training-team">
+        ${employees.length ? employees.map(renderTrainingEmployeeProgress).join("") : `<div class="panel muted-line">Пока нет сотрудников с доступом к обучению</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function renderTrainingEmployeeProgress(employee){
+  return `
+    <div class="training-person">
+      <div class="training-person-main">
+        <b>${escapeHtml(employee.displayName)}</b>
+        <span>${escapeHtml(roleLabel(employee.role))}${employee.lastReadAt ? ` · ${escapeHtml(formatDateHuman(employee.lastReadAt.slice(0, 10)))}` : ""}</span>
+      </div>
+      <div class="training-person-progress">
+        <i><span style="width:${Math.max(0, Math.min(100, employee.percent || 0))}%"></span></i>
+        <b>${employee.readChapters || 0}/${employee.totalChapters || 0}</b>
+      </div>
+    </div>
+  `;
+}
+
+function renderTrainingRoute(route, chapters){
+  if(!route) return "";
+  const readIds = new Set(chapters.filter((chapter)=>chapter.isRead).map((chapter)=>chapter.id));
+  return `
+    <section class="training-route">
+      <h2 class="sec">${escapeHtml(route.title)}</h2>
+      <div class="training-days">
+        ${(route.days || []).map((day)=>`
+          <div class="training-day">
+            <div class="training-day-num">${day.dayNumber}</div>
+            <div class="training-day-body">
+              <b>${escapeHtml(day.title)}</b>
+              ${(day.items || []).map((item)=>item.chapterId ? `
+                <button type="button" class="training-route-item ${readIds.has(item.chapterId) ? "read" : ""}" data-training-chapter="${escapeAttr(item.chapterId)}">
+                  <span>${escapeHtml(item.title)}</span>
+                </button>
+              ` : `
+                <div class="training-route-item muted">
+                  <span>${escapeHtml(item.title)}</span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+        `).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function renderTrainingChapterButton(chapter, selectedId){
+  return `
+    <button type="button" class="training-chapter-btn ${selectedId === chapter.id ? "on" : ""} ${chapter.isRead ? "read" : ""}" data-training-chapter="${escapeAttr(chapter.id)}">
+      <span>${escapeHtml(chapter.title)}</span>
+      <i>${chapter.isRead ? "прочитано" : "читать"}</i>
+    </button>
+  `;
+}
+
+function renderTrainingChapter(chapter){
+  return `
+    <article class="training-article">
+      <div class="training-article-head">
+        <div>
+          <h2>${escapeHtml(chapter.title)}</h2>
+          ${chapter.summary ? `<p>${escapeHtml(chapter.summary)}</p>` : ""}
+        </div>
+        <button class="ghost brand-action" type="button" data-training-read="${escapeAttr(chapter.id)}" ${chapter.isRead ? "disabled" : ""}>
+          ${chapter.isRead ? "Прочитано" : "Отметить прочитанным"}
+        </button>
+      </div>
+      ${chapter.attachments?.length ? `
+        <div class="training-attachments">
+          ${chapter.attachments.map(renderTrainingAttachment).join("")}
+        </div>
+      ` : ""}
+      <div class="training-body">
+        ${trainingTextToHtml(chapter.body)}
+      </div>
+    </article>
+  `;
+}
+
+function renderTrainingAttachment(attachment){
+  const label = attachment.url ? "Открыть" : "Ожидает файла";
+  const content = `
+    <span>
+      <b>${escapeHtml(attachment.title)}</b>
+      <small>${escapeHtml(attachment.description || attachment.kind)}</small>
+    </span>
+    <i>${label}</i>
+  `;
+  return attachment.url
+    ? `<a class="training-attachment" href="${escapeAttr(attachment.url)}" target="_blank" rel="noreferrer">${content}</a>`
+    : `<div class="training-attachment muted">${content}</div>`;
+}
+
+function trainingTextToHtml(text){
+  const lines = String(text || "").split("\n");
+  const parts = [];
+  let list = [];
+
+  const flushList = ()=>{
+    if(!list.length) return;
+    parts.push(`<ul>${list.map((item)=>`<li>${escapeHtml(item)}</li>`).join("")}</ul>`);
+    list = [];
+  };
+
+  for(const raw of lines){
+    const line = raw.trim();
+    if(!line){
+      flushList();
+      continue;
+    }
+    if(line.startsWith("* ")){
+      list.push(line.slice(2));
+      continue;
+    }
+    flushList();
+    if(/^\d+\.\d+\./.test(line)){
+      parts.push(`<h3>${escapeHtml(line)}</h3>`);
+    }else if(/^\d+\.\s/.test(line)){
+      parts.push(`<p class="training-step">${escapeHtml(line)}</p>`);
+    }else{
+      parts.push(`<p>${escapeHtml(line)}</p>`);
+    }
+  }
+  flushList();
+  return parts.join("");
+}
+
+function trainingChapters(training){
+  return (training.modules || []).flatMap((module)=>module.chapters || []);
+}
+
+function selectedTrainingChapter(training, chapters){
+  if(!chapters.length) return null;
+  const selected = chapters.find((chapter)=>chapter.id === state.selectedTrainingChapterId);
+  if(selected) return selected;
+  const firstUnread = chapters.find((chapter)=>!chapter.isRead);
+  const next = firstUnread || chapters[0];
+  state.selectedTrainingChapterId = next.id;
+  return next;
+}
+
+function bindTrainingPage(){
+  if(!state.training) return;
+  app.querySelectorAll("[data-training-chapter]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      state.selectedTrainingChapterId = button.dataset.trainingChapter;
+      render();
+    });
+  });
+  const readButton = app.querySelector("[data-training-read]");
+  if(readButton){
+    readButton.addEventListener("click", ()=>{
+      markTrainingChapterRead(readButton.dataset.trainingRead);
+    });
+  }
+}
+
+async function loadTraining(){
+  state.trainingLoading = true;
+  state.trainingError = "";
+  render();
+  try{
+    state.training = await apiGet("/api/training/init");
+  }catch(error){
+    state.trainingError = error.status === 403 ? "Нет доступа к обучению" : "Проверь соединение и попробуй ещё раз";
+  }finally{
+    state.trainingLoading = false;
+    render();
+  }
+}
+
+async function markTrainingChapterRead(chapterId){
+  if(!chapterId || state.trainingSaving) return;
+  state.trainingSaving = true;
+  state.trainingError = "";
+  render();
+  try{
+    await apiPost(`/api/training/chapters/${encodeURIComponent(chapterId)}/read`, {});
+    state.training = await apiGet("/api/training/init");
+    state.summary = await apiGet("/api/summary");
+  }catch(error){
+    state.trainingError = "Не удалось сохранить отметку";
+  }finally{
+    state.trainingSaving = false;
+    render();
+  }
 }
 
 function renderTasksPage(service){
@@ -3088,6 +3381,7 @@ function tintFor(code){
     schedule:"rgba(143,36,51,.08)",
     shift_close:"rgba(47,111,107,.08)",
     tasks:"rgba(176,122,30,.1)",
+    training:"rgba(143,36,51,.08)",
     requisition:"rgba(47,111,79,.1)",
     payroll:"rgba(47,111,79,.09)",
     admin:"rgba(42,35,32,.08)"
@@ -3112,6 +3406,10 @@ function rubleIcon(){
 
 function boxIcon(){
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v9l9 5 9-5V8M12 13v9"/></svg>`;
+}
+
+function bookIcon(){
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15Z"/><path d="M8 6h8M8 10h6"/></svg>`;
 }
 
 function settingsIcon(){

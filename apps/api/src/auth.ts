@@ -79,9 +79,10 @@ export async function getServices(employeeId: string): Promise<Service[]> {
           WHEN 'schedule' THEN 1
           WHEN 'shift_close' THEN 2
           WHEN 'tasks' THEN 3
-          WHEN 'requisition' THEN 4
-          WHEN 'payroll' THEN 5
-          WHEN 'admin' THEN 6
+          WHEN 'training' THEN 4
+          WHEN 'requisition' THEN 5
+          WHEN 'payroll' THEN 6
+          WHEN 'admin' THEN 7
           ELSE 99
         END,
         s.title
