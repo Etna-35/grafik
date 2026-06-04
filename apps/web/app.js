@@ -184,12 +184,13 @@ async function handleKey(key){
 
 async function login(){
   try{
+    const requestedPath = window.location.pathname;
     const session = await apiPost("/api/auth/pin", { pin: state.pin });
     state.user = session.user;
     state.services = session.services;
     state.summary = await apiGet("/api/summary");
     state.pin = "";
-    history.replaceState(null, "", "/");
+    history.replaceState(null, "", allowedServicePath(requestedPath, session.services) ? requestedPath : "/");
     render();
   }catch(error){
     state.pin = "";
@@ -1167,6 +1168,12 @@ function serviceForPath(path){
     return state.services.find((item)=>item.code === "admin") || null;
   }
   return state.services.find((item)=>item.url === path) || null;
+}
+
+function allowedServicePath(path, services){
+  if(path === "/" || path === "") return false;
+  if(path === "/admin") return services.some((item)=>item.code === "admin");
+  return services.some((item)=>item.url === path);
 }
 
 function renderAdminPage(service){
