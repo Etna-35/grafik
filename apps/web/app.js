@@ -41,6 +41,10 @@ let state = {
   selectedScheduleDate: null,
   selectedDateEmployeeId: null,
   scheduleSaving: false,
+  scheduleEditUnlocked: false,
+  payroll: null,
+  payrollLoading: false,
+  payrollError: "",
   shiftClosingInit: null,
   shiftClosingRecord: null,
   shiftClosingForm: null,
@@ -62,6 +66,7 @@ init();
 
 async function init(){
   window.addEventListener("popstate", render);
+  preventMobileDoubleTapZoom();
   try{
     const session = await apiGet("/api/me");
     state.user = session.user;
@@ -73,6 +78,20 @@ async function init(){
     state.loading = false;
     render();
   }
+}
+
+function preventMobileDoubleTapZoom(){
+  let lastTouchEnd = 0;
+  document.addEventListener("touchend", (event)=>{
+    const now = Date.now();
+    if(now - lastTouchEnd <= 320){
+      event.preventDefault();
+    }
+    lastTouchEnd = now;
+  }, { passive:false });
+  document.addEventListener("gesturestart", (event)=>{
+    event.preventDefault();
+  }, { passive:false });
 }
 
 function render(){
@@ -87,6 +106,11 @@ function render(){
   }
 
   const path = window.location.pathname;
+  if(!path.startsWith("/grafik") && state.scheduleEditUnlocked){
+    state.scheduleEditUnlocked = false;
+    state.selectedScheduleCell = null;
+    state.selectedScheduleDate = null;
+  }
   if(path === "/" || path === ""){
     renderHub();
     return;
@@ -225,6 +249,10 @@ function renderServicePage(path){
     renderShiftClosingPage(service);
     return;
   }
+  if(service.code === "payroll"){
+    renderPayrollPage(service);
+    return;
+  }
   if(service.code === "admin"){
     renderAdminPage(service);
     return;
@@ -256,6 +284,120 @@ function renderServicePage(path){
     history.pushState(null, "", "/");
     render();
   });
+}
+
+function renderPayrollPage(service){
+  const today = new Date();
+  const year = state.payroll?.year || today.getFullYear();
+  const month = state.payroll?.month || today.getMonth() + 1;
+
+  if(!state.payroll && !state.payrollLoading && !state.payrollError){
+    loadPayroll(year, month);
+  }
+
+  const body = state.payrollLoading
+    ? `<div class="panel"><div class="loader compact">Загружаю выплаты</div></div>`
+    : state.payrollError
+      ? `<div class="panel"><div class="row-title">Не удалось загрузить выплаты</div><div class="row-sub">${escapeHtml(state.payrollError)}</div></div>`
+      : state.payroll
+        ? renderPayrollContent(state.payroll)
+        : "";
+
+  app.innerHTML = `
+    <div class="phone wide payroll-phone">
+      <section class="screen service-page payroll-screen">
+        <div class="backrow">
+          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">${escapeHtml(service.title)}</h1>
+          <span class="status">Postgres</span>
+        </div>
+        ${body}
+      </section>
+    </div>
+  `;
+
+  app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+
+  app.querySelectorAll("[data-payroll-month]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      const direction = button.dataset.payrollMonth === "next" ? 1 : -1;
+      const base = new Date((state.payroll?.year || year), (state.payroll?.month || month) - 1 + direction, 1);
+      state.payroll = null;
+      loadPayroll(base.getFullYear(), base.getMonth() + 1);
+    });
+  });
+}
+
+function renderPayrollContent(payroll){
+  const summary = payroll.summary || {};
+  return `
+    <div class="monthbar">
+      <button class="btn icon" data-payroll-month="prev">‹</button>
+      <div class="mname">${formatScheduleMonth(payroll.year, payroll.month)}</div>
+      <button class="btn icon" data-payroll-month="next">›</button>
+    </div>
+
+    <div class="payroll-hero">
+      <div>
+        <div class="mslabel">Остаток к выплате</div>
+        <div class="payroll-balance">${formatMoneyPlain(summary.remaining || 0)} ₽</div>
+      </div>
+      <div class="payroll-next">
+        <span>Ближайшая дата</span>
+        <b>${summary.upcomingPayday ? escapeHtml(formatDateHuman(summary.upcomingPayday)) : "не назначена"}</b>
+      </div>
+    </div>
+
+    <div class="payroll-metrics">
+      <div class="pay-metric"><span>Начислено</span><b>${formatMoneyPlain(summary.accrued || 0)} ₽</b></div>
+      <div class="pay-metric"><span>Выдано</span><b>${formatMoneyPlain(summary.paid || 0)} ₽</b></div>
+      <div class="pay-metric"><span>Смены</span><b>${summary.shifts || 0}</b></div>
+      <div class="pay-metric"><span>Часы</span><b>${formatHours(summary.hours || 0)}</b></div>
+    </div>
+
+    <h2 class="sec">История выплат</h2>
+    <div class="payroll-list">
+      ${(payroll.payouts || []).length ? payroll.payouts.map((payout)=>`
+        <div class="payroll-row">
+          <span>
+            <b>${formatMoneyPlain(payout.amount)} ₽</b>
+            <small>${escapeHtml(formatDateHuman(payout.workDate))}</small>
+          </span>
+          <i>выдано</i>
+        </div>
+      `).join("") : `<div class="panel muted-line">В этом месяце выплат пока нет</div>`}
+    </div>
+
+    <h2 class="sec">Начисления по сменам</h2>
+    <div class="payroll-list">
+      ${(payroll.shifts || []).length ? payroll.shifts.map((shift)=>`
+        <div class="payroll-row">
+          <span>
+            <b>${formatMoneyPlain(shift.payAmount)} ₽</b>
+            <small>${escapeHtml(formatDateHuman(shift.workDate))}${shift.hours ? ` · ${formatHours(shift.hours)} ч` : ""}</small>
+          </span>
+          <i>${shift.payModel === "fixed" ? "фикс" : "смена"}</i>
+        </div>
+      `).join("") : `<div class="panel muted-line">В этом месяце смен пока нет</div>`}
+    </div>
+  `;
+}
+
+async function loadPayroll(year, month){
+  state.payrollLoading = true;
+  state.payrollError = "";
+  render();
+  try{
+    state.payroll = await apiGet(`/api/payroll?year=${year}&month=${month}`);
+  }catch(error){
+    state.payrollError = error.status === 403 ? "Нет доступа к выплатам" : "Проверь соединение и попробуй ещё раз";
+  }finally{
+    state.payrollLoading = false;
+    render();
+  }
 }
 
 function serviceUrl(service){
@@ -1079,13 +1221,15 @@ function renderSchedulePage(service){
         : `<div class="panel"><div class="row-title">График пока пустой</div><div class="row-sub">Импортируй JSON-бэкап старого календаря</div></div>`;
 
   const importBox = renderScheduleImport(service);
+  const editUnlocked = isScheduleEditingUnlocked(service);
 
   app.innerHTML = `
     <div class="phone wide schedule-phone">
-      <section class="screen service-page schedule-screen">
+      <section class="screen service-page schedule-screen ${editUnlocked ? "edit-unlocked" : "edit-locked"}">
         <div class="backrow">
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
+          ${renderScheduleLockControl(service)}
           <span class="status">Postgres</span>
         </div>
         ${renderScheduleEditor(service)}
@@ -1098,7 +1242,15 @@ function renderSchedulePage(service){
   `;
 
   app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    state.scheduleEditUnlocked = false;
     history.pushState(null, "", "/");
+    render();
+  });
+
+  app.querySelector("[data-schedule-lock]")?.addEventListener("click", ()=>{
+    state.scheduleEditUnlocked = !state.scheduleEditUnlocked;
+    state.selectedScheduleCell = null;
+    state.selectedScheduleDate = null;
     render();
   });
 
@@ -1126,7 +1278,7 @@ function renderSchedulePage(service){
 }
 
 function renderScheduleImport(service){
-  if(!service.can_edit) return "";
+  if(!isScheduleEditingUnlocked(service)) return "";
   return `
     <details class="import-panel">
       <summary>
@@ -1145,6 +1297,20 @@ function renderScheduleImport(service){
   `;
 }
 
+function renderScheduleLockControl(service){
+  if(!service.can_edit) return "";
+  const unlocked = isScheduleEditingUnlocked(service);
+  return `
+    <button class="ghost mini schedule-lock-btn ${unlocked ? "unlocked" : ""}" type="button" data-schedule-lock="1">
+      ${unlocked ? "Заблокировать" : "Разблокировать"}
+    </button>
+  `;
+}
+
+function isScheduleEditingUnlocked(service){
+  return Boolean(service?.can_edit && state.scheduleEditUnlocked);
+}
+
 function renderScheduleContent(schedule){
   const monthTitle = formatScheduleMonth(schedule.year, schedule.month);
   const totals = buildScheduleTotals(schedule);
@@ -1154,13 +1320,15 @@ function renderScheduleContent(schedule){
       <div class="mname">${monthTitle}</div>
       <button class="btn icon" data-month-action="next">›</button>
     </div>
-    ${renderMoneySummary(schedule, totals)}
+    ${schedule.canSeeMoney ? renderMoneySummary(schedule, totals) : ""}
     ${schedule.employees.length ? renderScheduleTable(schedule) : renderEmptySchedule()}
-    <h2 class="sec">Итоги за месяц</h2>
-    ${renderRoleTotals(schedule, totals)}
-    <div class="cards">
-      ${renderSummaryCards(schedule, totals)}
-    </div>
+    ${schedule.canSeeMoney ? `
+      <h2 class="sec">Итоги за месяц</h2>
+      ${renderRoleTotals(schedule, totals)}
+      <div class="cards">
+        ${renderSummaryCards(schedule, totals)}
+      </div>
+    ` : ""}
   `;
 }
 
@@ -1189,9 +1357,7 @@ function renderScheduleTable(schedule){
         <tbody>
           ${schedule.days.map((day)=>renderScheduleDay(day, schedule.employees, schedule.canSeeMoney)).join("")}
         </tbody>
-        <tfoot>
-          ${renderScheduleFooter(schedule, totals)}
-        </tfoot>
+        ${schedule.canSeeMoney ? `<tfoot>${renderScheduleFooter(schedule, totals)}</tfoot>` : ""}
       </table>
     </div>
   `;
@@ -1213,14 +1379,14 @@ function renderScheduleDay(day, employees, canSeeMoney){
           ${day.isDeadline ? `<div class="dmarks"><span class="markIcon star" title="Дедлайн">☆</span></div>` : ""}
         </div>
       </td>
-      ${employees.map((employee)=>renderShiftCell(day, employee)).join("")}
+      ${employees.map((employee)=>renderShiftCell(day, employee, canSeeMoney)).join("")}
       <td class="colSum"><span class="cv">${day.coverage || ""}</span></td>
       ${canSeeMoney ? `<td class="colMoney"><span class="mv">${day.fot ? formatMoneyPlain(day.fot) : ""}</span></td><td class="colPlan"><span class="pv">${day.fot ? escapeHtml(day.revenuePlan) : ""}</span></td>` : ""}
     </tr>
   `;
 }
 
-function renderShiftCell(day, employee){
+function renderShiftCell(day, employee, canSeeMoney){
   const shift = day.shifts[employee.id];
   const hasPayday = day.plannedPayEmployeeIds.includes(employee.id);
   const hasPayout = day.payouts.some((payout)=>payout.employee_id === employee.id || payout.employeeId === employee.id);
@@ -1235,7 +1401,7 @@ function renderShiftCell(day, employee){
 
   const label = shift
     ? isFixedShift(employee, shift)
-      ? shift.payAmount == null ? "✓" : compactCellMoney(shift.payAmount)
+      ? !canSeeMoney || shift.payAmount == null ? "✓" : compactCellMoney(shift.payAmount)
       : shift.hours == null ? "•" : formatHours(shift.hours)
     : "";
   const valueClass = isFixedShift(employee, shift) ? "h fx" : "h";
@@ -1292,31 +1458,15 @@ function renderScheduleFooter(schedule, totals){
 }
 
 function renderMoneySummary(schedule){
-  if(schedule.canSeeMoney){
-    return `
-      <div class="moneySummary">
-        <div class="msmain">
-          <div class="mslabel">ФОТ за месяц</div>
-          <div class="msbig">${formatMoneyPlain(schedule.summary.totalFot)} ₽</div>
-        </div>
-        <div class="msrow">
-          <span>Дней с сменами: <b>${schedule.summary.workingDays || 0}</b></span>
-          <span>План выручки при ФОТ 23-28%: <b>${escapeHtml(schedule.summary.revenuePlan || "0")}</b></span>
-          <span>Выдано: <b>${formatMoneyPlain(schedule.summary.totalPaid)} ₽</b></span>
-          <span>Остаток: <b>${formatMoneyPlain(schedule.summary.totalRemaining)} ₽</b></span>
-        </div>
-      </div>
-    `;
-  }
-
   return `
-    <div class="moneySummary employee-money">
+    <div class="moneySummary">
       <div class="msmain">
-        <div class="mslabel">Мой расчет</div>
-        <div class="msbig">${formatMoneyPlain(schedule.summary.totalRemaining)} ₽</div>
+        <div class="mslabel">ФОТ за месяц</div>
+        <div class="msbig">${formatMoneyPlain(schedule.summary.totalFot)} ₽</div>
       </div>
       <div class="msrow">
-        <span>Начислено: <b>${formatMoneyPlain(schedule.summary.totalFot)} ₽</b></span>
+        <span>Дней с сменами: <b>${schedule.summary.workingDays || 0}</b></span>
+        <span>План выручки при ФОТ 23-28%: <b>${escapeHtml(schedule.summary.revenuePlan || "0")}</b></span>
         <span>Выдано: <b>${formatMoneyPlain(schedule.summary.totalPaid)} ₽</b></span>
         <span>Остаток: <b>${formatMoneyPlain(schedule.summary.totalRemaining)} ₽</b></span>
       </div>
@@ -1414,7 +1564,7 @@ function emptyEmployeeTotal(){
 }
 
 function renderScheduleEditor(service){
-  if(!service.can_edit || !state.schedule || !state.selectedScheduleCell) return "";
+  if(!isScheduleEditingUnlocked(service) || !state.schedule || !state.selectedScheduleCell) return "";
   const context = selectedScheduleContext();
   if(!context) return "";
 
@@ -1460,7 +1610,7 @@ function renderScheduleEditor(service){
 }
 
 function renderScheduleDateEditor(service){
-  if(!service.can_edit || !state.schedule || !state.selectedScheduleDate) return "";
+  if(!isScheduleEditingUnlocked(service) || !state.schedule || !state.selectedScheduleDate) return "";
   const context = selectedDateContext();
   if(!context) return "";
 
@@ -1523,7 +1673,7 @@ function renderScheduleDateEditor(service){
 
 function bindScheduleCells(service){
   app.querySelectorAll("[data-schedule-cell]").forEach((cell)=>{
-    if(!service.can_edit) return;
+    if(!isScheduleEditingUnlocked(service)) return;
 
     let pressTimer = null;
     let longPressed = false;
@@ -1561,7 +1711,7 @@ function bindScheduleCells(service){
 
 function bindScheduleDates(service){
   app.querySelectorAll("[data-schedule-date]").forEach((cell)=>{
-    if(!service.can_edit) return;
+    if(!isScheduleEditingUnlocked(service)) return;
     cell.addEventListener("click", ()=>{
       openDateEditor(cell.dataset.scheduleDate);
     });
@@ -1869,6 +2019,9 @@ async function logout(){
   state.user = null;
   state.services = [];
   state.summary = null;
+  state.schedule = null;
+  state.scheduleEditUnlocked = false;
+  state.payroll = null;
   history.replaceState(null, "", "/");
   render();
 }

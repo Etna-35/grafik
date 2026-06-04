@@ -22,13 +22,12 @@
   --shadow:0 1px 2px rgba(60,40,20,.06),0 6px 18px rgba(60,40,20,.06);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;min-height:100%;background:#ece3d4;color:var(--ink);font-family:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-feature-settings:"tnum" 1}
-button,a,input,select,textarea{font:inherit}
+html,body{margin:0;min-height:100%;background:var(--paper);color:var(--ink);font-family:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-feature-settings:"tnum" 1;touch-action:manipulation;-webkit-text-size-adjust:100%}
+button,a,input,select,textarea{font:inherit;touch-action:manipulation}
 a{color:inherit;text-decoration:none}
-.app-shell{min-height:100vh;display:flex;justify-content:center;padding:14px}
-.phone{width:100%;max-width:430px;min-height:calc(100vh - 28px);background:var(--paper);border:1px solid var(--line-strong);border-radius:28px;box-shadow:0 18px 50px rgba(60,40,20,.18),0 2px 0 #fff inset;overflow:hidden}
-.phone.wide{max-width:520px}
-.screen{padding:22px 16px 28px}
+.app-shell{min-height:100vh;display:block;padding:0;background:var(--paper)}
+.phone,.phone.wide,.phone.schedule-phone,.admin-phone,.shift-close-phone,.payroll-phone{width:100%;max-width:none;min-height:100vh;background:var(--paper);border:0;border-radius:0;box-shadow:none;overflow:visible}
+.screen{min-height:100vh;padding:22px 16px 28px}
 .top{display:flex;align-items:center;gap:10px;margin:2px 2px 18px}
 .mark{width:9px;height:28px;border-radius:3px;background:var(--brand);flex:none}
 .brand-title{font-family:"Playfair Display",serif;font-size:22px;line-height:1;font-weight:700;margin:0}
@@ -127,13 +126,17 @@ a{color:inherit;text-decoration:none}
 .shift-footer .btn{width:100%;padding:14px;border:1px solid var(--brand);font-size:15px;font-weight:800}
 .shift-error{margin:8px 2px;text-align:left}
 .auto-inp{background:#efe9dd;border-color:var(--line);box-shadow:none}
-.phone.schedule-phone{max-width:1080px;border-radius:22px}
+.phone.schedule-phone{max-width:none;border-radius:0}
 .schedule-screen{padding:18px 14px 28px}
 .monthbar{display:flex;align-items:center;gap:8px;margin:0 2px 12px}
 .monthbar .mname{flex:1;text-align:center;font-weight:800;font-size:16px;text-transform:capitalize}
 .btn{border:1px solid var(--line-strong);background:var(--card);color:var(--ink);border-radius:11px;padding:9px 12px;font:inherit;font-weight:700;font-size:14px;cursor:pointer;box-shadow:var(--shadow);transition:transform .08s ease,background .15s;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
 .btn:active{transform:scale(.96)}
 .btn.icon{width:42px;text-align:center;padding:9px 0;font-size:18px;line-height:1}
+.schedule-lock-btn{margin-left:auto;white-space:nowrap}
+.schedule-lock-btn.unlocked{background:var(--brand);border-color:var(--brand);color:#fff}
+.schedule-screen.edit-locked .schedule-grid td.cell,
+.schedule-screen.edit-locked .schedule-grid .markDate{cursor:default}
 .gridwrap{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:auto;-webkit-overflow-scrolling:touch;max-height:70vh}
 .schedule-grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-content;font-size:12px}
 .schedule-grid th,.schedule-grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
@@ -293,6 +296,22 @@ a{color:inherit;text-decoration:none}
 .payout-item button{margin-left:auto}
 .payout-add{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}
 .muted-line{font-size:12px;color:var(--ink-soft);margin-top:7px}
+.payroll-phone{max-width:none}
+.payroll-screen{max-width:760px;margin:0 auto}
+.payroll-hero{display:flex;justify-content:space-between;gap:14px;align-items:flex-end;border:1px solid var(--line);background:linear-gradient(135deg,#fffdf9,#f5eee3);padding:16px;margin:0 2px 12px}
+.payroll-balance{font-family:"Playfair Display",serif;font-weight:700;font-size:34px;color:var(--brand);line-height:1.05;white-space:nowrap}
+.payroll-next{text-align:right;font-size:12px;color:var(--ink-soft);font-weight:800}
+.payroll-next span{display:block;margin-bottom:4px}
+.payroll-next b{display:block;color:var(--ink);font-size:13px}
+.payroll-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 2px 12px}
+.pay-metric{border:1px solid var(--line);background:var(--card);padding:11px 12px}
+.pay-metric span{display:block;font-size:11px;color:var(--ink-soft);font-weight:800}
+.pay-metric b{display:block;font-size:17px;line-height:1.1;margin-top:5px}
+.payroll-list{display:grid;gap:7px;margin:0 2px}
+.payroll-row{display:flex;justify-content:space-between;align-items:center;gap:14px;border:1px solid var(--line);background:var(--card);padding:10px 12px}
+.payroll-row b{display:block;font-size:15px}
+.payroll-row small{display:block;color:var(--ink-soft);font-size:12px;margin-top:2px;font-weight:700}
+.payroll-row i{font-style:normal;color:var(--ink-soft);font-size:11px;font-weight:800;text-transform:uppercase}
 @media (min-width:900px){
   html,body{background:var(--paper)}
   .app-shell{display:block;padding:0;background:var(--paper)}
@@ -302,6 +321,7 @@ a{color:inherit;text-decoration:none}
   .pin-wrap{min-height:calc(100vh - 90px);justify-content:center;padding-top:0}
   .phone.schedule-phone .schedule-screen{max-width:none;padding:22px 24px 34px}
   .shift-close-screen{max-width:860px;padding:24px 32px 38px}
+  .payroll-screen{max-width:860px;padding:24px 32px 38px}
   .admin-screen{max-width:1280px;padding:24px 32px 38px}
   .backrow{margin-bottom:16px}
   .gridwrap{max-height:calc(100vh - 250px);border-radius:8px;box-shadow:0 1px 2px rgba(60,40,20,.05)}
@@ -324,6 +344,9 @@ a{color:inherit;text-decoration:none}
   .admin-employees{max-height:260px}
   .admin-fields,.schedule-settings{grid-template-columns:1fr 1fr}
   .date-editor-grid{grid-template-columns:1fr}
+  .payroll-hero{align-items:flex-start;flex-direction:column}
+  .payroll-next{text-align:left}
+  .payroll-metrics{grid-template-columns:1fr 1fr}
 }
 @media (max-width:370px){
   .keypad{grid-template-columns:repeat(3,64px);gap:12px}

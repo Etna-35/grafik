@@ -389,12 +389,11 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
 
   for (const row of shiftRows.rows) {
     const date = row.work_date;
-    const isOwnShift = row.employee_id === user.id;
     const item = {
       employeeId: row.employee_id,
       hours: row.planned_hours ? Number(row.planned_hours) : null,
       actualEndTime: row.actual_end_time,
-      payAmount: canSeeAllMoney || isOwnShift ? row.pay_amount || 0 : null,
+      payAmount: canSeeAllMoney ? row.pay_amount || 0 : null,
       payModel: row.pay_model
     };
     shiftsByDate.set(date, {
@@ -423,7 +422,14 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       plannedPayEmployeeIds: plannedPayRows.rows
         .filter((row) => row.work_date === date && (canSeeAllMoney || row.employee_id === user.id))
         .map((row) => row.employee_id),
-      payouts: payoutRows.rows.filter((row) => row.work_date === date),
+      payouts: payoutRows.rows
+        .filter((row) => row.work_date === date)
+        .map((row) => ({
+          id: row.id,
+          work_date: row.work_date,
+          employee_id: row.employee_id,
+          amount: canSeeAllMoney ? row.amount : 0
+        })),
       scores: scoreRows.rows.filter((row) => row.work_date === date),
       shifts,
       coverage: Object.keys(shifts).length,
@@ -432,13 +438,12 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     };
   });
 
-  const ownTotals = employeeTotals.get(user.id) || { accrued: 0, paid: 0, shifts: 0 };
   const totalFot = canSeeAllMoney
     ? Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.accrued, 0)
-    : ownTotals.accrued;
+    : 0;
   const totalPaid = canSeeAllMoney
     ? Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.paid, 0)
-    : ownTotals.paid;
+    : 0;
 
   return {
     year,
@@ -447,20 +452,19 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     employees: employeeRows.rows.map((employee) => {
       const totals = employeeTotals.get(employee.id) || { accrued: 0, paid: 0, shifts: 0 };
       const payModel = employee.pay_model || (employee.schedule_role === "dish" || employee.role === "dishwasher" ? "fixed" : "hourly");
-      const isOwnEmployee = employee.id === user.id;
       return {
         id: employee.id,
         name: employee.display_name,
         role: employee.schedule_role || employee.role,
         roleLabel: roleLabels[employee.schedule_role || employee.role] || "Сотрудник",
         defaultHours: employee.default_hours ? Number(employee.default_hours) : null,
-        hourlyRate: canSeeAllMoney || isOwnEmployee ? employee.hourly_rate : null,
-        payModel: canSeeAllMoney || isOwnEmployee ? payModel : null,
+        hourlyRate: canSeeAllMoney ? employee.hourly_rate : null,
+        payModel: canSeeAllMoney ? payModel : null,
         totals: {
           shifts: totals.shifts,
-          accrued: canSeeAllMoney || isOwnEmployee ? totals.accrued : null,
-          paid: canSeeAllMoney || isOwnEmployee ? totals.paid : null,
-          remaining: canSeeAllMoney || isOwnEmployee ? Math.max(0, totals.accrued - totals.paid) : null
+          accrued: canSeeAllMoney ? totals.accrued : null,
+          paid: canSeeAllMoney ? totals.paid : null,
+          remaining: canSeeAllMoney ? Math.max(0, totals.accrued - totals.paid) : null
         }
       };
     }),
