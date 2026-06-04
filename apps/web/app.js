@@ -1092,6 +1092,8 @@ function renderPayrollPage(service){
 
 function renderPayrollContent(payroll){
   const summary = payroll.summary || {};
+  const hookahRows = payroll.hookah || [];
+  const showHookah = summary.isHookahMaster || hookahRows.length > 0;
   return `
     <div class="monthbar">
       <button class="btn icon" data-payroll-month="prev">‹</button>
@@ -1113,11 +1115,27 @@ function renderPayrollContent(payroll){
     <div class="payroll-metrics">
       <div class="pay-metric"><span>Начислено</span><b>${formatMoneyPlain(summary.accrued || 0)} ₽</b></div>
       <div class="pay-metric"><span>Выдано</span><b>${formatMoneyPlain(summary.paid || 0)} ₽</b></div>
+      ${showHookah ? `<div class="pay-metric"><span>Кальяны</span><b>${formatMoneyPlain(summary.hookahAccrued || 0)} ₽</b></div>` : ""}
       <div class="pay-metric"><span>Смены</span><b>${summary.shifts || 0}</b></div>
       <div class="pay-metric"><span>Часы</span><b>${formatHours(summary.hours || 0)}</b></div>
     </div>
 
-    <h2 class="sec">История выплат</h2>
+    ${showHookah ? `
+      <h2 class="sec">Кальяны</h2>
+      <div class="payroll-list">
+        ${hookahRows.length ? hookahRows.map((row)=>`
+          <div class="payroll-row">
+            <span>
+              <b>${formatMoneyPlain(row.amount)} ₽</b>
+              <small>${escapeHtml(formatDateHuman(row.workDate))} · ${row.count} × ${formatMoneyPlain(row.rate)} ₽</small>
+            </span>
+            <i>выдано</i>
+          </div>
+        `).join("") : `<div class="panel muted-line">В этом месяце кальянов пока нет</div>`}
+      </div>
+    ` : ""}
+
+    <h2 class="sec">История выплат ЗП</h2>
     <div class="payroll-list">
       ${(payroll.payouts || []).length ? payroll.payouts.map((payout)=>`
         <div class="payroll-row">
@@ -1624,9 +1642,10 @@ function renderShiftClosingForm(){
       <h2 class="sec">Расходы из кассы</h2>
       ${moneyField("washCost", "Мойка", form.washCost)}
       <div class="two">
+        ${hookahEmployeeField(form.hookahEmployeeId, init.hookahEmployees || [])}
         ${numberField("hookahCount", "Кальяны, шт", form.hookahCount)}
-        ${autoField(`Выпл. кальяны (${preview.hookahCount} × ${formatMoneyPlain(preview.hookahRate)})`, preview.hookahPayout)}
       </div>
+      ${autoRow(preview.hookahEmployeeName ? `Выпл. кальяны · ${preview.hookahEmployeeName} (${preview.hookahCount} × ${formatMoneyPlain(preview.hookahRate)})` : `Выпл. кальяны (${preview.hookahCount} × ${formatMoneyPlain(preview.hookahRate)})`, preview.hookahPayout)}
       <div class="extra-box">
         <div class="extra-head">
           <span class="row-title">Доп. расходы</span>
@@ -1701,6 +1720,21 @@ function numberField(name, label, value){
   `;
 }
 
+function hookahEmployeeField(value, employees){
+  return `
+    <label class="field">
+      <span>Кальянщик</span>
+      <select class="inp" name="hookahEmployeeId" data-shift-hookah-employee>
+        ${employees.length ? employees.map((employee)=>`
+          <option value="${escapeAttr(employee.id)}" ${value === employee.id ? "selected" : ""}>
+            ${escapeHtml(employee.name)} · ${formatMoneyPlain(employee.rate)} ₽
+          </option>
+        `).join("") : `<option value="">Нет активных кальянщиков</option>`}
+      </select>
+    </label>
+  `;
+}
+
 function autoField(label, value){
   return `
     <div class="field">
@@ -1759,6 +1793,12 @@ function bindShiftClosingForm(){
     });
   });
 
+  app.querySelector("[data-shift-hookah-employee]")?.addEventListener("change", (event)=>{
+    state.shiftClosingForm.hookahEmployeeId = event.target.value || "";
+    collectShiftClosingForm();
+    render();
+  });
+
   app.querySelector("[data-shift-action='add-expense']")?.addEventListener("click", ()=>{
     collectShiftClosingForm();
     state.shiftClosingForm.extraExpenses.push({ amount:0, comment:"" });
@@ -1810,6 +1850,7 @@ function shiftClosingFormFrom(init, record){
     cashRevenue: values.cashRevenue || 0,
     transferRevenue: values.transferRevenue || 0,
     washCost: values.washCost || 0,
+    hookahEmployeeId: record?.hookahEmployee?.id || init.hookahEmployee?.id || "",
     hookahCount: values.hookahCount || 0,
     taxiAmount: values.taxiAmount || 0,
     collectionAmount: values.collectionAmount || 0,
@@ -1830,6 +1871,7 @@ function collectShiftClosingForm(){
   ["openingCashActual","terminal1","terminal2","netmonet","yandexFood","cashRevenue","transferRevenue","washCost","hookahCount","taxiAmount","collectionAmount","closingCashActual"].forEach((field)=>{
     next[field] = integerOrNull(form.elements[field]?.value) || 0;
   });
+  next.hookahEmployeeId = form.elements.hookahEmployeeId?.value || "";
   next.comment = form.elements.comment?.value || "";
   next.extraExpenses = Array.from(app.querySelectorAll("[data-expense-row]")).map((row)=>({
     amount: integerOrNull(row.querySelector("input[name='extraAmount']")?.value) || 0,
@@ -1841,7 +1883,8 @@ function collectShiftClosingForm(){
 
 function computeShiftClosingPreview(form, init){
   const extraExpensesTotal = (form.extraExpenses || []).reduce((sum, expense)=>sum + Number(expense.amount || 0), 0);
-  const hookahRate = Number(init.hookahEmployee?.rate || 0);
+  const hookahEmployee = (init.hookahEmployees || []).find((employee)=>employee.id === form.hookahEmployeeId) || init.hookahEmployee || {};
+  const hookahRate = Number(hookahEmployee.rate || 0);
   const hookahCount = Number(form.hookahCount || 0);
   const cashlessTotal = Number(form.terminal1 || 0) + Number(form.terminal2 || 0) + Number(form.netmonet || 0) + Number(form.yandexFood || 0);
   const revenueTotal = cashlessTotal + Number(form.cashRevenue || 0) + Number(form.transferRevenue || 0);
@@ -1860,6 +1903,7 @@ function computeShiftClosingPreview(form, init){
     openingCashDiff: Number(form.openingCashActual || 0) - Number(init.openingCashExpected || 0),
     hookahCount,
     hookahRate,
+    hookahEmployeeName: hookahEmployee.name || "",
     cashlessTotal,
     revenueTotal,
     hookahPayout,
@@ -1920,6 +1964,7 @@ async function submitShiftClosing(){
 function shiftClosingPayload(form){
   return {
     workDate: form.workDate,
+    hookahEmployeeId: form.hookahEmployeeId || null,
     openingCashActual: Number(form.openingCashActual || 0),
     terminal1: Number(form.terminal1 || 0),
     terminal2: Number(form.terminal2 || 0),

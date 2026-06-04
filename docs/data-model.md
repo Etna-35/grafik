@@ -322,6 +322,7 @@ PIN в открытом виде не хранится.
 
 Правила:
 
+- `hookah_employee_id` выбирается в форме закрытия смены из активных сотрудников, у которых включена доп. роль `Кальянщик`;
 - `opening_cash_expected` берется из `closing_cash_actual` предыдущей закрытой смены;
 - `cashless_total = terminal_1 + terminal_2 + netmonet + yandex_food`;
 - `revenue_total = cashless_total + cash_revenue + transfer_revenue`;
@@ -329,6 +330,7 @@ PIN в открытом виде не хранится.
 - `closing_cash_expected = opening_cash_actual + cash_revenue + transfer_revenue - wash_cost - hookah_payout - extra_expenses_total - collection_amount`;
 - `taxi_amount` не вычитается из кассы;
 - `revenue_plan` берется из модуля `График`;
+- `hookah_payout` попадает в личный раздел `Выплаты` выбранного кальянщика как отдельное начисление, которое считается уже выданным из кассы закрытия смены;
 - Telegram не блокирует закрытие смены.
 
 ### shift_closing_extra_expenses

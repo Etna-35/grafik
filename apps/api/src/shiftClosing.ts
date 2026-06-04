@@ -14,6 +14,7 @@ const extraExpenseSchema = z.object({
 
 const closingInputSchema = z.object({
   workDate: dateSchema.optional(),
+  hookahEmployeeId: z.string().uuid().nullable().optional(),
   openingCashActual: moneySchema,
   terminal1: moneySchema,
   terminal2: moneySchema,
@@ -157,12 +158,13 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
     if (!user) return;
 
     const workDate = currentShiftWorkDate();
-    const [openingCashExpected, revenuePlan, hookahEmployee, existing] = await Promise.all([
+    const [openingCashExpected, revenuePlan, hookahEmployees, existing] = await Promise.all([
       getOpeningCashExpected(workDate),
       getRevenuePlan(workDate),
-      getHookahEmployee(),
+      getHookahEmployees(),
       getClosingByDate(workDate, user)
     ]);
+    const hookahEmployee = selectedHookahEmployee(existing?.hookahEmployee, hookahEmployees);
 
     return {
       workDate,
@@ -176,6 +178,7 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
       cashDiffLimit: 500,
       taxiLimit: 2000,
       hookahEmployee,
+      hookahEmployees,
       existing
     };
   });
@@ -201,6 +204,10 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
     } catch (error) {
       if (isUniqueViolation(error)) {
         await reply.code(409).send({ error: "shift_already_closed" });
+        return;
+      }
+      if (isHookahEmployeeError(error)) {
+        await reply.code(400).send({ error: "bad_hookah_employee" });
         return;
       }
       throw error;
@@ -246,10 +253,18 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
       return;
     }
 
-    const computed = await computeClosing(user, { ...parsed.data, workDate: current.work_date });
-    await updateClosing(params.data.id, computed, parsed.data.extraExpenses);
-    await audit(request, "shift_closing_update", user.id, "shift_closing", params.data.id, computed);
-    return getClosingById(params.data.id, user);
+    try {
+      const computed = await computeClosing(user, { ...parsed.data, workDate: current.work_date });
+      await updateClosing(params.data.id, computed, parsed.data.extraExpenses);
+      await audit(request, "shift_closing_update", user.id, "shift_closing", params.data.id, computed);
+      return getClosingById(params.data.id, user);
+    } catch (error) {
+      if (isHookahEmployeeError(error)) {
+        await reply.code(400).send({ error: "bad_hookah_employee" });
+        return;
+      }
+      throw error;
+    }
   });
 
   app.post("/api/shift-closing/:id/photos", async (request, reply) => {
@@ -361,7 +376,7 @@ async function computeClosing(user: SessionUser, input: ShiftClosingInput): Prom
   const [openingCashExpected, revenuePlan, hookahEmployee] = await Promise.all([
     getOpeningCashExpected(workDate),
     getRevenuePlan(workDate),
-    getHookahEmployee()
+    getHookahEmployee(input.hookahEmployeeId)
   ]);
 
   const extraExpenses = input.extraExpenses
@@ -775,7 +790,30 @@ async function getRevenuePlan(workDate: string): Promise<number> {
   return fot > 0 ? Math.round(fot / 0.23) : 0;
 }
 
-async function getHookahEmployee(): Promise<HookahEmployee> {
+async function getHookahEmployee(employeeId?: string | null): Promise<HookahEmployee> {
+  if (employeeId) {
+    const selected = await query<{ id: string; display_name: string; hookah_rate: number }>(
+      `
+        SELECT id, display_name, hookah_rate
+        FROM employees
+        WHERE id = $1
+          AND is_active = true
+          AND is_hookah_master = true
+        LIMIT 1
+      `,
+      [employeeId]
+    );
+    const row = selected.rows[0];
+    if (!row) {
+      throw new Error("hookah_employee_not_found");
+    }
+    return {
+      id: row.id,
+      name: row.display_name,
+      rate: row.hookah_rate || 0
+    };
+  }
+
   const result = await query<{ id: string; display_name: string; hookah_rate: number }>(
     `
       SELECT id, display_name, hookah_rate
@@ -792,6 +830,32 @@ async function getHookahEmployee(): Promise<HookahEmployee> {
     name: row?.display_name || "",
     rate: row?.hookah_rate || 0
   };
+}
+
+async function getHookahEmployees(): Promise<HookahEmployee[]> {
+  const result = await query<{ id: string; display_name: string; hookah_rate: number }>(
+    `
+      SELECT id, display_name, hookah_rate
+      FROM employees
+      WHERE is_active = true
+        AND is_hookah_master = true
+      ORDER BY display_name
+    `
+  );
+  return result.rows.map((row) => ({
+    id: row.id,
+    name: row.display_name,
+    rate: row.hookah_rate || 0
+  }));
+}
+
+function selectedHookahEmployee(existing: HookahEmployee | undefined, employees: HookahEmployee[]): HookahEmployee {
+  if (existing?.id) return existing;
+  return employees[0] || { id: null, name: "", rate: 0 };
+}
+
+function isHookahEmployeeError(error: unknown): boolean {
+  return error instanceof Error && error.message === "hookah_employee_not_found";
 }
 
 async function sendTelegramReports(id: string, audiences: Array<"manager" | "team">) {
