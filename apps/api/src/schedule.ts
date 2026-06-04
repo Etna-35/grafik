@@ -378,8 +378,9 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       FROM employee_scores
       WHERE work_date >= $1::date
         AND work_date < ($1::date + interval '1 month')
+        AND ($2::boolean = true OR employee_id = $3::uuid)
     `,
-    [start]
+    [start, canSeeAllMoney, user.id]
   );
 
   const shiftsByDate = new Map<string, Record<string, unknown>>();
