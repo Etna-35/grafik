@@ -45,6 +45,10 @@ let state = {
   payroll: null,
   payrollLoading: false,
   payrollError: "",
+  tasks: null,
+  tasksLoading: false,
+  tasksError: "",
+  tasksSaving: false,
   shiftClosingInit: null,
   shiftClosingRecord: null,
   shiftClosingForm: null,
@@ -249,6 +253,10 @@ function renderServicePage(path){
     renderShiftClosingPage(service);
     return;
   }
+  if(service.code === "tasks"){
+    renderTasksPage(service);
+    return;
+  }
   if(service.code === "payroll"){
     renderPayrollPage(service);
     return;
@@ -284,6 +292,185 @@ function renderServicePage(path){
     history.pushState(null, "", "/");
     render();
   });
+}
+
+function renderTasksPage(service){
+  if(!state.tasks && !state.tasksLoading && !state.tasksError){
+    loadTasks();
+  }
+
+  const body = state.tasksLoading
+    ? `<div class="panel"><div class="loader compact">Загружаю задачи</div></div>`
+    : state.tasksError
+      ? `<div class="panel"><div class="row-title">Не удалось загрузить задачи</div><div class="row-sub">${escapeHtml(state.tasksError)}</div></div>`
+      : state.tasks
+        ? renderTasksContent(state.tasks)
+        : "";
+
+  app.innerHTML = `
+    <div class="phone wide tasks-phone">
+      <section class="screen service-page tasks-screen">
+        <div class="backrow">
+          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">${escapeHtml(service.title)}</h1>
+          <span class="status">Postgres</span>
+        </div>
+        ${body}
+      </section>
+    </div>
+  `;
+
+  app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+
+  bindTasksPage();
+}
+
+function renderTasksContent(tasks){
+  const team = tasks.teamSummary || {};
+  const ownTasks = tasks.ownTasks || [];
+  return `
+    <div class="task-metrics">
+      <div class="task-metric"><span>Мои в работе</span><b>${ownTasks.filter((task)=>task.status === "open").length}</b></div>
+      <div class="task-metric"><span>Мои готово</span><b>${ownTasks.filter((task)=>task.status === "done").length}</b></div>
+      <div class="task-metric"><span>У команды</span><b>${team.total || 0}</b></div>
+      <div class="task-metric"><span>Сделано другими</span><b>${team.doneByOthers || 0}</b></div>
+    </div>
+
+    ${tasks.canManage ? renderTaskCreatePanel(tasks) : ""}
+
+    <h2 class="sec">Мои задачи</h2>
+    <div class="task-list">
+      ${ownTasks.length ? ownTasks.map((task)=>renderTaskCard(task, false)).join("") : `<div class="panel muted-line">Задач пока нет</div>`}
+    </div>
+
+    ${tasks.canManage ? `
+      <h2 class="sec">Команда</h2>
+      <div class="task-list">
+        ${(tasks.teamTasks || []).length ? tasks.teamTasks.map((task)=>renderTaskCard(task, true)).join("") : `<div class="panel muted-line">Командных задач пока нет</div>`}
+      </div>
+    ` : ""}
+
+    ${state.tasksError ? `<div class="error">${escapeHtml(state.tasksError)}</div>` : ""}
+  `;
+}
+
+function renderTaskCreatePanel(tasks){
+  return `
+    <form class="panel task-create" id="taskCreateForm">
+      <div class="row-title">Назначить задачу</div>
+      <div class="task-create-grid">
+        <label class="field">
+          <span>Сотрудник</span>
+          <select name="employeeId" required>
+            ${(tasks.employees || []).map((employee)=>`
+              <option value="${escapeAttr(employee.id)}">${escapeHtml(employee.name)}</option>
+            `).join("")}
+          </select>
+        </label>
+        <label class="field task-title-field">
+          <span>Задача</span>
+          <input name="title" type="text" maxlength="200" autocomplete="off" placeholder="Что нужно сделать" required>
+        </label>
+        <label class="field">
+          <span>Срок</span>
+          <input name="deadlineDate" type="date">
+        </label>
+        <button class="ghost brand-action" type="submit">Добавить</button>
+      </div>
+    </form>
+  `;
+}
+
+function renderTaskCard(task, showEmployee){
+  const done = task.status === "done";
+  return `
+    <div class="task-card ${done ? "done" : "open"}">
+      <div class="task-main">
+        <div class="task-title">${escapeHtml(task.title)}</div>
+        <div class="task-meta">
+          ${showEmployee && task.employeeName ? `<span>${escapeHtml(task.employeeName)}</span>` : ""}
+          ${task.deadlineDate ? `<span>${escapeHtml(formatDateHuman(task.deadlineDate))}</span>` : ""}
+        </div>
+      </div>
+      <div class="task-actions">
+        <span class="task-status ${done ? "done" : "open"}">${done ? "Готово" : "В работе"}</span>
+        <button class="ghost mini" type="button" data-task-status="${escapeAttr(task.id)}" data-status="${done ? "open" : "done"}">
+          ${done ? "Вернуть" : "Готово"}
+        </button>
+        ${showEmployee ? `<button class="ghost mini danger-action" type="button" data-task-cancel="${escapeAttr(task.id)}">Снять</button>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function bindTasksPage(){
+  const form = app.querySelector("#taskCreateForm");
+  if(form){
+    form.addEventListener("submit", (event)=>{
+      event.preventDefault();
+      createTaskFromForm(form);
+    });
+  }
+
+  app.querySelectorAll("[data-task-status]").forEach((button)=>{
+    button.addEventListener("click", ()=>setTaskStatus(button.dataset.taskStatus, button.dataset.status));
+  });
+
+  app.querySelectorAll("[data-task-cancel]").forEach((button)=>{
+    button.addEventListener("click", ()=>cancelTask(button.dataset.taskCancel));
+  });
+}
+
+async function loadTasks(){
+  state.tasksLoading = true;
+  state.tasksError = "";
+  render();
+  try{
+    state.tasks = await apiGet("/api/tasks");
+  }catch(error){
+    state.tasksError = error.status === 403 ? "Нет доступа к задачам" : "Проверь соединение и попробуй ещё раз";
+  }finally{
+    state.tasksLoading = false;
+    render();
+  }
+}
+
+async function createTaskFromForm(form){
+  if(state.tasksSaving) return;
+  const title = form.elements.title.value.trim();
+  const employeeId = form.elements.employeeId.value;
+  const deadlineDate = form.elements.deadlineDate.value || null;
+  if(!title || !employeeId) return;
+  await saveTasksAction(()=>apiPost("/api/tasks", { title, employeeId, deadlineDate }));
+}
+
+async function setTaskStatus(id, status){
+  if(!id || !status || state.tasksSaving) return;
+  await saveTasksAction(()=>apiPatch(`/api/tasks/${encodeURIComponent(id)}/status`, { status }));
+}
+
+async function cancelTask(id){
+  if(!id || state.tasksSaving) return;
+  await saveTasksAction(()=>apiDelete(`/api/tasks/${encodeURIComponent(id)}`));
+}
+
+async function saveTasksAction(action){
+  state.tasksSaving = true;
+  state.tasksError = "";
+  render();
+  try{
+    await action();
+    state.tasks = await apiGet("/api/tasks");
+    state.summary = await apiGet("/api/summary");
+  }catch(error){
+    state.tasksError = "Не удалось сохранить";
+  }finally{
+    state.tasksSaving = false;
+    render();
+  }
 }
 
 function renderPayrollPage(service){
@@ -2022,6 +2209,7 @@ async function logout(){
   state.schedule = null;
   state.scheduleEditUnlocked = false;
   state.payroll = null;
+  state.tasks = null;
   history.replaceState(null, "", "/");
   render();
 }
