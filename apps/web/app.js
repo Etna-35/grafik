@@ -156,8 +156,7 @@ function renderPin(){
     <div class="phone">
       <section class="screen">
         <div class="pin-wrap">
-          <div class="logo"><span>E</span></div>
-          <div class="pin-title">no-money-no-honey</div>
+          <div class="logo"><img src="/assets/logo.png" alt="ЭТНА"></div>
           <div class="pin-sub">Введите PIN</div>
           <div class="dots">${[0,1,2,3].map((i)=>`<i class="${i < state.pin.length ? "f" : ""}"></i>`).join("")}</div>
           <div class="keypad">
@@ -216,8 +215,7 @@ function renderHub(){
       <section class="screen">
         <header class="top">
           <span class="mark"></span>
-          <h1 class="brand-title">Etna</h1>
-          <span class="top-meta">${today}</span>
+          <h1 class="brand-title">ЭТНА</h1>
         </header>
         <div class="greet">
           <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}</div>
@@ -701,14 +699,16 @@ function renderTaskCard(task, showEmployee){
   return `
     <div class="task-card ${done ? "done" : "open"}">
       <div class="task-main">
-        <div class="task-title">${escapeHtml(task.title)}</div>
+        <div class="task-title-row">
+          <span class="task-title">${escapeHtml(task.title)}</span>
+          <span class="task-status ${done ? "done" : "open"}">${done ? "Готово" : "В работе"}</span>
+        </div>
         <div class="task-meta">
           ${showEmployee && task.employeeName ? `<span>${escapeHtml(task.employeeName)}</span>` : ""}
           ${task.deadlineDate ? `<span>${escapeHtml(formatDateHuman(task.deadlineDate))}</span>` : ""}
         </div>
       </div>
       <div class="task-actions">
-        <span class="task-status ${done ? "done" : "open"}">${done ? "Готово" : "В работе"}</span>
         <button class="ghost mini" type="button" data-task-status="${escapeAttr(task.id)}" data-status="${done ? "open" : "done"}">
           ${done ? "Вернуть" : "Готово"}
         </button>
@@ -1521,7 +1521,6 @@ function renderAdminPage(service){
         <div class="backrow">
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
-          <span class="status">ЛК</span>
         </div>
         ${body}
         <div class="panel admin-tech">
@@ -1969,7 +1968,7 @@ function renderShiftClosingForm(){
 
       <h2 class="sec">Прочее</h2>
       ${moneyField("taxiAmount", "Такси", form.taxiAmount)}
-      <div class="hint">Не вычитается из кассы. Предел на смену — ${formatMoneyPlain(init.taxiLimit)} ₽.</div>
+      <div class="hint">Не вычитается из кассы.</div>
 
       <h2 class="sec">Инкассация</h2>
       ${moneyField("collectionAmount", "Изъято из кассы", form.collectionAmount)}
@@ -1978,11 +1977,6 @@ function renderShiftClosingForm(){
       ${moneyField("closingCashActual", "Фактический остаток (пересчитай кассу)", form.closingCashActual)}
       ${autoRow("Расчётный остаток", preview.closingCashExpected)}
       ${resultRow("Разница", preview.closingCashDiff, cashDiffOk ? "ok" : "warn", cashDiffOk ? `в пределах нормы (порог ${formatMoneyPlain(init.cashDiffLimit)} ₽)` : `выше порога ${formatMoneyPlain(init.cashDiffLimit)} ₽`)}
-
-      <h2 class="sec">План / факт</h2>
-      ${autoRow("План выручки", preview.revenuePlan)}
-      <div class="bar"><i style="width:${planWidth}%"></i></div>
-      <div class="hint">Выполнение плана — ${formatPercent(preview.revenuePlanPercent)}</div>
 
       <h2 class="sec">Фото чеков</h2>
       <div class="photo-grid">

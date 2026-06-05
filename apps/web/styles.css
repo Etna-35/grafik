@@ -66,10 +66,11 @@ a{color:inherit;text-decoration:none}
 .brand-title{font-family:var(--font-display);font-size:20px;line-height:1;font-weight:700;letter-spacing:.01em;margin:0}
 .top-meta{margin-left:auto;text-align:right;color:var(--ink-soft);font-size:12px;font-weight:700}
 .pin-wrap{display:flex;flex-direction:column;align-items:center;padding-top:36px}
-.logo{width:74px;height:74px;border-radius:20px;background:var(--brand);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
+.logo{width:92px;height:92px;border-radius:20px;display:flex;align-items:center;justify-content:center}
+.logo img{width:100%;height:100%;object-fit:contain;display:block}
 .logo span{font-family:var(--font-display);color:var(--brand-ink);font-size:40px;font-weight:700;line-height:1}
 .pin-title{font-family:var(--font-display);font-size:17px;font-weight:700;letter-spacing:.04em;color:var(--brand-bright);margin:16px 0 4px}
-.pin-sub{font-size:13px;color:var(--ink-soft);margin-bottom:24px}
+.pin-sub{font-size:13px;color:var(--ink-soft);margin-top:18px;margin-bottom:24px}
 .dots{display:flex;gap:14px;margin-bottom:30px}
 .dots i{width:14px;height:14px;border-radius:50%;border:2px solid var(--line-strong);background:transparent}
 .dots i.f{background:var(--brand);border-color:var(--brand)}
@@ -88,7 +89,7 @@ a{color:inherit;text-decoration:none}
 .stat .v{font-size:18px;font-weight:600;line-height:1.1;margin-top:4px}
 .section-title{font-family:var(--font-display);font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--brand-bright);margin:20px 4px 10px}
 .nav{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.navcard{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:14px;padding:14px 13px;box-shadow:var(--shadow);cursor:pointer;min-height:116px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:11px;text-align:left}
+.navcard{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:14px;padding:14px 13px;box-shadow:var(--shadow);cursor:pointer;color:var(--ink);min-height:116px;display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:11px;text-align:left}
 .navcard:active{transform:scale(.98)}
 .navcard .icon{width:34px;height:34px;border-radius:10px;background:var(--brand-tint);display:flex;align-items:center;justify-content:center;color:var(--brand-bright)}
 .navcard svg{width:19px;height:19px;stroke-width:2.1}
@@ -414,7 +415,9 @@ a{color:inherit;text-decoration:none}
 .task-title{font-size:14px;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
 .task-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:5px;font-size:11px;color:var(--ink-soft);font-weight:600}
 .task-actions{display:flex;gap:7px;align-items:center;flex:none}
-.task-status{font-size:11px;font-weight:600;padding:5px 8px;border:1px solid var(--line-strong);white-space:nowrap}
+.task-title-row{display:flex;align-items:center;gap:9px}
+.task-title-row .task-title{flex:1;min-width:0}
+.task-status{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;padding:4px 9px;border:1px solid var(--line-strong);border-radius:999px;white-space:nowrap;flex:none}
 .task-status.open{color:var(--gold);background:var(--gold-bg)}
 .task-status.done{color:var(--green);background:var(--ok-bg)}
 .training-phone{max-width:none}
