@@ -210,7 +210,6 @@ async function login(){
 }
 
 function renderHub(){
-  const role = roleLabel(state.user.role);
   const today = new Intl.DateTimeFormat("ru-RU", { weekday:"short", day:"numeric", month:"long" }).format(new Date());
   app.innerHTML = `
     <div class="phone">
@@ -222,7 +221,6 @@ function renderHub(){
         </header>
         <div class="greet">
           <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}</div>
-          <span class="role">${escapeHtml(role)}</span>
         </div>
         <div class="stats">
           <div class="stat"><div class="k">Смен</div><div class="v">${state.summary?.shiftsCount ?? 0}</div></div>
@@ -350,7 +348,6 @@ function renderTrainingPage(service){
         <div class="backrow">
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
-          <span class="status">Postgres</span>
         </div>
         ${body}
       </section>
@@ -629,7 +626,6 @@ function renderTasksPage(service){
         <div class="backrow">
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
-          <span class="status">Postgres</span>
         </div>
         ${body}
       </section>
@@ -808,7 +804,6 @@ function renderRequisitionPage(service){
         <div class="backrow">
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
-          <span class="status">Postgres</span>
         </div>
         ${body}
       </section>
@@ -826,9 +821,6 @@ function renderRequisitionPage(service){
 function renderRequisitionContent(){
   const total = requisitionCartItems().length;
   return `
-    <div class="req-note">
-      Заявка — это список потребностей для закупа. Она не списывает бюджет и не влияет на фудкост.
-    </div>
     <div class="req-tabs">
       <button class="${state.requisitionTab === "catalog" ? "on" : ""}" data-req-tab="catalog">Каталог</button>
       <button class="${state.requisitionTab === "cart" ? "on" : ""}" data-req-tab="cart">Моя заявка ${total ? `<b>${total}</b>` : ""}</button>
@@ -903,7 +895,7 @@ function renderRequisitionItem(item){
       <span class="req-marker" style="background:${escapeAttr(item.categoryColor)}"></span>
       <span class="req-item-main">
         <b>${escapeHtml(item.name)}</b>
-        <small>${escapeHtml(item.categoryName)} · ${escapeHtml(item.unit)}</small>
+        <small>${escapeHtml(item.unit)}</small>
       </span>
       ${entry ? `
         <span class="req-stepper">
@@ -1025,7 +1017,7 @@ function renderRequisitionCartLine(item){
     <div class="req-cart-line">
       <span class="req-item-main">
         <b>${escapeHtml(item.name)}</b>
-        <small>${escapeHtml(item.categoryName)} · ${escapeHtml(item.unit)}</small>
+        <small>${escapeHtml(item.unit)}</small>
       </span>
       <span class="req-stepper">
         <button type="button" data-req-dec="${escapeAttr(item.key)}">-</button>
@@ -1385,7 +1377,6 @@ function renderPayrollPage(service){
         <div class="backrow">
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
-          <span class="status">Postgres</span>
         </div>
         ${body}
       </section>
@@ -1899,7 +1890,6 @@ function renderShiftClosingPage(service){
         <div class="backrow">
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
-          <span class="status">Postgres</span>
         </div>
         ${body}
       </section>
@@ -1936,9 +1926,8 @@ function renderShiftClosingForm(){
       </header>
 
       <h2 class="sec">Касса на открытии</h2>
-      ${autoRow("Откр. (расч.)", preview.openingCashExpected)}
-      ${moneyField("openingCashActual", "Откр. (факт) — пересчитай кассу", form.openingCashActual)}
-      ${autoRow("Откр. Δ", preview.openingCashDiff)}
+      ${moneyField("openingCashActual", "Фактический остаток (пересчитай кассу)", form.openingCashActual)}
+      ${autoRow("Расчётный остаток", preview.openingCashExpected)}
 
       <h2 class="sec">Доходы</h2>
       <div class="two">
@@ -1986,8 +1975,8 @@ function renderShiftClosingForm(){
       ${moneyField("collectionAmount", "Изъято из кассы", form.collectionAmount)}
 
       <h2 class="sec">Касса на закрытии</h2>
-      ${moneyField("closingCashActual", "Остаток (факт) — пересчитай кассу", form.closingCashActual)}
-      ${autoRow("Остаток (расч.)", preview.closingCashExpected)}
+      ${moneyField("closingCashActual", "Фактический остаток (пересчитай кассу)", form.closingCashActual)}
+      ${autoRow("Расчётный остаток", preview.closingCashExpected)}
       ${resultRow("Разница", preview.closingCashDiff, cashDiffOk ? "ok" : "warn", cashDiffOk ? `в пределах нормы (порог ${formatMoneyPlain(init.cashDiffLimit)} ₽)` : `выше порога ${formatMoneyPlain(init.cashDiffLimit)} ₽`)}
 
       <h2 class="sec">План / факт</h2>
@@ -2013,7 +2002,6 @@ function renderShiftClosingForm(){
 
       <div class="shift-footer">
         <button class="btn brand-action" type="submit">${existing ? "Обновить смену" : "Закрыть смену"}</button>
-        <div class="tg">Отчёт уйдёт в Telegram руководителю и команде, если Telegram подключён</div>
       </div>
     </form>
   `;
@@ -2023,7 +2011,7 @@ function moneyField(name, label, value){
   return `
     <label class="field">
       <span>${escapeHtml(label)}</span>
-      <input class="inp" name="${name}" data-shift-money="${name}" type="number" min="0" step="1" value="${Number(value || 0)}">
+      <input class="inp" name="${name}" data-shift-money="${name}" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="${value ? Number(value) : ""}">
     </label>
   `;
 }
@@ -2032,7 +2020,7 @@ function numberField(name, label, value){
   return `
     <label class="field">
       <span>${escapeHtml(label)}</span>
-      <input class="inp" name="${name}" data-shift-money="${name}" type="number" min="0" step="1" value="${Number(value || 0)}">
+      <input class="inp" name="${name}" data-shift-money="${name}" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="${value ? Number(value) : ""}">
     </label>
   `;
 }
@@ -2357,7 +2345,6 @@ function renderSchedulePage(service){
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
           ${renderScheduleLockControl(service)}
-          <span class="status">Postgres</span>
         </div>
         ${renderScheduleEditor(service)}
         ${renderScheduleDateEditor(service)}
@@ -2542,11 +2529,9 @@ function renderShiftCell(day, employee, canSeeMoney){
 }
 
 function renderEmployeeHeader(employee){
-  const sub = isFixedPayEmployee(employee) ? "фикс" : `${formatHours(employee.defaultHours || 12)}ч`;
   return `
     <th class="emp" title="${escapeAttr(employee.name)}">
       <div class="nm">${escapeHtml(shortScheduleName(employee.name))}</div>
-      <div class="rl">${escapeHtml(sub)}</div>
       <div class="bar" style="background:${roleColor(employee.role)}"></div>
     </th>
   `;
