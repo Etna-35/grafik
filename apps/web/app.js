@@ -1108,11 +1108,19 @@ function renderTaskCreatePanel(tasks){
       <div class="row-title">Назначить задачу</div>
       <div class="task-create-grid">
         <label class="field">
-          <span>Сотрудник</span>
-          <select name="employeeId" required>
-            ${(tasks.employees || []).map((employee)=>`
-              <option value="${escapeAttr(employee.id)}">${escapeHtml(employee.name)}</option>
-            `).join("")}
+          <span>Кому</span>
+          <select name="assignTo" required>
+            <optgroup label="Сотрудник">
+              ${(tasks.employees || []).map((employee)=>`
+                <option value="${escapeAttr(employee.id)}">${escapeHtml(employee.name)}</option>
+              `).join("")}
+            </optgroup>
+            <optgroup label="Вся смена (роль)">
+              <option value="role:waiter">Все официанты</option>
+              <option value="role:cook">Все повара</option>
+              <option value="role:bar">Все бармены</option>
+              <option value="role:dishwasher">Вся мойка</option>
+            </optgroup>
           </select>
         </label>
         <label class="field task-title-field">
@@ -1140,6 +1148,10 @@ function renderTaskCreatePanel(tasks){
   `;
 }
 
+function roleAudienceLabel(role){
+  return { cook:"повара", bar:"бармены", waiter:"официанты", dishwasher:"мойка" }[role] || "смена";
+}
+
 function renderTaskCard(task, showEmployee){
   const done = task.status === "done";
   return `
@@ -1151,7 +1163,7 @@ function renderTaskCard(task, showEmployee){
         </div>
         ${task.description ? `<div class="task-desc">${escapeHtml(task.description)}</div>` : ""}
         <div class="task-meta">
-          ${showEmployee && task.employeeName ? `<span>${escapeHtml(task.employeeName)}</span>` : ""}
+          ${task.audienceRole ? `<span class="task-aud">Вся смена · ${roleAudienceLabel(task.audienceRole)}</span>` : (showEmployee && task.employeeName ? `<span>${escapeHtml(task.employeeName)}</span>` : "")}
           ${task.deadlineDate ? `<span>${escapeHtml(formatDateHuman(task.deadlineDate))}</span>` : ""}
           ${task.rewardAmount ? `<span class="task-reward">+${formatMoneyPlain(task.rewardAmount)} ₽</span>` : ""}
         </div>
@@ -1284,14 +1296,17 @@ async function loadTasks(){
 async function createTaskFromForm(form){
   if(state.tasksSaving) return;
   const title = form.elements.title.value.trim();
-  const employeeId = form.elements.employeeId.value;
+  const assignTo = form.elements.assignTo.value;
   const deadlineDate = form.elements.deadlineDate.value || null;
   const description = form.elements.description?.value.trim() || null;
   const rewardOn = form.elements.rewardOn?.checked;
   const rewardValue = Number(form.elements.rewardAmount?.value || 0);
   const rewardAmount = rewardOn && rewardValue > 0 ? Math.round(rewardValue) : null;
-  if(!title || !employeeId) return;
-  await saveTasksAction(()=>apiPost("/api/tasks", { title, description, employeeId, deadlineDate, rewardAmount }));
+  if(!title || !assignTo) return;
+  const payload = assignTo.startsWith("role:")
+    ? { title, description, audienceRole: assignTo.slice(5), deadlineDate, rewardAmount }
+    : { title, description, employeeId: assignTo, deadlineDate, rewardAmount };
+  await saveTasksAction(()=>apiPost("/api/tasks", payload));
 }
 
 async function setTaskStatus(id, status){

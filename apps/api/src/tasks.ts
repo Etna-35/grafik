@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, getServices, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
-import { awardPoints } from "./progress.js";
+import { awardPoints, awardPointsToRole } from "./progress.js";
 
 const taskParamsSchema = z.object({
   id: z.string().uuid()
@@ -11,9 +11,12 @@ const taskParamsSchema = z.object({
 const taskCreateSchema = z.object({
   title: z.string().trim().min(2).max(200),
   description: z.string().trim().max(2000).nullable().optional(),
-  employeeId: z.string().uuid(),
+  employeeId: z.string().uuid().nullable().optional(),
+  audienceRole: z.enum(["cook", "bar", "waiter", "dishwasher"]).nullable().optional(),
   deadlineDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   rewardAmount: z.number().int().min(0).max(1000000).nullable().optional()
+}).refine((data) => Boolean(data.employeeId) !== Boolean(data.audienceRole), {
+  message: "either employee or role"
 });
 
 const taskStatusSchema = z.object({
@@ -26,6 +29,7 @@ type TaskRow = {
   description: string | null;
   employee_id: string | null;
   employee_name: string | null;
+  audience_role: string | null;
   deadline_date: string | null;
   reward_amount: number | null;
   status: string;
@@ -53,7 +57,7 @@ export function registerTaskRoutes(app: FastifyInstance): void {
 
     const canManage = canManageTasks(user);
     const [ownTasks, teamSummary, employees, teamTasks] = await Promise.all([
-      getOwnTasks(user.id),
+      getOwnTasks(user.id, user.role),
       getTeamSummary(user.id),
       canManage ? getTaskEmployees() : Promise.resolve([]),
       canManage ? getTeamTasks() : Promise.resolve([])
@@ -84,11 +88,11 @@ export function registerTaskRoutes(app: FastifyInstance): void {
 
     const result = await query<{ id: string }>(
       `
-        INSERT INTO tasks (title, description, employee_id, deadline_date, reward_amount, status, created_by)
-        VALUES ($1, $2, $3, $4::date, $5, 'open', $6)
+        INSERT INTO tasks (title, description, employee_id, audience_role, deadline_date, reward_amount, status, created_by)
+        VALUES ($1, $2, $3, $4, $5::date, $6, 'open', $7)
         RETURNING id
       `,
-      [parsed.data.title, parsed.data.description?.trim() || null, parsed.data.employeeId, parsed.data.deadlineDate || null, parsed.data.rewardAmount ?? null, user.id]
+      [parsed.data.title, parsed.data.description?.trim() || null, parsed.data.employeeId ?? null, parsed.data.audienceRole ?? null, parsed.data.deadlineDate || null, parsed.data.rewardAmount ?? null, user.id]
     );
     await audit(request, "task_create", user.id, "task", result.rows[0].id, parsed.data);
     return { ok: true, id: result.rows[0].id };
@@ -110,7 +114,10 @@ export function registerTaskRoutes(app: FastifyInstance): void {
       await reply.code(404).send({ error: "not_found" });
       return;
     }
-    if (!canManageTasks(user) && task.employee_id !== user.id) {
+    const canTouch = canManageTasks(user)
+      || task.employee_id === user.id
+      || (task.audience_role !== null && task.audience_role === user.role);
+    if (!canTouch) {
       await reply.code(403).send({ error: "forbidden" });
       return;
     }
@@ -125,8 +132,12 @@ export function registerTaskRoutes(app: FastifyInstance): void {
       [params.data.id, parsed.data.status]
     );
     await audit(request, "task_status_update", user.id, "task", params.data.id, parsed.data);
-    if (parsed.data.status === "done" && task.employee_id) {
-      await awardPoints(task.employee_id, "manager_task", "Задание выполнено", "task", params.data.id);
+    if (parsed.data.status === "done") {
+      if (task.employee_id) {
+        await awardPoints(task.employee_id, "manager_task", "Задание выполнено", "task", params.data.id);
+      } else if (task.audience_role) {
+        await awardPointsToRole(task.audience_role, "role_task", "Задание смены выполнено", "task", params.data.id);
+      }
     }
     return { ok: true };
   });
@@ -182,7 +193,7 @@ function canManageTasks(user: SessionUser): boolean {
   return user.role === "owner" || user.role === "manager";
 }
 
-async function getOwnTasks(employeeId: string): Promise<TaskRow[]> {
+async function getOwnTasks(employeeId: string, role: string): Promise<TaskRow[]> {
   const result = await query<TaskRow>(
     `
       SELECT
@@ -191,6 +202,7 @@ async function getOwnTasks(employeeId: string): Promise<TaskRow[]> {
         t.description,
         t.employee_id,
         e.display_name AS employee_name,
+        t.audience_role,
         t.deadline_date::text,
         t.reward_amount,
         t.status::text,
@@ -198,14 +210,14 @@ async function getOwnTasks(employeeId: string): Promise<TaskRow[]> {
         t.updated_at::text
       FROM tasks t
       LEFT JOIN employees e ON e.id = t.employee_id
-      WHERE t.employee_id = $1
+      WHERE (t.employee_id = $1 OR t.audience_role = $2)
         AND t.status <> 'cancelled'
       ORDER BY
         CASE t.status WHEN 'open' THEN 1 WHEN 'done' THEN 2 ELSE 3 END,
         t.deadline_date NULLS LAST,
         t.created_at DESC
     `,
-    [employeeId]
+    [employeeId, role]
   );
   return result.rows;
 }
@@ -219,6 +231,7 @@ async function getTeamTasks(): Promise<TaskRow[]> {
         t.description,
         t.employee_id,
         e.display_name AS employee_name,
+        t.audience_role,
         t.deadline_date::text,
         t.reward_amount,
         t.status::text,
@@ -274,9 +287,9 @@ async function getTeamSummary(employeeId: string): Promise<TeamSummaryRow> {
   return result.rows[0] || { total: "0", open_total: "0", done_total: "0", done_by_others: "0" };
 }
 
-async function getTaskOwner(id: string): Promise<{ employee_id: string | null } | undefined> {
-  const result = await query<{ employee_id: string | null }>(
-    "SELECT employee_id FROM tasks WHERE id = $1 AND status <> 'cancelled'",
+async function getTaskOwner(id: string): Promise<{ employee_id: string | null; audience_role: string | null } | undefined> {
+  const result = await query<{ employee_id: string | null; audience_role: string | null }>(
+    "SELECT employee_id::text, audience_role FROM tasks WHERE id = $1 AND status <> 'cancelled'",
     [id]
   );
   return result.rows[0];
@@ -289,6 +302,7 @@ function serializeTask(task: TaskRow) {
     description: task.description || "",
     employeeId: task.employee_id || "",
     employeeName: task.employee_name || "",
+    audienceRole: task.audience_role || null,
     deadlineDate: task.deadline_date || "",
     rewardAmount: task.reward_amount ?? null,
     status: task.status,

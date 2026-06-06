@@ -1,0 +1,2 @@
+ALTER TABLE tasks ALTER COLUMN employee_id DROP NOT NULL;
+ALTER TABLE tasks ADD COLUMN IF NOT EXISTS audience_role text;
