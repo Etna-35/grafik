@@ -29,6 +29,7 @@ import { registerTrainingRoutes } from "./training.js";
 import { registerHandoverRoutes } from "./handovers.js";
 import { registerPraiseRoutes } from "./praises.js";
 import { registerSalesGoalRoutes } from "./salesGoals.js";
+import { registerProgressRoutes, getProgressSummary } from "./progress.js";
 
 const pinSchema = z.object({
   pin: z.string().regex(/^\d{4,8}$/)
@@ -186,7 +187,13 @@ export function buildServer() {
       [user.id]
     );
 
+    const progress = await getProgressSummary(user.id, result.rows[0].start_date);
+
     return {
+      level: progress.level,
+      progressPct: progress.progressPct,
+      toNextPct: progress.toNextPct,
+      pointsTotal: progress.pointsTotal,
       salesGoals: goals.rows.map((g) => ({
         id: g.id,
         title: g.title,
@@ -223,6 +230,7 @@ export function buildServer() {
   registerHandoverRoutes(app);
   registerPraiseRoutes(app);
   registerSalesGoalRoutes(app);
+  registerProgressRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,

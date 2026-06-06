@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser } from "./auth.js";
 import { query } from "./db.js";
+import { awardPoints } from "./progress.js";
 
 const createSchema = z.object({
   toId: z.string().uuid(),
@@ -88,6 +89,14 @@ export function registerPraiseRoutes(app: FastifyInstance): void {
       [user.id, parsed.data.toId, parsed.data.body]
     );
     await audit(request, "praise_create", user.id, "praise", result.rows[0].id, { toId: parsed.data.toId });
+    const fromManager = user.role === "owner" || user.role === "manager";
+    await awardPoints(
+      parsed.data.toId,
+      fromManager ? "praise_manager" : "praise_peer",
+      fromManager ? "Похвала руководителя" : "Похвала коллеги",
+      "praise",
+      result.rows[0].id
+    );
     return { ok: true, id: result.rows[0].id };
   });
 }

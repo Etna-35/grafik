@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, getServices, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
+import { awardPoints } from "./progress.js";
 
 const taskParamsSchema = z.object({
   id: z.string().uuid()
@@ -124,6 +125,9 @@ export function registerTaskRoutes(app: FastifyInstance): void {
       [params.data.id, parsed.data.status]
     );
     await audit(request, "task_status_update", user.id, "task", params.data.id, parsed.data);
+    if (parsed.data.status === "done" && task.employee_id) {
+      await awardPoints(task.employee_id, "manager_task", "Задание выполнено", "task", params.data.id);
+    }
     return { ok: true };
   });
 

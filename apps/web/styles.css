@@ -507,6 +507,25 @@ button.day-block{cursor:pointer;font:inherit}
 .goal-status{margin-top:10px;font-size:12px;font-weight:600;color:var(--brand-bright)}
 .goal-actions{display:flex;gap:8px;margin-top:11px}
 .goal-plus{flex:1}
+
+/* Страница прогресса */
+.plan-met-btn{width:100%;margin:0 2px 12px;padding:13px}
+.progress-next{display:flex;align-items:center;gap:12px;border:1px dashed var(--line-strong);border-radius:14px;padding:13px 14px;margin:0 2px 10px;opacity:.75}
+.prog-lock{color:var(--ink-soft);flex:none;display:flex}
+.progress-next b{display:block;font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--ink-soft)}
+.progress-next span{display:block;font-size:12px;color:var(--ink-soft);margin-top:2px}
+.progress-hero{background:linear-gradient(135deg,var(--card-2),var(--card));border:1px solid var(--line);border-radius:16px;padding:18px 16px 22px;margin:0 2px 14px;text-align:center}
+.prog-badge{position:relative;display:inline-flex;align-items:center;justify-content:center;color:var(--brand);transform:scale(2.2);transform-origin:center;margin:10px 0 18px}
+.prog-badge .award-lvl{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding-bottom:2px;font-family:var(--font-display);font-weight:700;font-size:10px;color:var(--brand-ink)}
+.prog-title{font-family:var(--font-display);font-weight:700;font-size:20px;color:var(--ink)}
+.award-bar.big{height:10px;border-radius:6px;max-width:320px;margin:14px auto 0}
+.prog-sub{font-size:12px;color:var(--ink-soft);font-weight:500;margin-top:8px}
+.progress-history{display:grid;gap:7px;margin:0 2px}
+.ph-item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:11px 13px}
+.ph-pts{font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--brand-bright);flex:none;min-width:46px}
+.ph-main{min-width:0}
+.ph-main b{display:block;font-size:14px;font-weight:600;color:var(--ink)}
+.ph-main span{display:block;font-size:11px;color:var(--ink-soft);font-weight:400;margin-top:2px}
 .task-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:5px;font-size:11px;color:var(--ink-soft);font-weight:600}
 .task-actions{display:flex;gap:7px;align-items:center;flex:none}
 .task-title-row{display:flex;align-items:center;gap:9px}

@@ -63,6 +63,9 @@ let state = {
   praiseLoading: false,
   praiseSaving: false,
   praiseError: "",
+  progress: null,
+  progressLoading: false,
+  progressError: "",
   tasksLoading: false,
   tasksError: "",
   tasksSaving: false,
@@ -254,6 +257,7 @@ function renderHub(){
   });
   app.querySelector("[data-action='logout']").addEventListener("click", logout);
   app.querySelector("[data-action='praise']")?.addEventListener("click", openPraise);
+  app.querySelector("[data-action='progress']")?.addEventListener("click", openProgress);
   app.querySelectorAll("[data-goal-inc]").forEach((button)=>{
     button.addEventListener("click", ()=>adjustSalesGoal(button.dataset.goalInc, 1));
   });
@@ -295,20 +299,14 @@ function renderMerits(){
     <h2 class="section-title">Заслуги</h2>
     <div class="merits">
       <div class="merit-top">
-        ${level ? `
-          <div class="award">
-            <div class="award-icon">${shieldIcon()}<span class="award-lvl">${level.level}</span></div>
-            <div class="award-meta">
-              <b>Уровень ${level.level}</b>
-              <span>${escapeHtml(level.tenureText)} в Этне · до повышения ${escapeHtml(level.toNextText)}</span>
-              <div class="award-bar"><i style="width:${level.pct}%"></i></div>
-            </div>
+        <button class="award" data-action="progress">
+          <div class="award-icon">${shieldIcon()}<span class="award-lvl">${s.level ?? 1}</span></div>
+          <div class="award-meta">
+            <b>Уровень ${s.level ?? 1}</b>
+            <span>Ещё ${s.toNextPct ?? 100}% до повышения</span>
+            <div class="award-bar"><i style="width:${s.progressPct ?? 0}%"></i></div>
           </div>
-        ` : `
-          <div class="award award-empty">
-            <div class="award-meta"><b>Уровень за стаж</b><span>Дата начала работы не указана</span></div>
-          </div>
-        `}
+        </button>
         <button class="merit-tasks" data-url="/tasks">
           <span>Задачи на месяц</span>
           <b>${s.tasksDone ?? 0}/${s.tasksTotal ?? 0}</b>
@@ -338,6 +336,72 @@ function formatTenure(startStr){
   if(rem) parts.push(`${rem} ${pluralize(rem, "месяц", "месяца", "месяцев")}`);
   if(!parts.length) return "меньше месяца";
   return parts.join(" ");
+}
+
+function lockIcon(){ return `<svg viewBox="0 0 24 24" fill="currentColor" width="20" height="20"><path d="M7 10V7a5 5 0 0110 0v3h1a2 2 0 012 2v7a2 2 0 01-2 2H6a2 2 0 01-2-2v-7a2 2 0 012-2h1zm2 0h6V7a3 3 0 00-6 0v3z"/></svg>`; }
+
+async function openProgress(){
+  state.progressLoading = true;
+  state.progress = null;
+  state.progressError = "";
+  renderProgressScreen();
+  try{
+    state.progress = await apiGet("/api/progress");
+  }catch(error){
+    state.progressError = "Не удалось загрузить прогресс";
+  }finally{
+    state.progressLoading = false;
+    renderProgressScreen();
+  }
+}
+
+function renderProgressScreen(){
+  const p = state.progress;
+  app.innerHTML = `
+    <div class="phone wide">
+      <section class="screen service-page">
+        <div class="backrow">
+          <button class="iconbtn" data-action="prog-back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">Мой прогресс</h1>
+        </div>
+        ${state.progressLoading
+          ? `<div class="panel"><div class="loader compact">Загружаю</div></div>`
+          : p ? `
+            <div class="progress-next">
+              <div class="prog-lock">${lockIcon()}</div>
+              <div><b>Уровень ${p.level + 1}</b><span>Скрыт — откроется, когда заполнишь шкалу</span></div>
+            </div>
+            <div class="progress-hero">
+              <div class="prog-badge">${shieldIcon()}<span class="award-lvl">${p.level}</span></div>
+              <div class="prog-title">Уровень ${p.level}</div>
+              <div class="award-bar big"><i style="width:${p.progressPct}%"></i></div>
+              <div class="prog-sub">${p.progressPct}% · ещё ${p.toNextPct}% до уровня ${p.level + 1}</div>
+            </div>
+            <h2 class="sec">За что начислено</h2>
+            <div class="progress-history">
+              ${(p.history || []).length ? p.history.map(renderProgressItem).join("") : `<div class="panel muted-line">Пока пусто — выполняй задания, получай похвалы</div>`}
+            </div>
+          ` : `<div class="panel muted-line">${escapeHtml(state.progressError || "Нет данных")}</div>`}
+      </section>
+    </div>
+  `;
+  app.querySelector("[data-action='prog-back']")?.addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+}
+
+function renderProgressItem(item){
+  const meta = [item.note, item.createdAt ? formatDateTimeHuman(item.createdAt) : ""].filter(Boolean).join(" · ");
+  return `
+    <div class="ph-item">
+      <span class="ph-pts">+${item.points}%</span>
+      <div class="ph-main">
+        <b>${escapeHtml(item.label)}</b>
+        ${meta ? `<span>${escapeHtml(meta)}</span>` : ""}
+      </div>
+    </div>
+  `;
 }
 
 function renderSalesGoals(){
@@ -876,6 +940,8 @@ function renderTasksContent(tasks){
       <div class="task-metric"><span>Сделано другими</span><b>${team.doneByOthers || 0}</b></div>
     </div>
 
+    ${tasks.canManage ? `<button class="ghost brand-action plan-met-btn" type="button" data-action="plan-met">Общий план выполнен сегодня · +50% всем</button>` : ""}
+
     ${renderHandoverSection()}
 
     ${renderSalesGoalsManager()}
@@ -1132,6 +1198,16 @@ function bindTasksPage(){
   }
   app.querySelectorAll("[data-handover-resolve]").forEach((button)=>{
     button.addEventListener("click", ()=>resolveHandover(button.dataset.handoverResolve));
+  });
+
+  app.querySelector("[data-action='plan-met']")?.addEventListener("click", async ()=>{
+    if(!confirm("Отметить, что общий план сегодня выполнен? Всем сотрудникам +50% к прогрессу.")) return;
+    try{
+      const res = await apiPost("/api/progress/plan-met", {});
+      alert(res.alreadyAwarded ? "Сегодня план уже отмечен" : "Готово — +50% начислено всем");
+    }catch(error){
+      alert("Не удалось отметить");
+    }
   });
 
   const goalForm = app.querySelector("#salesGoalForm");
