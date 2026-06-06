@@ -130,6 +130,11 @@ export function buildServer() {
       handover_count: string;
       day_fot: string;
       start_date: string | null;
+      praises_received: string;
+      scores_total: string;
+      scores_good: string;
+      scores_mid: string;
+      scores_bad: string;
     }>(
       `
         SELECT
@@ -147,7 +152,12 @@ export function buildServer() {
           ), 0)::text AS handover_count,
           COALESCE((SELECT SUM(pay_amount) FROM schedule_shifts
             WHERE work_date = (now() AT TIME ZONE 'Europe/Moscow')::date), 0)::text AS day_fot,
-          (SELECT start_date::text FROM employees WHERE id = $1) AS start_date
+          (SELECT start_date::text FROM employees WHERE id = $1) AS start_date,
+          COALESCE((SELECT COUNT(*) FROM praises WHERE to_id = $1), 0)::text AS praises_received,
+          COALESCE((SELECT COUNT(*) FROM employee_scores WHERE employee_id = $1), 0)::text AS scores_total,
+          COALESCE((SELECT COUNT(*) FROM employee_scores WHERE employee_id = $1 AND score = 'green'), 0)::text AS scores_good,
+          COALESCE((SELECT COUNT(*) FROM employee_scores WHERE employee_id = $1 AND score = 'yellow'), 0)::text AS scores_mid,
+          COALESCE((SELECT COUNT(*) FROM employee_scores WHERE employee_id = $1 AND score = 'red'), 0)::text AS scores_bad
       `,
       [user.id, manager, user.role]
     );
@@ -162,7 +172,12 @@ export function buildServer() {
       shiftsCount: Number(result.rows[0].shifts_count),
       handoverCount: Number(result.rows[0].handover_count),
       cashPlanToday: dayFot,
-      revenuePlanToday: dayFot > 0 ? Math.round(dayFot / 0.23) : 0
+      revenuePlanToday: dayFot > 0 ? Math.round(dayFot / 0.23) : 0,
+      praisesReceived: Number(result.rows[0].praises_received),
+      scoresTotal: Number(result.rows[0].scores_total),
+      scoresGood: Number(result.rows[0].scores_good),
+      scoresMid: Number(result.rows[0].scores_mid),
+      scoresBad: Number(result.rows[0].scores_bad)
     };
   });
 

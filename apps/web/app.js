@@ -231,9 +231,10 @@ function renderHub(){
         </div>
         <div class="stats">
           <button class="stat" data-url="/tasks"><div class="k">Задачи на месяц</div><div class="v">${state.summary?.tasksDone ?? 0}/${state.summary?.tasksTotal ?? 0}</div></button>
-          <button class="stat" data-url="/tasks"><div class="k">Открытие смены</div><div class="v">${state.summary?.handoverCount ?? 0}</div></button>
+          <button class="stat" data-url="/tasks"><div class="k">Коллеги подсказывают</div><div class="v">${state.summary?.handoverCount ?? 0}</div></button>
           <button class="stat stat-praise" data-action="praise"><div class="k">Похвалить коллегу</div><div class="v">＋</div></button>
         </div>
+        ${renderMerits()}
         <h2 class="section-title">Сервисы</h2>
         <div class="nav">
           ${state.services.map(renderServiceCard).join("")}
@@ -257,6 +258,62 @@ function renderHub(){
   });
   app.querySelector("[data-action='logout']").addEventListener("click", logout);
   app.querySelector("[data-action='praise']")?.addEventListener("click", openPraise);
+}
+
+function tenureLevel(startStr){
+  if(!startStr) return null;
+  const start = new Date(startStr);
+  if(Number.isNaN(start.getTime())) return null;
+  const now = new Date();
+  let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  if(now.getDate() < start.getDate()) months--;
+  if(months < 0) months = 0;
+  const level = Math.floor(months / 3) + 1;
+  const into = months % 3;
+  const toNext = 3 - into;
+  return {
+    level,
+    tenureText: formatTenure(startStr),
+    toNextText: `${toNext} ${pluralize(toNext, "месяц", "месяца", "месяцев")}`,
+    pct: Math.round((into / 3) * 100)
+  };
+}
+
+// Иконки наград монохромные; позже легко заменить на присланные SVG (apps/web/assets/awards/).
+function heartIcon(){ return `<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 21S3.5 14.6 3.5 8.9C3.5 6 5.7 4 8.2 4c1.7 0 3 .9 3.8 2.1C12.8 4.9 14.1 4 15.8 4c2.5 0 4.7 2 4.7 4.9C20.5 14.6 12 21 12 21z"/></svg>`; }
+function meritStarIcon(){ return `<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 2.5l2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5L2.5 9.3l6.6-.8z"/></svg>`; }
+function shieldIcon(){ return `<svg viewBox="0 0 24 24" fill="currentColor" width="26" height="26"><path d="M12 2l8 3v6c0 5-3.4 9.2-8 11-4.6-1.8-8-6-8-11V5z"/></svg>`; }
+
+function renderMerits(){
+  const s = state.summary || {};
+  const praises = s.praisesReceived || 0;
+  const scores = s.scoresTotal || 0;
+  const level = tenureLevel(s.startDate);
+  return `
+    <h2 class="section-title">Заслуги</h2>
+    <div class="merits">
+      ${level ? `
+        <div class="award">
+          <div class="award-icon">${shieldIcon()}<span class="award-lvl">${level.level}</span></div>
+          <div class="award-meta">
+            <b>Уровень ${level.level}</b>
+            <span>${escapeHtml(level.tenureText)} в Этне · до повышения ${escapeHtml(level.toNextText)}</span>
+            <div class="award-bar"><i style="width:${level.pct}%"></i></div>
+          </div>
+        </div>
+      ` : `
+        <div class="award award-empty">
+          <div class="award-meta"><b>Уровень за стаж</b><span>Дата начала работы не указана</span></div>
+        </div>
+      `}
+      <div class="badges">
+        <div class="badge-stat"><span class="bi">${heartIcon()}</span><div class="bs-num">×${praises}</div><span class="bs-lbl">похвалы</span></div>
+        <div class="badge-stat"><span class="bi bi-score">${meritStarIcon()}</span><div class="bs-num">×${scores}</div><span class="bs-lbl">оценки</span>
+          ${scores ? `<div class="bs-dots"><span class="g">${s.scoresGood || 0}</span><span class="y">${s.scoresMid || 0}</span><span class="r">${s.scoresBad || 0}</span></div>` : ""}
+        </div>
+      </div>
+    </div>
+  `;
 }
 
 function formatTenure(startStr){
