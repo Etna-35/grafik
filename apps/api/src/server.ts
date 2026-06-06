@@ -28,6 +28,7 @@ import { registerTaskRoutes } from "./tasks.js";
 import { registerTrainingRoutes } from "./training.js";
 import { registerHandoverRoutes } from "./handovers.js";
 import { registerPraiseRoutes } from "./praises.js";
+import { registerSalesGoalRoutes } from "./salesGoals.js";
 
 const pinSchema = z.object({
   pin: z.string().regex(/^\d{4,8}$/)
@@ -167,7 +168,34 @@ export function buildServer() {
     const dayFot = Number(result.rows[0].day_fot);
     // План выручки: будни ×0.8, ПТ(5)/СБ(6) ×1.5 от табличного (ФОТ/0.23).
     const revenueMult = result.rows[0].dow === 5 || result.rows[0].dow === 6 ? 1.5 : 0.8;
+
+    const goals = await query<{
+      id: string;
+      title: string;
+      target_qty: number;
+      current_qty: number;
+      reward_amount: number | null;
+      status: string;
+    }>(
+      `
+        SELECT id::text, title, target_qty, current_qty, reward_amount, status
+        FROM sales_goals
+        WHERE employee_id = $1 AND status IN ('active', 'reached')
+        ORDER BY created_at DESC
+      `,
+      [user.id]
+    );
+
     return {
+      salesGoals: goals.rows.map((g) => ({
+        id: g.id,
+        title: g.title,
+        target: g.target_qty,
+        current: g.current_qty,
+        rewardAmount: g.reward_amount ?? null,
+        status: g.status,
+        reached: g.current_qty >= g.target_qty
+      })),
       startDate: result.rows[0].start_date,
       paidTotal: Number(result.rows[0].paid_total),
       tasksOpen: Number(result.rows[0].tasks_open),
@@ -194,6 +222,7 @@ export function buildServer() {
   registerTrainingRoutes(app);
   registerHandoverRoutes(app);
   registerPraiseRoutes(app);
+  registerSalesGoalRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,

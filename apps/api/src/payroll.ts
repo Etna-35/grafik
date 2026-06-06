@@ -45,6 +45,13 @@ type TaskRewardRow = {
   updated_at: string;
 };
 
+type GoalRewardRow = {
+  id: string;
+  title: string;
+  reward_amount: number;
+  confirmed_at: string;
+};
+
 export function registerPayrollRoutes(app: FastifyInstance): void {
   app.get("/api/payroll", async (request, reply) => {
     const user = await requirePayrollAccess(request, reply);
@@ -69,7 +76,7 @@ async function requirePayrollAccess(request: FastifyRequest, reply: FastifyReply
 
 async function getPayrollMonth(user: SessionUser, year: number, month: number) {
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
-  const [shiftRows, payoutRows, paydayRows, hookahRows, employeeFlags, taskRewardRows] = await Promise.all([
+  const [shiftRows, payoutRows, paydayRows, hookahRows, employeeFlags, taskRewardRows, goalRewardRows] = await Promise.all([
     query<ShiftRow>(
       `
         SELECT work_date::text, planned_hours, pay_amount, pay_model
@@ -137,6 +144,20 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
         ORDER BY updated_at DESC
       `,
       [start, user.id]
+    ),
+    query<GoalRewardRow>(
+      `
+        SELECT id::text, title, reward_amount, confirmed_at::text
+        FROM sales_goals
+        WHERE employee_id = $2
+          AND status = 'confirmed'
+          AND reward_amount IS NOT NULL
+          AND reward_amount > 0
+          AND confirmed_at >= $1::date
+          AND confirmed_at < ($1::date + interval '1 month')
+        ORDER BY confirmed_at DESC
+      `,
+      [start, user.id]
     )
   ]);
 
@@ -145,6 +166,7 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
   const hookahAccruedTotal = hookahRows.rows.reduce((sum, row) => sum + Number(row.hookah_payout || 0), 0);
   const hookahCountTotal = hookahRows.rows.reduce((sum, row) => sum + Number(row.hookah_count || 0), 0);
   const taskRewardTotal = taskRewardRows.rows.reduce((sum, row) => sum + Number(row.reward_amount || 0), 0);
+  const goalRewardTotal = goalRewardRows.rows.reduce((sum, row) => sum + Number(row.reward_amount || 0), 0);
   const hoursTotal = shiftRows.rows.reduce((sum, row) => sum + Number(row.planned_hours || 0), 0);
   const todayIso = new Date().toISOString().slice(0, 10);
   const upcomingPayday = paydayRows.rows.find((row) => row.work_date >= todayIso)?.work_date || paydayRows.rows.at(-1)?.work_date || "";
@@ -160,13 +182,15 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
     summary: {
       shifts: shiftRows.rows.length,
       hours: Math.round(hoursTotal * 100) / 100,
-      accrued: salaryAccruedTotal + hookahAccruedTotal + taskRewardTotal,
+      accrued: salaryAccruedTotal + hookahAccruedTotal + taskRewardTotal + goalRewardTotal,
       paid: salaryPaidTotal + hookahAccruedTotal,
-      remaining: Math.max(0, salaryAccruedTotal + taskRewardTotal - salaryPaidTotal),
+      remaining: Math.max(0, salaryAccruedTotal + taskRewardTotal + goalRewardTotal - salaryPaidTotal),
       salaryAccrued: salaryAccruedTotal,
       salaryPaid: salaryPaidTotal,
       taskRewardAccrued: taskRewardTotal,
       taskRewardCount: taskRewardRows.rows.length,
+      goalRewardAccrued: goalRewardTotal,
+      goalRewardCount: goalRewardRows.rows.length,
       hookahAccrued: hookahAccruedTotal,
       hookahPaid: hookahAccruedTotal,
       hookahCount: hookahCountTotal,
@@ -198,6 +222,12 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       title: row.title,
       amount: Number(row.reward_amount || 0),
       doneAt: row.updated_at
+    })),
+    goalRewards: goalRewardRows.rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      amount: Number(row.reward_amount || 0),
+      doneAt: row.confirmed_at
     })),
     plannedPaydays: paydayRows.rows.map((row) => row.work_date)
   };

@@ -56,6 +56,7 @@ let state = {
   payrollLoading: false,
   payrollError: "",
   tasks: null,
+  salesGoalsData: null,
   handovers: null,
   handoverSaving: false,
   praise: null,
@@ -228,6 +229,7 @@ function renderHub(){
           <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}</div>
         </div>
         ${renderDayPanel()}
+        ${renderSalesGoals()}
         ${renderMerits()}
         <h2 class="section-title">Сервисы</h2>
         <div class="nav">
@@ -252,6 +254,12 @@ function renderHub(){
   });
   app.querySelector("[data-action='logout']").addEventListener("click", logout);
   app.querySelector("[data-action='praise']")?.addEventListener("click", openPraise);
+  app.querySelectorAll("[data-goal-inc]").forEach((button)=>{
+    button.addEventListener("click", ()=>adjustSalesGoal(button.dataset.goalInc, 1));
+  });
+  app.querySelectorAll("[data-goal-dec]").forEach((button)=>{
+    button.addEventListener("click", ()=>adjustSalesGoal(button.dataset.goalDec, -1));
+  });
 }
 
 function tenureLevel(startStr){
@@ -330,6 +338,42 @@ function formatTenure(startStr){
   if(rem) parts.push(`${rem} ${pluralize(rem, "месяц", "месяца", "месяцев")}`);
   if(!parts.length) return "меньше месяца";
   return parts.join(" ");
+}
+
+function renderSalesGoals(){
+  const goals = state.summary?.salesGoals || [];
+  if(!goals.length) return "";
+  return `<div class="sales-goals">${goals.map(renderSalesGoalCard).join("")}</div>`;
+}
+
+function renderSalesGoalCard(g){
+  const pct = Math.min(100, Math.round((g.current / g.target) * 100));
+  const done = g.current >= g.target;
+  return `
+    <div class="goal-card ${done ? "reached" : ""}">
+      <div class="goal-head">
+        <div class="goal-title">${escapeHtml(g.title)}${g.rewardAmount ? ` <span class="goal-reward">+${formatMoneyPlain(g.rewardAmount)} ₽</span>` : ""}</div>
+        <div class="goal-count"><b>${g.current}</b> / ${g.target}</div>
+      </div>
+      <div class="goal-bar"><i style="width:${pct}%"></i></div>
+      ${done
+        ? `<div class="goal-status">Цель достигнута — ждёт подтверждения руководителя</div>`
+        : `<div class="goal-actions">
+            <button class="ghost mini" type="button" data-goal-dec="${escapeAttr(g.id)}">−1</button>
+            <button class="ghost brand-action goal-plus" type="button" data-goal-inc="${escapeAttr(g.id)}">Продал +1</button>
+          </div>`}
+    </div>
+  `;
+}
+
+async function adjustSalesGoal(id, delta){
+  try{
+    await apiPatch(`/api/sales-goals/${encodeURIComponent(id)}/progress`, { delta });
+    state.summary = await apiGet("/api/summary");
+    renderHub();
+  }catch(error){
+    /* ignore */
+  }
 }
 
 function renderDayPanel(){
@@ -834,6 +878,8 @@ function renderTasksContent(tasks){
 
     ${renderHandoverSection()}
 
+    ${renderSalesGoalsManager()}
+
     ${tasks.canManage ? renderTaskCreatePanel(tasks) : ""}
 
     <h2 class="sec">Мои задачи</h2>
@@ -896,6 +942,98 @@ function renderHandoverNote(note){
       </div>
     </div>
   `;
+}
+
+function renderSalesGoalsManager(){
+  const data = state.salesGoalsData;
+  if(!data || !data.canManage) return "";
+  const goals = data.goals || [];
+  return `
+    <h2 class="sec">Цели по продажам</h2>
+    <form class="panel sales-goal-create" id="salesGoalForm">
+      <div class="task-create-grid">
+        <label class="field">
+          <span>Сотрудник</span>
+          <select name="employeeId" required>${(data.employees || []).map((e)=>`<option value="${escapeAttr(e.id)}">${escapeHtml(e.name)}</option>`).join("")}</select>
+        </label>
+        <label class="field task-title-field">
+          <span>Что продаём</span>
+          <input name="title" type="text" maxlength="120" autocomplete="off" placeholder="Например, десерты" required>
+        </label>
+        <label class="field">
+          <span>Цель, шт</span>
+          <input name="targetQty" type="number" min="1" max="100000" inputmode="numeric" placeholder="10" required>
+        </label>
+        <div class="field task-reward-field">
+          <span>Премия</span>
+          <div class="task-reward-row">
+            <label class="reward-check"><input name="rewardOn" type="checkbox"> премия за достижение цели</label>
+            <input name="rewardAmount" type="number" min="0" step="50" inputmode="numeric" placeholder="Сумма премии, ₽" data-goal-reward hidden>
+          </div>
+        </div>
+        <button class="ghost brand-action" type="submit">Поставить цель</button>
+      </div>
+    </form>
+    <div class="task-list">
+      ${goals.length ? goals.map(renderSalesGoalManageCard).join("") : `<div class="panel muted-line">Активных целей нет</div>`}
+    </div>
+  `;
+}
+
+function renderSalesGoalManageCard(g){
+  const done = g.current >= g.target;
+  return `
+    <div class="task-card">
+      <div class="task-main">
+        <div class="task-title-row">
+          <span class="task-title">${escapeHtml(g.title)} · ${g.current}/${g.target}</span>
+          <span class="task-status ${done ? "open" : "done"}">${done ? "Готова" : "В процессе"}</span>
+        </div>
+        <div class="task-meta">
+          ${g.employeeName ? `<span>${escapeHtml(g.employeeName)}</span>` : ""}
+          ${g.rewardAmount ? `<span class="task-reward">+${formatMoneyPlain(g.rewardAmount)} ₽</span>` : ""}
+        </div>
+      </div>
+      <div class="task-actions">
+        ${done ? `<button class="ghost mini brand-action" type="button" data-goal-confirm="${escapeAttr(g.id)}">Подтвердить</button>` : ""}
+        <button class="ghost mini danger-action" type="button" data-goal-cancel="${escapeAttr(g.id)}">Снять</button>
+      </div>
+    </div>
+  `;
+}
+
+async function createSalesGoalFromForm(form){
+  const employeeId = form.elements.employeeId.value;
+  const title = form.elements.title.value.trim();
+  const targetQty = Number(form.elements.targetQty.value);
+  const rewardOn = form.elements.rewardOn?.checked;
+  const rewardValue = Number(form.elements.rewardAmount?.value || 0);
+  const rewardAmount = rewardOn && rewardValue > 0 ? Math.round(rewardValue) : null;
+  if(!employeeId || !title || !(targetQty > 0)) return;
+  try{
+    await apiPost("/api/sales-goals", { employeeId, title, targetQty, rewardAmount });
+    state.salesGoalsData = await apiGet("/api/sales-goals");
+    render();
+  }catch(error){
+    state.tasksError = "Не удалось поставить цель";
+    render();
+  }
+}
+
+async function confirmSalesGoal(id){
+  try{
+    await apiPatch(`/api/sales-goals/${encodeURIComponent(id)}/confirm`, {});
+    state.salesGoalsData = await apiGet("/api/sales-goals");
+    render();
+  }catch(error){ /* ignore */ }
+}
+
+async function cancelSalesGoal(id){
+  try{
+    await apiDelete(`/api/sales-goals/${encodeURIComponent(id)}`);
+    state.salesGoalsData = await apiGet("/api/sales-goals");
+    render();
+  }catch(error){ /* ignore */ }
 }
 
 function renderTaskCreatePanel(tasks){
@@ -995,6 +1133,26 @@ function bindTasksPage(){
   app.querySelectorAll("[data-handover-resolve]").forEach((button)=>{
     button.addEventListener("click", ()=>resolveHandover(button.dataset.handoverResolve));
   });
+
+  const goalForm = app.querySelector("#salesGoalForm");
+  if(goalForm){
+    goalForm.addEventListener("submit", (event)=>{
+      event.preventDefault();
+      createSalesGoalFromForm(goalForm);
+    });
+    const rewardOn = goalForm.elements.rewardOn;
+    const rewardAmount = goalForm.querySelector("[data-goal-reward]");
+    rewardOn?.addEventListener("change", ()=>{
+      rewardAmount.hidden = !rewardOn.checked;
+      if(rewardOn.checked) rewardAmount.focus();
+    });
+  }
+  app.querySelectorAll("[data-goal-confirm]").forEach((button)=>{
+    button.addEventListener("click", ()=>confirmSalesGoal(button.dataset.goalConfirm));
+  });
+  app.querySelectorAll("[data-goal-cancel]").forEach((button)=>{
+    button.addEventListener("click", ()=>cancelSalesGoal(button.dataset.goalCancel));
+  });
 }
 
 async function submitHandover(form){
@@ -1031,12 +1189,14 @@ async function loadTasks(){
   state.tasksError = "";
   render();
   try{
-    const [tasks, handovers] = await Promise.all([
+    const [tasks, handovers, salesGoals] = await Promise.all([
       apiGet("/api/tasks"),
-      apiGet("/api/handovers").catch(()=>null)
+      apiGet("/api/handovers").catch(()=>null),
+      apiGet("/api/sales-goals").catch(()=>null)
     ]);
     state.tasks = tasks;
     state.handovers = handovers;
+    state.salesGoalsData = salesGoals;
   }catch(error){
     state.tasksError = error.status === 403 ? "Нет доступа к задачам" : "Проверь соединение и попробуй ещё раз";
   }finally{
@@ -1733,7 +1893,7 @@ function renderPayrollContent(payroll){
       <div class="pay-metric"><span>Начислено</span><b>${formatMoneyPlain(summary.accrued || 0)} ₽</b></div>
       <div class="pay-metric"><span>Выдано</span><b>${formatMoneyPlain(summary.paid || 0)} ₽</b></div>
       ${showHookah ? `<div class="pay-metric"><span>Кальяны</span><b>${formatMoneyPlain(summary.hookahAccrued || 0)} ₽</b></div>` : ""}
-      ${summary.taskRewardCount ? `<div class="pay-metric"><span>Премии</span><b>${formatMoneyPlain(summary.taskRewardAccrued || 0)} ₽</b></div>` : ""}
+      ${summary.taskRewardCount || summary.goalRewardCount ? `<div class="pay-metric"><span>Премии</span><b>${formatMoneyPlain((summary.taskRewardAccrued || 0) + (summary.goalRewardAccrued || 0))} ₽</b></div>` : ""}
       <div class="pay-metric"><span>Смены</span><b>${summary.shifts || 0}</b></div>
       <div class="pay-metric"><span>Часы</span><b>${formatHours(summary.hours || 0)}</b></div>
     </div>
@@ -1757,6 +1917,21 @@ function renderPayrollContent(payroll){
       <h2 class="sec">Премии за задачи</h2>
       <div class="payroll-list">
         ${payroll.taskRewards.map((row)=>`
+          <div class="payroll-row">
+            <span>
+              <b>+${formatMoneyPlain(row.amount)} ₽</b>
+              <small>${escapeHtml(row.title)} · ${escapeHtml(formatDateHuman(row.doneAt.slice(0, 10)))}</small>
+            </span>
+            <i>начислено</i>
+          </div>
+        `).join("")}
+      </div>
+    ` : ""}
+
+    ${(payroll.goalRewards || []).length ? `
+      <h2 class="sec">Премии за цели продаж</h2>
+      <div class="payroll-list">
+        ${payroll.goalRewards.map((row)=>`
           <div class="payroll-row">
             <span>
               <b>+${formatMoneyPlain(row.amount)} ₽</b>

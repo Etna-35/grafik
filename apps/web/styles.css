@@ -432,7 +432,7 @@ button.stat{cursor:pointer;color:var(--ink);text-align:left;font:inherit}
 .task-create-grid .task-desc-field{grid-column:1/-1}
 .task-create-grid .task-reward-field{grid-column:1/-1}
 .task-reward-row{display:flex;flex-direction:column;align-items:stretch;gap:10px}
-.task-reward-row .reward-check{display:flex;align-items:center;gap:8px;font-weight:500;color:var(--ink-soft);font-size:13px;line-height:1.3;cursor:pointer}
+.task-reward-row .reward-check{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-weight:500;color:var(--ink-soft);font-size:13px;line-height:1.3;cursor:pointer}
 .task-reward-row .reward-check input{flex:none}
 .task-reward-row input[type=number]{width:100%;border:1px solid var(--line-strong);background:var(--card);border-radius:10px;padding:10px 11px;color:var(--ink);font:inherit;font-size:14px;font-weight:500}
 .task-reward{color:var(--gold);font-weight:700}
@@ -492,6 +492,21 @@ button.day-block{cursor:pointer;font:inherit}
 .badge-praise{align-items:center;justify-content:center;text-align:center;cursor:pointer;font:inherit;gap:6px}
 .badge-praise .praise-plus{font-family:var(--font-display);font-size:24px;line-height:1;color:var(--brand-bright)}
 .badge-praise .bs-lbl{font-weight:600;color:var(--ink)}
+
+/* Цели по продажам (главная) */
+.sales-goals{display:grid;gap:8px;margin:0 2px 10px}
+.goal-card{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--brand);border-radius:14px;padding:13px 14px;box-shadow:var(--shadow)}
+.goal-card.reached{border-color:var(--brand-line);background:var(--brand-tint)}
+.goal-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.goal-title{font-weight:600;font-size:14px;color:var(--ink);min-width:0}
+.goal-reward{color:var(--gold);font-weight:700;font-size:12px;white-space:nowrap}
+.goal-count{font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--ink-soft);white-space:nowrap}
+.goal-count b{color:var(--brand-bright);font-size:19px}
+.goal-bar{height:8px;border-radius:5px;background:var(--track);overflow:hidden;margin:10px 0 0}
+.goal-bar>i{display:block;height:100%;border-radius:5px;background:var(--brand);transition:width .2s ease}
+.goal-status{margin-top:10px;font-size:12px;font-weight:600;color:var(--brand-bright)}
+.goal-actions{display:flex;gap:8px;margin-top:11px}
+.goal-plus{flex:1}
 .task-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:5px;font-size:11px;color:var(--ink-soft);font-weight:600}
 .task-actions{display:flex;gap:7px;align-items:center;flex:none}
 .task-title-row{display:flex;align-items:center;gap:9px}
