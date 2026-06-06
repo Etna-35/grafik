@@ -9,6 +9,7 @@
     "start": "node apps/api/dist/server.js",
     "migrate": "tsx apps/api/src/migrate.ts",
     "import:training": "tsx apps/api/src/importTraining.ts",
+    "import:menu": "tsx apps/api/src/importMenu.ts",
     "seed": "tsx apps/api/src/seed.ts",
     "check": "tsc -p apps/api/tsconfig.json --noEmit"
   },

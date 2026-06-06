@@ -70,6 +70,7 @@ let state = {
   tasksError: "",
   tasksSaving: false,
   training: null,
+  quiz: null,
   trainingLoading: false,
   trainingError: "",
   trainingSaving: false,
@@ -681,9 +682,9 @@ function renderTrainingContent(training){
     <div class="training-layout">
       <aside class="training-side">
         ${renderTrainingRoute(training.route, chapters)}
-        <h2 class="sec">Главы</h2>
+        <h2 class="sec">Разделы и главы</h2>
         <div class="training-chapters">
-          ${chapters.map((chapter)=>renderTrainingChapterButton(chapter, selected?.id)).join("") || `<div class="panel muted-line">Главы пока не добавлены</div>`}
+          ${(training.modules || []).length ? (training.modules || []).map((module)=>renderTrainingModuleNav(module, selected?.id)).join("") : `<div class="panel muted-line">Главы пока не добавлены</div>`}
         </div>
       </aside>
       <main class="training-main">
@@ -764,15 +765,56 @@ function renderTrainingRoute(route, chapters){
 }
 
 function renderTrainingChapterButton(chapter, selectedId){
+  const qz = chapter.quiz || {};
+  let tag = chapter.isRead ? "прочитано" : "читать";
+  if(chapter.locked) tag = "закрыто";
+  else if(qz.passed) tag = "тест сдан";
+  else if(qz.questionCount) tag = "нужен тест";
   return `
-    <button type="button" class="training-chapter-btn ${selectedId === chapter.id ? "on" : ""} ${chapter.isRead ? "read" : ""}" data-training-chapter="${escapeAttr(chapter.id)}">
+    <button type="button" class="training-chapter-btn ${selectedId === chapter.id ? "on" : ""} ${chapter.isRead ? "read" : ""} ${chapter.locked ? "locked" : ""} ${qz.passed ? "passed" : ""}" data-training-chapter="${escapeAttr(chapter.id)}">
       <span>${escapeHtml(chapter.title)}</span>
-      <i>${chapter.isRead ? "прочитано" : "читать"}</i>
+      <i>${tag}</i>
     </button>
   `;
 }
 
+function renderAttestationButton(module){
+  const a = module.attestation || {};
+  if(!a.questionCount) return "";
+  if(a.passed) return `<div class="training-attest passed"><span>Аттестация</span><i>сдана${a.lastScore!=null?` · ${a.lastScore}%`:""}</i></div>`;
+  if(!a.available) return `<div class="training-attest locked"><span>Аттестация</span><i>после всех глав</i></div>`;
+  if(a.lockedUntil) return `<div class="training-attest fail"><span>Аттестация</span><i>повтор ${formatLockTime(a.lockedUntil)}</i></div>`;
+  return `<button type="button" class="training-attest open" data-quiz-start="attestation:${escapeAttr(module.id)}"><span>Аттестация раздела</span><i>пройти · ${a.questionCount}в</i></button>`;
+}
+
+function renderTrainingModuleNav(module, selectedId){
+  return `
+    <div class="training-module-nav">
+      <div class="tmn-title">${escapeHtml(module.title)}</div>
+      ${(module.chapters || []).map((chapter)=>renderTrainingChapterButton(chapter, selectedId)).join("") || `<div class="muted-line">Глав нет</div>`}
+      ${renderAttestationButton(module)}
+    </div>
+  `;
+}
+
+function formatLockTime(iso){
+  if(!iso) return "позже";
+  const left = Math.max(0, new Date(iso).getTime() - Date.now());
+  const h = Math.floor(left/3600000);
+  const m = Math.floor((left%3600000)/60000);
+  const t = new Date(iso).toLocaleTimeString("ru-RU", { hour:"2-digit", minute:"2-digit" });
+  return `через ${h>0?`${h} ч `:""}${m} мин (в ${t})`;
+}
+
 function renderTrainingChapter(chapter){
+  if(chapter.locked){
+    return `
+      <article class="training-article">
+        <div class="training-article-head"><div><h2>${escapeHtml(chapter.title)}</h2></div></div>
+        <div class="quiz-gate locked">Глава закрыта. Сначала пройдите тест предыдущей главы — тогда откроется эта.</div>
+      </article>
+    `;
+  }
   return `
     <article class="training-article">
       <div class="training-article-head">
@@ -792,7 +834,22 @@ function renderTrainingChapter(chapter){
       <div class="training-body">
         ${trainingTextToHtml(chapter.body)}
       </div>
+      ${renderChapterQuiz(chapter)}
     </article>
+  `;
+}
+
+function renderChapterQuiz(chapter){
+  const qz = chapter.quiz || {};
+  if(!qz.questionCount) return "";
+  if(qz.passed) return `<div class="quiz-gate passed">Тест по главе пройден${qz.lastScore!=null?` · ${qz.lastScore}%`:""}. Следующая глава открыта.</div>`;
+  if(qz.lockedUntil) return `<div class="quiz-gate fail">Результат ниже 80%. Доизучи материал и вернись к тесту ${formatLockTime(qz.lockedUntil)}.</div>`;
+  const mins = Math.max(1, Math.round((qz.durationSec || qz.questionCount*90)/60));
+  return `
+    <div class="quiz-gate">
+      <div class="quiz-gate-info">Чтобы открыть следующую главу — пройдите тест. Вопросов: ${qz.questionCount}, время ~${mins} мин, порог 80%. Правильность во время теста не показывается.</div>
+      <button class="btn brand-action" type="button" data-quiz-start="chapter:${escapeAttr(chapter.id)}">Пройти тест</button>
+    </div>
   `;
 }
 
@@ -872,6 +929,113 @@ function bindTrainingPage(){
       markTrainingChapterRead(readButton.dataset.trainingRead);
     });
   }
+  app.querySelectorAll("[data-quiz-start]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      const [scope, scopeId] = button.dataset.quizStart.split(":");
+      startQuiz(scope, scopeId);
+    });
+  });
+}
+
+let quizTimer = null;
+function stopQuizTimer(){ if(quizTimer){ clearInterval(quizTimer); quizTimer = null; } }
+function formatClock(s){ const m = Math.floor(s/60); return `${m}:${String(s%60).padStart(2,"0")}`; }
+
+async function startQuiz(scope, scopeId){
+  try{
+    const data = await apiPost(`/api/training/quiz/${scope}/${encodeURIComponent(scopeId)}/start`, {});
+    state.quiz = { scope, scopeId, attemptId: data.attemptId, questions: data.questions, answers: {}, durationSec: data.durationSec, endsAt: Date.now() + data.durationSec*1000, result: null, submitting: false };
+    renderQuizScreen();
+    stopQuizTimer();
+    quizTimer = setInterval(()=>{
+      const left = Math.max(0, Math.round((state.quiz.endsAt - Date.now())/1000));
+      const el = document.getElementById("quizTimer");
+      if(el){ el.textContent = formatClock(left); if(left <= 30) el.classList.add("low"); }
+      if(left <= 0){ stopQuizTimer(); submitQuiz(true); }
+    }, 1000);
+  }catch(error){
+    state.trainingError = error.code === "locked" ? "Тест временно заблокирован" : "Не удалось начать тест";
+    render();
+  }
+}
+
+function renderQuizScreen(){
+  const q = state.quiz;
+  if(!q) return;
+  if(q.result){ renderQuizResult(); return; }
+  app.innerHTML = `
+    <div class="phone wide">
+      <section class="screen service-page">
+        <div class="quiz-bar">
+          <div class="quiz-title">Тест${q.scope === "attestation" ? " · аттестация" : ""}</div>
+          <div class="quiz-timer" id="quizTimer">${formatClock(Math.round(q.durationSec))}</div>
+        </div>
+        <div class="hint" style="margin:0 2px 12px">Правильность ответов не показывается. Порог — 80%. Время ограничено: по истечении тест завершится автоматически.</div>
+        <div class="quiz-questions">
+          ${q.questions.map((qq, i)=>`
+            <div class="quiz-q">
+              <div class="quiz-q-prompt">${i+1}. ${escapeHtml(qq.prompt)}</div>
+              <div class="quiz-opts">
+                ${qq.options.map((o)=>`<label class="quiz-opt"><input type="radio" name="q-${escapeAttr(qq.id)}" value="${escapeAttr(o.id)}" data-q="${escapeAttr(qq.id)}"><span>${escapeHtml(o.label)}</span></label>`).join("")}
+              </div>
+            </div>
+          `).join("")}
+        </div>
+        <div class="shift-footer"><button class="btn brand-action" type="button" id="quizSubmit" style="width:100%">Завершить тест</button></div>
+      </section>
+    </div>
+  `;
+  app.querySelectorAll("input[type=radio][data-q]").forEach((r)=>{
+    r.addEventListener("change", ()=>{ state.quiz.answers[r.dataset.q] = r.value; });
+  });
+  app.querySelector("#quizSubmit")?.addEventListener("click", ()=>submitQuiz(false));
+}
+
+async function submitQuiz(auto){
+  const q = state.quiz;
+  if(!q || q.submitting) return;
+  if(!auto){
+    const answered = Object.keys(q.answers).length;
+    if(answered < q.questions.length && !confirm(`Отвечено ${answered} из ${q.questions.length}. Завершить тест?`)) return;
+  }
+  q.submitting = true;
+  stopQuizTimer();
+  try{
+    const answers = q.questions.map((qq)=>({ questionId: qq.id, optionId: q.answers[qq.id] || null }));
+    const res = await apiPost(`/api/training/quiz/attempts/${encodeURIComponent(q.attemptId)}/submit`, { answers });
+    state.quiz.result = res;
+    renderQuizResult();
+  }catch(error){
+    q.submitting = false;
+    alert("Не удалось отправить тест. Попробуй ещё раз.");
+  }
+}
+
+function renderQuizResult(){
+  const r = state.quiz.result;
+  app.innerHTML = `
+    <div class="phone wide">
+      <section class="screen service-page">
+        <div class="quiz-result ${r.passed ? "ok" : "fail"}">
+          <div class="quiz-score">${r.scorePct}%</div>
+          <div class="quiz-verdict">${r.passed ? "Тест пройден" : "Тест не пройден"}</div>
+          <p>${r.passed
+            ? "Отлично! Следующая глава открыта."
+            : `Нужно не меньше ${r.passPct || 80}%. Дополнительно изучи информацию и вернись к тесту через 2 часа.`}</p>
+          <button class="btn brand-action" type="button" id="quizDone">${r.passed ? "Продолжить" : "Понятно"}</button>
+        </div>
+      </section>
+    </div>
+  `;
+  app.querySelector("#quizDone")?.addEventListener("click", async ()=>{
+    state.quiz = null;
+    await loadTraining();
+    await loadSummaryQuiet();
+  });
+}
+
+async function loadSummaryQuiet(){
+  try{ state.summary = await apiGet("/api/summary"); }catch(error){ /* ignore */ }
 }
 
 async function loadTraining(){

@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, getServices, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
+import { getQuizCounts, getAttemptStates, buildQuizState } from "./quiz.js";
 
 const chapterParamsSchema = z.object({
   id: z.string().uuid()
@@ -256,6 +257,11 @@ async function getTrainingContent(user: SessionUser) {
     ]);
 
   const attachmentsByChapter = groupBy(attachmentsResult.rows, "chapter_id");
+  const [{ chapter: chapterCounts, attestation: attCounts }, attemptStates] = await Promise.all([
+    getQuizCounts(),
+    getAttemptStates(user.id)
+  ]);
+
   const chapters = chaptersResult.rows.map((chapter) => ({
     id: chapter.id,
     moduleId: chapter.module_id,
@@ -266,9 +272,21 @@ async function getTrainingContent(user: SessionUser) {
     sortOrder: chapter.sort_order,
     isRead: chapter.is_read,
     readAt: chapter.read_at,
+    quiz: buildQuizState(chapterCounts.get(chapter.id) || 0, attemptStates.get(`chapter:${chapter.id}`)),
+    locked: false,
     attachments: (attachmentsByChapter.get(chapter.id) || []).map(serializeAttachment)
   }));
   const chaptersByModule = groupBy(chapters, "moduleId");
+
+  // Гейтинг: глава заблокирована, пока тест предыдущей не пройден (глава без вопросов гейт не ставит).
+  for (const list of chaptersByModule.values()) {
+    let prevPassed = true;
+    for (const ch of list) {
+      ch.locked = !prevPassed;
+      const passedThis = ch.quiz.questionCount === 0 ? true : ch.quiz.passed;
+      prevPassed = prevPassed && passedThis;
+    }
+  }
 
   const route = routeResult.rows[0]
     ? serializeRoute(routeResult.rows[0], routeDaysResult.rows, routeItemsResult.rows)
@@ -276,14 +294,20 @@ async function getTrainingContent(user: SessionUser) {
   const readCount = chapters.filter((chapter) => chapter.isRead).length;
 
   return {
-    modules: modulesResult.rows.map((module) => ({
-      id: module.id,
-      slug: module.slug,
-      title: module.title,
-      description: module.description,
-      sortOrder: module.sort_order,
-      chapters: chaptersByModule.get(module.id) || []
-    })),
+    modules: modulesResult.rows.map((module) => {
+      const list = chaptersByModule.get(module.id) || [];
+      const allPassed = list.every((ch) => (ch.quiz.questionCount === 0 ? true : ch.quiz.passed));
+      const attState = buildQuizState(attCounts.get(module.id) || 0, attemptStates.get(`attestation:${module.id}`));
+      return {
+        id: module.id,
+        slug: module.slug,
+        title: module.title,
+        description: module.description,
+        sortOrder: module.sort_order,
+        chapters: list,
+        attestation: { ...attState, available: allPassed }
+      };
+    }),
     route,
     progress: {
       totalChapters: chapters.length,

@@ -30,6 +30,7 @@ import { registerHandoverRoutes } from "./handovers.js";
 import { registerPraiseRoutes } from "./praises.js";
 import { registerSalesGoalRoutes } from "./salesGoals.js";
 import { registerProgressRoutes, getProgressSummary } from "./progress.js";
+import { registerQuizRoutes } from "./quiz.js";
 
 const pinSchema = z.object({
   pin: z.string().regex(/^\d{4,8}$/)
@@ -231,6 +232,7 @@ export function buildServer() {
   registerPraiseRoutes(app);
   registerSalesGoalRoutes(app);
   registerProgressRoutes(app);
+  registerQuizRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,
