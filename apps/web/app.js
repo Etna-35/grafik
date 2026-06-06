@@ -3269,6 +3269,7 @@ function renderScheduleContent(schedule){
       <button class="btn icon" data-month-action="next">›</button>
     </div>
     ${schedule.canSeeMoney ? renderMoneySummary(schedule, totals) : ""}
+    ${state.scheduleEditUnlocked ? `<div class="hint" style="margin:0 2px 8px">Клик по ячейке — поставить/снять смену. Двойной клик — задать нестандартные часы. Клик по дате — выплаты и оценки.</div>` : ""}
     ${schedule.employees.length ? renderScheduleTable(schedule) : renderEmptySchedule()}
     ${schedule.canSeeMoney ? `
       <h2 class="sec">Итоги за месяц</h2>
@@ -3601,16 +3602,22 @@ function renderScheduleDateEditor(service){
       </div>
 
       <div class="payout-editor">
-        <div class="row-sub">Фактические выплаты</div>
-        ${employeePayouts.length ? employeePayouts.map((payout)=>`
+        <div class="row-sub">Выплаты за день</div>
+        ${(day.payouts || []).length ? (day.payouts || []).map((payout)=>{
+          const pid = payout.employee_id || payout.employeeId;
+          const nm = (state.schedule.employees.find((e)=>e.id === pid) || {}).name || "Сотрудник";
+          return `
           <div class="payout-item">
-            <span>${formatMoney(payout.amount)}</span>
+            <span><b>${escapeHtml(nm)}</b> · ${formatMoney(payout.amount)}</span>
             <button class="ghost mini danger-action" data-date-delete-payout="${escapeAttr(payout.id)}">Удалить</button>
-          </div>
-        `).join("") : `<div class="muted-line">Выплат нет</div>`}
+          </div>`;
+        }).join("") : `<div class="muted-line">Выплат за этот день нет</div>`}
         <div class="payout-add">
-          <input id="datePayoutAmount" type="number" min="0" step="100" placeholder="сумма">
-          <button class="ghost" data-date-action="add-payout">Добавить</button>
+          <select id="datePayoutEmployee">
+            ${state.schedule.employees.map((item)=>`<option value="${escapeAttr(item.id)}" ${item.id === employee.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
+          </select>
+          <input id="datePayoutAmount" type="number" min="0" step="100" inputmode="numeric" placeholder="сумма, ₽">
+          <button class="ghost brand-action" data-date-action="add-payout">Добавить выплату</button>
         </div>
       </div>
 
@@ -3623,35 +3630,24 @@ function bindScheduleCells(service){
   app.querySelectorAll("[data-schedule-cell]").forEach((cell)=>{
     if(!isScheduleEditingUnlocked(service)) return;
 
-    let pressTimer = null;
-    let longPressed = false;
+    // Одиночный клик — поставить/снять смену; двойной клик — редактор (нестандартные часы);
+    // правый клик — тоже редактор. Без долгого тапа.
+    let clickTimer = null;
 
-    cell.addEventListener("pointerdown", (event)=>{
-      if(event.button && event.button !== 0) return;
-      longPressed = false;
-      clearTimeout(pressTimer);
-      pressTimer = setTimeout(()=>{
-        longPressed = true;
-        openScheduleEditor(cell);
-      }, 460);
+    cell.addEventListener("click", ()=>{
+      if(clickTimer){ clearTimeout(clickTimer); clickTimer = null; return; }
+      clickTimer = setTimeout(()=>{ clickTimer = null; quickEditScheduleCell(cell); }, 220);
     });
 
-    cell.addEventListener("pointerup", (event)=>{
-      clearTimeout(pressTimer);
-      if(longPressed){
-        event.preventDefault();
-        return;
-      }
-      quickEditScheduleCell(cell);
-    });
-
-    cell.addEventListener("pointerleave", ()=>{
-      clearTimeout(pressTimer);
+    cell.addEventListener("dblclick", (event)=>{
+      event.preventDefault();
+      if(clickTimer){ clearTimeout(clickTimer); clickTimer = null; }
+      openScheduleEditor(cell);
     });
 
     cell.addEventListener("contextmenu", (event)=>{
       event.preventDefault();
-      clearTimeout(pressTimer);
+      if(clickTimer){ clearTimeout(clickTimer); clickTimer = null; }
       openScheduleEditor(cell);
     });
   });
@@ -3878,12 +3874,13 @@ async function clearScoreFor(context){
   }));
 }
 
-async function addPayoutFor(context, inputSelector = "#payoutAmount"){
+async function addPayoutFor(context, inputSelector = "#datePayoutAmount"){
   const amount = Number(app.querySelector(inputSelector)?.value);
   if(!Number.isFinite(amount) || amount <= 0) return;
+  const employeeId = app.querySelector("#datePayoutEmployee")?.value || context.employee.id;
   await saveAndReload(()=>apiPost("/api/schedule/payouts", {
     workDate: context.day.date,
-    employeeId: context.employee.id,
+    employeeId,
     amount: Math.round(amount)
   }));
 }

@@ -191,7 +191,7 @@ button.stat{cursor:pointer;color:var(--ink);text-align:left;font:inherit}
 .schedule-lock-btn.unlocked{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
 .schedule-screen.edit-locked .schedule-grid td.cell,
 .schedule-screen.edit-locked .schedule-grid .markDate{cursor:default}
-.gridwrap{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow:auto;-webkit-overflow-scrolling:touch;max-height:70vh}
+.gridwrap{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch}
 .schedule-grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-content;font-size:12px}
 .schedule-grid th,.schedule-grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
 .schedule-grid thead th{position:sticky;top:0;z-index:3;background:var(--card)}
@@ -348,7 +348,9 @@ button.stat{cursor:pointer;color:var(--ink);text-align:left;font:inherit}
 .payout-editor{border-top:1px solid var(--line);padding-top:10px}
 .payout-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:7px 8px;margin-top:7px;font-size:13px;font-weight:600}
 .payout-item button{margin-left:auto}
-.payout-add{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:8px}
+.payout-add{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:8px;margin-top:8px;align-items:center}
+.payout-add input{border:1px solid var(--line-strong);background:var(--card);border-radius:10px;padding:10px 11px;color:var(--ink);font:inherit;font-size:14px;font-weight:500;min-width:0}
+@media (max-width:560px){.payout-add{grid-template-columns:1fr 1fr}.payout-add button{grid-column:1/-1}}
 .muted-line{font-size:12px;color:var(--ink-soft);margin-top:7px}
 .requisition-phone{max-width:none}
 .requisition-screen{max-width:980px;margin:0 auto}
@@ -659,7 +661,7 @@ button.day-block{cursor:pointer;font:inherit}
   .training-screen{max-width:1180px;padding:24px 32px 38px}
   .admin-screen{max-width:1280px;padding:24px 32px 38px}
   .backrow{margin-bottom:16px}
-  .gridwrap{max-height:calc(100vh - 250px);border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .gridwrap{border-radius:8px;box-shadow:0 1px 2px rgba(0,0,0,.3)}
   .schedule-grid th.emp{min-width:52px;width:52px}
   .schedule-grid td.cell{min-width:52px;width:52px}
   .moneySummary,.panel,.stat,.navcard,.scard,.roleTotals .rt,.admin-employee,.access-row,.field input,.field textarea,.field select,.payout-add input,.training-hero,.training-manager,.training-metrics>div,.training-person,.training-route,.training-chapters,.training-article,.training-chapter-btn,.training-attachment{border-radius:8px}
