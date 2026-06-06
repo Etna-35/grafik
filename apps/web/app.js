@@ -266,6 +266,15 @@ function renderHub(){
   });
 }
 
+const MAX_MASK_LEVEL = 28;
+function levelMaskUrl(level){
+  const n = Math.min(Math.max(Number(level) || 1, 1), MAX_MASK_LEVEL);
+  return `/assets/awards/level-${n}.png`;
+}
+function levelMaskImg(level){
+  return `<img class="mask-img" src="${levelMaskUrl(level)}" alt="Уровень ${Number(level) || 1}">`;
+}
+
 function tenureLevel(startStr){
   if(!startStr) return null;
   const start = new Date(startStr);
@@ -300,7 +309,7 @@ function renderMerits(){
     <div class="merits">
       <div class="merit-top">
         <button class="award" data-action="progress">
-          <div class="award-icon">${shieldIcon()}<span class="award-lvl">${s.level ?? 1}</span></div>
+          <div class="award-icon mask">${levelMaskImg(s.level ?? 1)}</div>
           <div class="award-meta">
             <b>Уровень ${s.level ?? 1}</b>
             <span>Ещё ${s.toNextPct ?? 100}% до повышения</span>
@@ -372,7 +381,7 @@ function renderProgressScreen(){
               <div><b>Уровень ${p.level + 1}</b><span>Скрыт — откроется, когда заполнишь шкалу</span></div>
             </div>
             <div class="progress-hero">
-              <div class="prog-badge">${shieldIcon()}<span class="award-lvl">${p.level}</span></div>
+              <div class="prog-badge mask">${levelMaskImg(p.level)}</div>
               <div class="prog-title">Уровень ${p.level}</div>
               <div class="award-bar big"><i style="width:${p.progressPct}%"></i></div>
               <div class="prog-sub">${p.progressPct}% · ещё ${p.toNextPct}% до уровня ${p.level + 1}</div>
