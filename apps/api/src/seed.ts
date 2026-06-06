@@ -19,17 +19,32 @@ async function main(): Promise<void> {
 
   await pool.query("BEGIN");
   try {
-    const employeeResult = await pool.query<{ id: string }>(
-      `
-        INSERT INTO employees (display_name, role, is_active)
-        VALUES ($1, 'owner', true)
-        ON CONFLICT (display_name) DO UPDATE
-        SET role = 'owner', is_active = true, updated_at = now()
-        RETURNING id
-      `,
-      [env.ownerName]
+    // Имена сотрудников больше не уникальны (миграция 017), поэтому владельца
+    // ищем по роли, а не апсертом по display_name. Существующее имя не затираем —
+    // владелец мог переименовать себя.
+    let ownerId: string;
+    const existingOwner = await pool.query<{ id: string }>(
+      "SELECT id FROM employees WHERE role = 'owner' LIMIT 1"
     );
-    const ownerId = employeeResult.rows[0].id;
+    if (existingOwner.rows[0]) {
+      ownerId = existingOwner.rows[0].id;
+      await pool.query("UPDATE employees SET is_active = true, updated_at = now() WHERE id = $1", [ownerId]);
+    } else {
+      const byName = await pool.query<{ id: string }>(
+        "SELECT id FROM employees WHERE display_name = $1 LIMIT 1",
+        [env.ownerName]
+      );
+      if (byName.rows[0]) {
+        ownerId = byName.rows[0].id;
+        await pool.query("UPDATE employees SET role = 'owner', is_active = true, updated_at = now() WHERE id = $1", [ownerId]);
+      } else {
+        const inserted = await pool.query<{ id: string }>(
+          "INSERT INTO employees (display_name, role, is_active) VALUES ($1, 'owner', true) RETURNING id",
+          [env.ownerName]
+        );
+        ownerId = inserted.rows[0].id;
+      }
+    }
     const pinHash = await hashPin(env.ownerPin);
 
     await pool.query(
