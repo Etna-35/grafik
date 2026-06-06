@@ -9,6 +9,7 @@ const taskParamsSchema = z.object({
 
 const taskCreateSchema = z.object({
   title: z.string().trim().min(2).max(200),
+  description: z.string().trim().max(2000).nullable().optional(),
   employeeId: z.string().uuid(),
   deadlineDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()
 });
@@ -20,6 +21,7 @@ const taskStatusSchema = z.object({
 type TaskRow = {
   id: string;
   title: string;
+  description: string | null;
   employee_id: string | null;
   employee_name: string | null;
   deadline_date: string | null;
@@ -79,11 +81,11 @@ export function registerTaskRoutes(app: FastifyInstance): void {
 
     const result = await query<{ id: string }>(
       `
-        INSERT INTO tasks (title, employee_id, deadline_date, status, created_by)
-        VALUES ($1, $2, $3::date, 'open', $4)
+        INSERT INTO tasks (title, description, employee_id, deadline_date, status, created_by)
+        VALUES ($1, $2, $3, $4::date, 'open', $5)
         RETURNING id
       `,
-      [parsed.data.title, parsed.data.employeeId, parsed.data.deadlineDate || null, user.id]
+      [parsed.data.title, parsed.data.description?.trim() || null, parsed.data.employeeId, parsed.data.deadlineDate || null, user.id]
     );
     await audit(request, "task_create", user.id, "task", result.rows[0].id, parsed.data);
     return { ok: true, id: result.rows[0].id };
@@ -180,6 +182,7 @@ async function getOwnTasks(employeeId: string): Promise<TaskRow[]> {
       SELECT
         t.id::text,
         t.title,
+        t.description,
         t.employee_id,
         e.display_name AS employee_name,
         t.deadline_date::text,
@@ -206,6 +209,7 @@ async function getTeamTasks(): Promise<TaskRow[]> {
       SELECT
         t.id::text,
         t.title,
+        t.description,
         t.employee_id,
         e.display_name AS employee_name,
         t.deadline_date::text,
@@ -274,6 +278,7 @@ function serializeTask(task: TaskRow) {
   return {
     id: task.id,
     title: task.title,
+    description: task.description || "",
     employeeId: task.employee_id || "",
     employeeName: task.employee_name || "",
     deadlineDate: task.deadline_date || "",

@@ -421,6 +421,8 @@ a{color:inherit;text-decoration:none}
 .task-card.done{opacity:.72}
 .task-main{min-width:0}
 .task-title{font-size:14px;font-weight:600;line-height:1.25;overflow-wrap:anywhere}
+.task-desc{margin-top:5px;font-size:12px;line-height:1.4;color:var(--ink-soft);font-weight:400;white-space:pre-wrap;overflow-wrap:anywhere}
+.task-create-grid .task-desc-field{grid-column:1/-1}
 .task-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:5px;font-size:11px;color:var(--ink-soft);font-weight:600}
 .task-actions{display:flex;gap:7px;align-items:center;flex:none}
 .task-title-row{display:flex;align-items:center;gap:9px}

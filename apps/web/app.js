@@ -689,6 +689,10 @@ function renderTaskCreatePanel(tasks){
           <span>Срок</span>
           <input name="deadlineDate" type="date">
         </label>
+        <label class="field task-desc-field">
+          <span>Описание</span>
+          <textarea name="description" maxlength="2000" rows="2" placeholder="Детали, если нужно"></textarea>
+        </label>
         <button class="ghost brand-action" type="submit">Добавить</button>
       </div>
     </form>
@@ -704,6 +708,7 @@ function renderTaskCard(task, showEmployee){
           <span class="task-title">${escapeHtml(task.title)}</span>
           <span class="task-status ${done ? "done" : "open"}">${done ? "Готово" : "В работе"}</span>
         </div>
+        ${task.description ? `<div class="task-desc">${escapeHtml(task.description)}</div>` : ""}
         <div class="task-meta">
           ${showEmployee && task.employeeName ? `<span>${escapeHtml(task.employeeName)}</span>` : ""}
           ${task.deadlineDate ? `<span>${escapeHtml(formatDateHuman(task.deadlineDate))}</span>` : ""}
@@ -756,8 +761,9 @@ async function createTaskFromForm(form){
   const title = form.elements.title.value.trim();
   const employeeId = form.elements.employeeId.value;
   const deadlineDate = form.elements.deadlineDate.value || null;
+  const description = form.elements.description?.value.trim() || null;
   if(!title || !employeeId) return;
-  await saveTasksAction(()=>apiPost("/api/tasks", { title, employeeId, deadlineDate }));
+  await saveTasksAction(()=>apiPost("/api/tasks", { title, description, employeeId, deadlineDate }));
 }
 
 async function setTaskStatus(id, status){
