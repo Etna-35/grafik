@@ -226,14 +226,8 @@ function renderHub(){
         </header>
         <div class="greet">
           <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}</div>
-          ${state.summary?.startDate ? `<span class="tenure-chip">В Этне ${escapeHtml(formatTenure(state.summary.startDate))}</span>` : ""}
-          ${renderHubGoal()}
         </div>
-        <div class="stats">
-          <button class="stat" data-url="/tasks"><div class="k">Задачи на месяц</div><div class="v">${state.summary?.tasksDone ?? 0}/${state.summary?.tasksTotal ?? 0}</div></button>
-          <button class="stat" data-url="/tasks"><div class="k">Коллеги подсказывают</div><div class="v">${state.summary?.handoverCount ?? 0}</div></button>
-          <button class="stat stat-praise" data-action="praise"><div class="k">Похвалить коллегу</div><div class="v">＋</div></button>
-        </div>
+        ${renderDayPanel()}
         ${renderMerits()}
         <h2 class="section-title">Сервисы</h2>
         <div class="nav">
@@ -292,25 +286,30 @@ function renderMerits(){
   return `
     <h2 class="section-title">Заслуги</h2>
     <div class="merits">
-      ${level ? `
-        <div class="award">
-          <div class="award-icon">${shieldIcon()}<span class="award-lvl">${level.level}</span></div>
-          <div class="award-meta">
-            <b>Уровень ${level.level}</b>
-            <span>${escapeHtml(level.tenureText)} в Этне · до повышения ${escapeHtml(level.toNextText)}</span>
-            <div class="award-bar"><i style="width:${level.pct}%"></i></div>
+      <div class="merit-top">
+        ${level ? `
+          <div class="award">
+            <div class="award-icon">${shieldIcon()}<span class="award-lvl">${level.level}</span></div>
+            <div class="award-meta">
+              <b>Уровень ${level.level}</b>
+              <span>${escapeHtml(level.tenureText)} в Этне · до повышения ${escapeHtml(level.toNextText)}</span>
+              <div class="award-bar"><i style="width:${level.pct}%"></i></div>
+            </div>
           </div>
-        </div>
-      ` : `
-        <div class="award award-empty">
-          <div class="award-meta"><b>Уровень за стаж</b><span>Дата начала работы не указана</span></div>
-        </div>
-      `}
-      <div class="badges">
-        <div class="badge-stat"><span class="bi">${heartIcon()}</span><div class="bs-num">×${praises}</div><span class="bs-lbl">похвалы</span></div>
-        <div class="badge-stat"><span class="bi bi-score">${meritStarIcon()}</span><div class="bs-num">×${scores}</div><span class="bs-lbl">оценки</span>
-          ${scores ? `<div class="bs-dots"><span class="g">${s.scoresGood || 0}</span><span class="y">${s.scoresMid || 0}</span><span class="r">${s.scoresBad || 0}</span></div>` : ""}
-        </div>
+        ` : `
+          <div class="award award-empty">
+            <div class="award-meta"><b>Уровень за стаж</b><span>Дата начала работы не указана</span></div>
+          </div>
+        `}
+        <button class="merit-tasks" data-url="/tasks">
+          <span>Задачи на месяц</span>
+          <b>${s.tasksDone ?? 0}/${s.tasksTotal ?? 0}</b>
+        </button>
+      </div>
+      <div class="merit-badges">
+        <div class="badge-stat"><span class="bi">${heartIcon()}</span><div class="bs-num"><span class="mult">×</span>${praises}</div><span class="bs-lbl">похвалы</span></div>
+        <div class="badge-stat"><span class="bi bi-score">${meritStarIcon()}</span><div class="bs-num"><span class="mult">×</span>${scores}</div><span class="bs-lbl">оценки</span></div>
+        <button class="badge-stat badge-praise" data-action="praise"><span class="praise-plus">＋</span><span class="bs-lbl">Спасибо</span></button>
       </div>
     </div>
   `;
@@ -333,19 +332,20 @@ function formatTenure(startStr){
   return parts.join(" ");
 }
 
-function renderHubGoal(){
+function renderDayPanel(){
   const s = state.summary || {};
   const goalDate = new Intl.DateTimeFormat("ru-RU", { weekday:"long", day:"numeric", month:"long" }).format(new Date());
-  if((s.revenuePlanToday || 0) > 0){
-    return `
-      <div class="greet-goal">Сегодня ${goalDate}, и наша цель сегодня:</div>
-      <div class="goal-cards">
-        <div class="goal"><span>План выручки</span><b>${formatMoney(s.revenuePlanToday)} ₽</b></div>
-        <div class="goal"><span>Наличные на смену</span><b>${formatMoney(s.cashPlanToday)} ₽</b></div>
+  const hasGoal = (s.revenuePlanToday || 0) > 0;
+  return `
+    <div class="day-panel">
+      <div class="day-goal">Сегодня ${goalDate}${hasGoal ? ", и наша цель сегодня:" : ""}</div>
+      <div class="day-blocks">
+        <div class="day-block"><span>План выручки</span><b>${formatMoney(s.revenuePlanToday || 0)}</b></div>
+        <div class="day-block"><span>Наличный план</span><b>${formatMoney(s.cashPlanToday || 0)}</b></div>
+        <button class="day-block" data-url="/tasks"><span>План от коллег</span><b>${s.handoverCount ?? 0}</b></button>
       </div>
-    `;
-  }
-  return `<div class="greet-goal">Сегодня ${goalDate}. Смен на сегодня в графике нет.</div>`;
+    </div>
+  `;
 }
 
 async function openPraise(){

@@ -135,6 +135,7 @@ export function buildServer() {
       scores_good: string;
       scores_mid: string;
       scores_bad: string;
+      dow: number;
     }>(
       `
         SELECT
@@ -157,12 +158,15 @@ export function buildServer() {
           COALESCE((SELECT COUNT(*) FROM employee_scores WHERE employee_id = $1), 0)::text AS scores_total,
           COALESCE((SELECT COUNT(*) FROM employee_scores WHERE employee_id = $1 AND score = 'green'), 0)::text AS scores_good,
           COALESCE((SELECT COUNT(*) FROM employee_scores WHERE employee_id = $1 AND score = 'yellow'), 0)::text AS scores_mid,
-          COALESCE((SELECT COUNT(*) FROM employee_scores WHERE employee_id = $1 AND score = 'red'), 0)::text AS scores_bad
+          COALESCE((SELECT COUNT(*) FROM employee_scores WHERE employee_id = $1 AND score = 'red'), 0)::text AS scores_bad,
+          EXTRACT(DOW FROM (now() AT TIME ZONE 'Europe/Moscow')::date)::int AS dow
       `,
       [user.id, manager, user.role]
     );
 
     const dayFot = Number(result.rows[0].day_fot);
+    // План выручки: будни ×0.8, ПТ(5)/СБ(6) ×1.5 от табличного (ФОТ/0.23).
+    const revenueMult = result.rows[0].dow === 5 || result.rows[0].dow === 6 ? 1.5 : 0.8;
     return {
       startDate: result.rows[0].start_date,
       paidTotal: Number(result.rows[0].paid_total),
@@ -172,7 +176,7 @@ export function buildServer() {
       shiftsCount: Number(result.rows[0].shifts_count),
       handoverCount: Number(result.rows[0].handover_count),
       cashPlanToday: dayFot,
-      revenuePlanToday: dayFot > 0 ? Math.round(dayFot / 0.23) : 0,
+      revenuePlanToday: dayFot > 0 ? Math.round((dayFot / 0.23) * revenueMult) : 0,
       praisesReceived: Number(result.rows[0].praises_received),
       scoresTotal: Number(result.rows[0].scores_total),
       scoresGood: Number(result.rows[0].scores_good),
