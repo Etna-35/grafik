@@ -56,6 +56,8 @@ let state = {
   payrollLoading: false,
   payrollError: "",
   tasks: null,
+  handovers: null,
+  handoverSaving: false,
   tasksLoading: false,
   tasksError: "",
   tasksSaving: false,
@@ -222,8 +224,8 @@ function renderHub(){
           <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}</div>
         </div>
         <div class="stats">
-          <div class="stat"><div class="k">Смен</div><div class="v">${state.summary?.shiftsCount ?? 0}</div></div>
-          <div class="stat"><div class="k">Задач</div><div class="v">${state.summary?.tasksOpen ?? 0}</div></div>
+          <div class="stat"><div class="k">Задачи на месяц</div><div class="v">${state.summary?.tasksOpen ?? 0}</div></div>
+          <div class="stat"><div class="k">Открытие смены</div><div class="v">${state.summary?.handoverCount ?? 0}</div></div>
           <div class="stat"><div class="k">Выдано</div><div class="v">${formatMoney(state.summary?.paidTotal ?? 0)}</div></div>
         </div>
         <h2 class="section-title">Сервисы</h2>
@@ -650,6 +652,8 @@ function renderTasksContent(tasks){
       <div class="task-metric"><span>Сделано другими</span><b>${team.doneByOthers || 0}</b></div>
     </div>
 
+    ${renderHandoverSection()}
+
     ${tasks.canManage ? renderTaskCreatePanel(tasks) : ""}
 
     <h2 class="sec">Мои задачи</h2>
@@ -665,6 +669,52 @@ function renderTasksContent(tasks){
     ` : ""}
 
     ${state.tasksError ? `<div class="error">${escapeHtml(state.tasksError)}</div>` : ""}
+  `;
+}
+
+function renderHandoverSection(){
+  const data = state.handovers;
+  if(!data) return "";
+  const notes = data.notes || [];
+  const audienceOptions = [
+    { value:"all", label:"Всем" },
+    { value:"cook", label:"Поварам" },
+    { value:"bar", label:"Барменам" },
+    { value:"waiter", label:"Официантам" },
+    { value:"dishwasher", label:"Мойке" }
+  ];
+  return `
+    <h2 class="sec">План на завтра · передача смены</h2>
+    <form class="panel handover-create" id="handoverForm">
+      <textarea name="body" maxlength="1000" rows="2" placeholder="Что не успели, на что обратить внимание следующей смене"></textarea>
+      <div class="handover-create-row">
+        ${data.canManage
+          ? `<select name="audience">${audienceOptions.map((option)=>`<option value="${option.value}">${option.label}</option>`).join("")}</select>`
+          : `<span class="handover-aud-fixed">Для: ${escapeHtml(data.audienceLabel || "своей смены")}</span>`}
+        <button class="ghost brand-action" type="submit">Оставить</button>
+      </div>
+    </form>
+    <div class="handover-list">
+      ${notes.length ? notes.map(renderHandoverNote).join("") : `<div class="panel muted-line">Записей для следующей смены пока нет</div>`}
+    </div>
+  `;
+}
+
+function renderHandoverNote(note){
+  const canResolve = note.mine || state.handovers?.canManage;
+  return `
+    <div class="handover-note ${note.fromManager ? "from-manager" : ""}">
+      <div class="handover-note-body">${escapeHtml(note.body)}</div>
+      <div class="handover-note-foot">
+        <div class="handover-note-meta">
+          <span class="handover-badge">${escapeHtml(note.audienceLabel)}</span>
+          ${note.fromManager ? `<span class="handover-badge manager">от руководителя</span>` : ""}
+          ${note.authorName ? `<span>${escapeHtml(note.authorName)}</span>` : ""}
+          <span>${escapeHtml(formatDateTimeHuman(note.createdAt))}</span>
+        </div>
+        ${canResolve ? `<button class="ghost mini" type="button" data-handover-resolve="${escapeAttr(note.id)}">Снять</button>` : ""}
+      </div>
+    </div>
   `;
 }
 
@@ -754,6 +804,46 @@ function bindTasksPage(){
   app.querySelectorAll("[data-task-cancel]").forEach((button)=>{
     button.addEventListener("click", ()=>cancelTask(button.dataset.taskCancel));
   });
+
+  const handoverForm = app.querySelector("#handoverForm");
+  if(handoverForm){
+    handoverForm.addEventListener("submit", (event)=>{
+      event.preventDefault();
+      submitHandover(handoverForm);
+    });
+  }
+  app.querySelectorAll("[data-handover-resolve]").forEach((button)=>{
+    button.addEventListener("click", ()=>resolveHandover(button.dataset.handoverResolve));
+  });
+}
+
+async function submitHandover(form){
+  if(state.handoverSaving) return;
+  const body = form.elements.body.value.trim();
+  if(body.length < 2) return;
+  const audience = form.elements.audience?.value;
+  state.handoverSaving = true;
+  try{
+    await apiPost("/api/handovers", audience ? { body, audience } : { body });
+    state.handovers = await apiGet("/api/handovers");
+  }catch(error){
+    state.tasksError = "Не удалось сохранить запись";
+  }finally{
+    state.handoverSaving = false;
+    render();
+  }
+}
+
+async function resolveHandover(id){
+  if(!id) return;
+  try{
+    await apiPatch(`/api/handovers/${encodeURIComponent(id)}/resolve`, {});
+    state.handovers = await apiGet("/api/handovers");
+  }catch(error){
+    /* ignore */
+  }finally{
+    render();
+  }
 }
 
 async function loadTasks(){
@@ -761,7 +851,12 @@ async function loadTasks(){
   state.tasksError = "";
   render();
   try{
-    state.tasks = await apiGet("/api/tasks");
+    const [tasks, handovers] = await Promise.all([
+      apiGet("/api/tasks"),
+      apiGet("/api/handovers").catch(()=>null)
+    ]);
+    state.tasks = tasks;
+    state.handovers = handovers;
   }catch(error){
     state.tasksError = error.status === 403 ? "Нет доступа к задачам" : "Проверь соединение и попробуй ещё раз";
   }finally{
