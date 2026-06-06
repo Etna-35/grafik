@@ -293,9 +293,10 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     default_hours: string | null;
     hourly_rate: number | null;
     pay_model: string | null;
+    birth_date: string | null;
   }>(
     `
-      SELECT id, display_name, role, schedule_role, default_hours, hourly_rate, pay_model
+      SELECT id, display_name, role, schedule_role, default_hours, hourly_rate, pay_model, birth_date::text
       FROM employees
       WHERE is_active = true
         AND (
@@ -458,6 +459,7 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
         role: employee.schedule_role || employee.role,
         roleLabel: roleLabels[employee.schedule_role || employee.role] || "Сотрудник",
         defaultHours: employee.default_hours ? Number(employee.default_hours) : null,
+        birthDate: employee.birth_date,
         hourlyRate: canSeeAllMoney ? employee.hourly_rate : null,
         payModel: canSeeAllMoney ? payModel : null,
         totals: {

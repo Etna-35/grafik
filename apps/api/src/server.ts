@@ -27,6 +27,7 @@ import { registerRequisitionRoutes } from "./requisitions.js";
 import { registerTaskRoutes } from "./tasks.js";
 import { registerTrainingRoutes } from "./training.js";
 import { registerHandoverRoutes } from "./handovers.js";
+import { registerPraiseRoutes } from "./praises.js";
 
 const pinSchema = z.object({
   pin: z.string().regex(/^\d{4,8}$/)
@@ -123,28 +124,45 @@ export function buildServer() {
     const result = await query<{
       paid_total: string;
       tasks_open: string;
+      tasks_done: string;
+      tasks_total: string;
       shifts_count: string;
       handover_count: string;
+      day_fot: string;
+      start_date: string | null;
     }>(
       `
         SELECT
           COALESCE((SELECT SUM(amount) FROM payroll_payouts WHERE employee_id = $1), 0)::text AS paid_total,
           COALESCE((SELECT COUNT(*) FROM tasks WHERE employee_id = $1 AND status = 'open'), 0)::text AS tasks_open,
+          COALESCE((SELECT COUNT(*) FROM tasks WHERE employee_id = $1 AND status = 'done'
+            AND created_at >= date_trunc('month', now() AT TIME ZONE 'Europe/Moscow')), 0)::text AS tasks_done,
+          COALESCE((SELECT COUNT(*) FROM tasks WHERE employee_id = $1 AND status <> 'cancelled'
+            AND created_at >= date_trunc('month', now() AT TIME ZONE 'Europe/Moscow')), 0)::text AS tasks_total,
           COALESCE((SELECT COUNT(*) FROM schedule_shifts WHERE employee_id = $1), 0)::text AS shifts_count,
           COALESCE((
             SELECT COUNT(*) FROM shift_handovers h
             WHERE h.resolved = false
               AND ($2 = true OR h.audience = 'all' OR h.audience = $3 OR h.author_id = $1)
-          ), 0)::text AS handover_count
+          ), 0)::text AS handover_count,
+          COALESCE((SELECT SUM(pay_amount) FROM schedule_shifts
+            WHERE work_date = (now() AT TIME ZONE 'Europe/Moscow')::date), 0)::text AS day_fot,
+          (SELECT start_date::text FROM employees WHERE id = $1) AS start_date
       `,
       [user.id, manager, user.role]
     );
 
+    const dayFot = Number(result.rows[0].day_fot);
     return {
+      startDate: result.rows[0].start_date,
       paidTotal: Number(result.rows[0].paid_total),
       tasksOpen: Number(result.rows[0].tasks_open),
+      tasksDone: Number(result.rows[0].tasks_done),
+      tasksTotal: Number(result.rows[0].tasks_total),
       shiftsCount: Number(result.rows[0].shifts_count),
-      handoverCount: Number(result.rows[0].handover_count)
+      handoverCount: Number(result.rows[0].handover_count),
+      cashPlanToday: dayFot,
+      revenuePlanToday: dayFot > 0 ? Math.round(dayFot / 0.23) : 0
     };
   });
 
@@ -156,6 +174,7 @@ export function buildServer() {
   registerRequisitionRoutes(app);
   registerTrainingRoutes(app);
   registerHandoverRoutes(app);
+  registerPraiseRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,

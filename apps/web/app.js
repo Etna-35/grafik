@@ -58,6 +58,10 @@ let state = {
   tasks: null,
   handovers: null,
   handoverSaving: false,
+  praise: null,
+  praiseLoading: false,
+  praiseSaving: false,
+  praiseError: "",
   tasksLoading: false,
   tasksError: "",
   tasksSaving: false,
@@ -222,11 +226,13 @@ function renderHub(){
         </header>
         <div class="greet">
           <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}</div>
+          ${state.summary?.startDate ? `<span class="tenure-chip">В Этне ${escapeHtml(formatTenure(state.summary.startDate))}</span>` : ""}
+          ${renderHubGoal()}
         </div>
         <div class="stats">
-          <div class="stat"><div class="k">Задачи на месяц</div><div class="v">${state.summary?.tasksOpen ?? 0}</div></div>
-          <div class="stat"><div class="k">Открытие смены</div><div class="v">${state.summary?.handoverCount ?? 0}</div></div>
-          <div class="stat"><div class="k">Выдано</div><div class="v">${formatMoney(state.summary?.paidTotal ?? 0)}</div></div>
+          <button class="stat" data-url="/tasks"><div class="k">Задачи на месяц</div><div class="v">${state.summary?.tasksDone ?? 0}/${state.summary?.tasksTotal ?? 0}</div></button>
+          <button class="stat" data-url="/tasks"><div class="k">Открытие смены</div><div class="v">${state.summary?.handoverCount ?? 0}</div></button>
+          <button class="stat stat-praise" data-action="praise"><div class="k">Похвалить коллегу</div><div class="v">＋</div></button>
         </div>
         <h2 class="section-title">Сервисы</h2>
         <div class="nav">
@@ -250,6 +256,123 @@ function renderHub(){
     });
   });
   app.querySelector("[data-action='logout']").addEventListener("click", logout);
+  app.querySelector("[data-action='praise']")?.addEventListener("click", openPraise);
+}
+
+function formatTenure(startStr){
+  if(!startStr) return "";
+  const start = new Date(startStr);
+  if(Number.isNaN(start.getTime())) return "";
+  const now = new Date();
+  let months = (now.getFullYear() - start.getFullYear()) * 12 + (now.getMonth() - start.getMonth());
+  if(now.getDate() < start.getDate()) months--;
+  if(months < 0) months = 0;
+  const years = Math.floor(months / 12);
+  const rem = months % 12;
+  const parts = [];
+  if(years) parts.push(`${years} ${pluralize(years, "год", "года", "лет")}`);
+  if(rem) parts.push(`${rem} ${pluralize(rem, "месяц", "месяца", "месяцев")}`);
+  if(!parts.length) return "меньше месяца";
+  return parts.join(" ");
+}
+
+function renderHubGoal(){
+  const s = state.summary || {};
+  const goalDate = new Intl.DateTimeFormat("ru-RU", { weekday:"long", day:"numeric", month:"long" }).format(new Date());
+  if((s.revenuePlanToday || 0) > 0){
+    return `
+      <div class="greet-goal">Сегодня ${goalDate}, и наша цель сегодня:</div>
+      <div class="goal-cards">
+        <div class="goal"><span>План выручки</span><b>${formatMoney(s.revenuePlanToday)} ₽</b></div>
+        <div class="goal"><span>Наличные на смену</span><b>${formatMoney(s.cashPlanToday)} ₽</b></div>
+      </div>
+    `;
+  }
+  return `<div class="greet-goal">Сегодня ${goalDate}. Смен на сегодня в графике нет.</div>`;
+}
+
+async function openPraise(){
+  state.praiseLoading = true;
+  state.praiseError = "";
+  renderPraiseScreen();
+  try{
+    state.praise = await apiGet("/api/praises");
+  }catch(error){
+    state.praiseError = "Не удалось загрузить";
+  }finally{
+    state.praiseLoading = false;
+    renderPraiseScreen();
+  }
+}
+
+function renderPraiseScreen(){
+  const data = state.praise;
+  app.innerHTML = `
+    <div class="phone wide">
+      <section class="screen service-page">
+        <div class="backrow">
+          <button class="iconbtn" data-action="praise-back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">Похвалить коллегу</h1>
+        </div>
+        ${state.praiseLoading
+          ? `<div class="panel"><div class="loader compact">Загружаю</div></div>`
+          : data ? `
+            <form class="panel" id="praiseForm">
+              <label class="field">
+                <span>Кого благодарим</span>
+                <select name="toId" required>${(data.colleagues || []).map((c)=>`<option value="${escapeAttr(c.id)}">${escapeHtml(c.name)}</option>`).join("")}</select>
+              </label>
+              <label class="field" style="margin-top:10px">
+                <span>За что</span>
+                <textarea name="body" maxlength="500" rows="3" placeholder="Спасибо за…" required></textarea>
+              </label>
+              ${state.praiseError ? `<div class="error" style="text-align:left">${escapeHtml(state.praiseError)}</div>` : ""}
+              <button class="ghost brand-action" type="submit" style="margin-top:12px">Отправить похвалу</button>
+            </form>
+            <h2 class="sec">Лента благодарностей</h2>
+            <div class="praise-list">
+              ${(data.feed || []).length ? data.feed.map(renderPraiseItem).join("") : `<div class="panel muted-line">Пока пусто — будь первым</div>`}
+            </div>
+          ` : `<div class="panel muted-line">${escapeHtml(state.praiseError || "Нет данных")}</div>`}
+      </section>
+    </div>
+  `;
+  app.querySelector("[data-action='praise-back']")?.addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+  const form = app.querySelector("#praiseForm");
+  form?.addEventListener("submit", (event)=>{
+    event.preventDefault();
+    submitPraise(form);
+  });
+}
+
+function renderPraiseItem(item){
+  return `
+    <div class="praise-item">
+      <div class="praise-body">${escapeHtml(item.body)}</div>
+      <div class="praise-meta"><b>${escapeHtml(item.toName)}</b> · от ${escapeHtml(item.fromName)} · ${escapeHtml(formatDateTimeHuman(item.createdAt))}</div>
+    </div>
+  `;
+}
+
+async function submitPraise(form){
+  if(state.praiseSaving) return;
+  const toId = form.elements.toId.value;
+  const body = form.elements.body.value.trim();
+  if(!toId || body.length < 2) return;
+  state.praiseSaving = true;
+  state.praiseError = "";
+  try{
+    await apiPost("/api/praises", { toId, body });
+    state.praise = await apiGet("/api/praises");
+  }catch(error){
+    state.praiseError = "Не удалось отправить";
+  }finally{
+    state.praiseSaving = false;
+    renderPraiseScreen();
+  }
 }
 
 function renderServiceCard(service){
@@ -744,10 +867,10 @@ function renderTaskCreatePanel(tasks){
           <textarea name="description" maxlength="2000" rows="2" placeholder="Детали, если нужно"></textarea>
         </label>
         <div class="field task-reward-field">
-          <span>Оплата</span>
+          <span>Премия</span>
           <div class="task-reward-row">
-            <label class="reward-check"><input name="rewardOn" type="checkbox"> назначить стоимость</label>
-            <input name="rewardAmount" type="number" min="0" step="50" inputmode="numeric" placeholder="₽ за выполнение" data-reward-amount hidden>
+            <label class="reward-check"><input name="rewardOn" type="checkbox"> назначить премию за выполнение</label>
+            <input name="rewardAmount" type="number" min="0" step="50" inputmode="numeric" placeholder="Сумма премии, ₽" data-reward-amount hidden>
           </div>
         </div>
         <button class="ghost brand-action" type="submit">Добавить</button>
@@ -1792,6 +1915,18 @@ function renderEmployeeForm(admin){
         </label>
       </div>
 
+      <div class="two">
+        <label class="field">
+          <span>Дата начала работы</span>
+          <input name="startDate" type="date" value="${employee.startDate || ""}">
+        </label>
+        <label class="field">
+          <span>Дата рождения</span>
+          <input name="birthDate" type="date" value="${employee.birthDate || ""}">
+        </label>
+      </div>
+      ${employee.startDate ? `<div class="hint">Стаж: ${escapeHtml(formatTenure(employee.startDate))}</div>` : ""}
+
       <div class="access-box">
         <div class="row-title">Доступы</div>
         <div class="row-sub">Раздел виден сотруднику только при включённом доступе</div>
@@ -1956,6 +2091,8 @@ function collectAdminEmployeeForm(isNew){
     payModel: form.elements.payModel.value || null,
     isHookahMaster: form.elements.isHookahMaster.checked,
     hookahRate: integerOrNull(form.elements.hookahRate.value),
+    startDate: form.elements.startDate.value || null,
+    birthDate: form.elements.birthDate.value || null,
     services: Array.from(app.querySelectorAll("[data-admin-service]")).map((row)=>{
       const canEdit = row.querySelector("input[name='canEdit']").checked;
       const canView = row.querySelector("input[name='canView']").checked || canEdit;
@@ -1983,6 +2120,8 @@ function emptyAdminEmployee(services){
     payModel: "hourly",
     isHookahMaster: false,
     hookahRate: 300,
+    startDate: "",
+    birthDate: "",
     hasPin: false,
     services: services.map((service)=>({
       code: service.code,
@@ -2718,10 +2857,12 @@ function renderShiftCell(day, employee, canSeeMoney){
       : shift.hours == null ? "•" : formatHours(shift.hours)
     : "";
   const valueClass = isFixedShift(employee, shift) ? "h fx" : "h";
+  const isBirthday = employee.birthDate && day.date.slice(5) === employee.birthDate.slice(5);
 
   return `
-    <td class="${classes}" data-schedule-cell="1" data-date="${escapeAttr(day.date)}" data-employee="${escapeAttr(employee.id)}">
+    <td class="${classes}${isBirthday ? " bday" : ""}" data-schedule-cell="1" data-date="${escapeAttr(day.date)}" data-employee="${escapeAttr(employee.id)}">
       <span class="${valueClass}" style="${shift ? `background:${roleColor(employee.role)}` : ""}">${label}</span>
+      ${isBirthday ? `<span class="bday-mark" title="День рождения · ${escapeAttr(employee.name)}">ДР</span>` : ""}
       ${renderScoreDots(score)}
     </td>
   `;
