@@ -157,7 +157,10 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
     const user = await requireShiftCloseAccess(request, reply);
     if (!user) return;
 
-    const workDate = currentShiftWorkDate();
+    const serverShiftDate = currentShiftWorkDate();
+    const requestedDate = (request.query as { date?: string }).date;
+    const parsedDate = requestedDate ? dateSchema.safeParse(requestedDate) : null;
+    const workDate = parsedDate && parsedDate.success ? parsedDate.data : serverShiftDate;
     const [openingCashExpected, revenuePlan, hookahEmployees, existing] = await Promise.all([
       getOpeningCashExpected(workDate),
       getRevenuePlan(workDate),
@@ -168,6 +171,7 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
 
     return {
       workDate,
+      serverShiftDate,
       user: {
         id: user.id,
         displayName: user.display_name,

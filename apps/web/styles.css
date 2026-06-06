@@ -131,6 +131,14 @@ a{color:inherit;text-decoration:none}
 .shift-close-form .sec{margin-top:26px}
 .shift-close-form .sec:first-of-type{margin-top:14px}
 .shift-close-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin:0 2px 4px}
+.shift-head-main{flex:1;min-width:0}
+.shift-date-nav{display:flex;align-items:center;gap:12px;margin-top:10px}
+.shift-date-label{flex:1;text-align:center;line-height:1.15}
+.shift-date-cap{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--ink-soft);font-weight:600}
+.shift-date-day{display:block;font-size:15px;font-weight:600;color:var(--ink)}
+.iconbtn.small:disabled{opacity:.35;cursor:default}
+.shift-night-warn{margin:0 2px 14px;border:1px solid var(--gold);background:var(--gold-bg);color:var(--gold);border-radius:11px;padding:11px 13px;font-size:12px;font-weight:600;line-height:1.4}
+.shift-night-warn b{color:var(--brand-bright)}
 .whorow{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:6px}
 .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:rgba(255,255,255,.05);border-radius:999px;padding:4px 11px;font-size:12px;font-weight:600;color:var(--ink)}
 .chip.muted{color:var(--ink-soft)}

@@ -78,6 +78,7 @@ let state = {
   requisitionComment: "",
   requisitionUrgent: false,
   shiftClosingInit: null,
+  shiftClosingDate: null,
   shiftClosingRecord: null,
   shiftClosingForm: null,
   shiftClosingPhotos: {},
@@ -1909,20 +1910,32 @@ function renderShiftClosingForm(){
   const preview = computeShiftClosingPreview(form, init);
   const existing = state.shiftClosingRecord;
   const cashDiffOk = Math.abs(preview.closingCashDiff) <= init.cashDiffLimit;
-  const planWidth = Math.max(0, Math.min(100, Math.round(preview.revenuePlanPercent || 0)));
+  const msk = moscowNow();
+  const nightWarn = msk.hour < 6;
+  const serverShiftDate = init.serverShiftDate || init.workDate;
+  const canGoNext = init.workDate < serverShiftDate;
 
   return `
     <form id="shiftClosingForm" class="shift-close-form">
       <header class="shift-close-head">
-        <div>
+        <div class="shift-head-main">
           <div class="whorow">
             <span class="chip"><span class="dot"></span>${escapeHtml(firstName(init.user.displayName))}</span>
-            <span class="chip muted">смена за ${escapeHtml(formatDateHuman(init.workDate))}</span>
+            <span class="chip muted">МСК ${msk.hh}:${msk.mm}</span>
+          </div>
+          <div class="shift-date-nav">
+            <button class="iconbtn small" type="button" data-shift-date="prev" aria-label="Предыдущий день">${arrowLeftIcon()}</button>
+            <div class="shift-date-label">
+              <span class="shift-date-cap">Смена за</span>
+              <span class="shift-date-day">${escapeHtml(formatDateHuman(init.workDate))}</span>
+            </div>
+            <button class="iconbtn small" type="button" data-shift-date="next" ${canGoNext ? "" : "disabled"} aria-label="Следующий день">${arrowRightIcon()}</button>
           </div>
           ${existing ? `<div class="row-sub">Запись уже есть, изменения обновят закрытие смены</div>` : ""}
         </div>
         ${existing ? `<button class="ghost mini" type="button" data-shift-action="send-telegram">Telegram</button>` : ""}
       </header>
+      ${nightWarn ? `<div class="shift-night-warn">Сейчас ${msk.hh}:${msk.mm} по МСК — день уже сменился. Проверь, что закрываешь смену за <b>${escapeHtml(formatDateHuman(init.workDate))}</b>, а не за сегодня.</div>` : ""}
 
       <h2 class="sec">Касса на открытии</h2>
       ${moneyField("openingCashActual", "Фактический остаток (пересчитай кассу)", form.openingCashActual)}
@@ -2082,6 +2095,15 @@ function bindShiftClosingForm(){
     submitShiftClosing();
   });
 
+  app.querySelectorAll("[data-shift-date]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      const base = state.shiftClosingInit?.workDate;
+      if(!base) return;
+      const delta = button.dataset.shiftDate === "next" ? 1 : -1;
+      loadShiftClosing(shiftDateByDelta(base, delta));
+    });
+  });
+
   app.querySelectorAll("[data-shift-money]").forEach((input)=>{
     input.addEventListener("input", ()=>{
       state.shiftClosingForm[input.name] = integerOrNull(input.value) || 0;
@@ -2119,12 +2141,31 @@ function bindShiftClosingForm(){
   app.querySelector("[data-shift-action='send-telegram']")?.addEventListener("click", resendShiftTelegram);
 }
 
-async function loadShiftClosing(){
+function shiftInitUrl(date){
+  return date ? `/api/shift-closing/init?date=${encodeURIComponent(date)}` : "/api/shift-closing/init";
+}
+
+function shiftDateByDelta(dateStr, delta){
+  const [y, m, d] = String(dateStr).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + delta);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+}
+
+function moscowNow(){
+  const parts = new Intl.DateTimeFormat("ru-RU", { timeZone:"Europe/Moscow", hour:"2-digit", minute:"2-digit", hour12:false }).formatToParts(new Date());
+  const hh = parts.find((p)=>p.type === "hour")?.value || "00";
+  const mm = parts.find((p)=>p.type === "minute")?.value || "00";
+  return { hh, mm, hour: Number(hh) };
+}
+
+async function loadShiftClosing(date){
   state.shiftClosingLoading = true;
   state.shiftClosingError = "";
+  if(date !== undefined) state.shiftClosingDate = date;
   render();
   try{
-    const init = await apiGet("/api/shift-closing/init");
+    const init = await apiGet(shiftInitUrl(state.shiftClosingDate));
     state.shiftClosingInit = init;
     state.shiftClosingRecord = init.existing;
     state.shiftClosingForm = shiftClosingFormFrom(init, init.existing);
@@ -2248,7 +2289,7 @@ async function submitShiftClosing(){
       : await apiPost("/api/shift-closing", payload);
     state.shiftClosingRecord = record;
     await uploadShiftPhotos(record.id);
-    state.shiftClosingInit = await apiGet("/api/shift-closing/init");
+    state.shiftClosingInit = await apiGet(shiftInitUrl(state.shiftClosingDate));
     state.shiftClosingRecord = state.shiftClosingInit.existing || record;
     state.shiftClosingForm = shiftClosingFormFrom(state.shiftClosingInit, state.shiftClosingRecord);
     state.shiftClosingPhotos = {};
