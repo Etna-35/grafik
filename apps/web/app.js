@@ -667,9 +667,9 @@ function renderTrainingContent(training){
   return `
     <div class="training-hero">
       <div>
-        <span class="training-kicker">База знаний официанта</span>
-        <h2>${escapeHtml(training.modules?.[0]?.title || "Обучение")}</h2>
-        <p>${escapeHtml(training.modules?.[0]?.description || "Материалы для стажировки и повторения стандартов.")}</p>
+        <span class="training-kicker">Обучение</span>
+        <h2>База знаний</h2>
+        <p>Три независимых блока — база официанта, меню кухни и меню бара. Любой можно проходить с первого дня, в своём порядке.</p>
       </div>
       <div class="training-progress">
         <b>${training.progress?.percent || 0}%</b>
