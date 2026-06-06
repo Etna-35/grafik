@@ -11,7 +11,8 @@ const taskCreateSchema = z.object({
   title: z.string().trim().min(2).max(200),
   description: z.string().trim().max(2000).nullable().optional(),
   employeeId: z.string().uuid(),
-  deadlineDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()
+  deadlineDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  rewardAmount: z.number().int().min(0).max(1000000).nullable().optional()
 });
 
 const taskStatusSchema = z.object({
@@ -25,6 +26,7 @@ type TaskRow = {
   employee_id: string | null;
   employee_name: string | null;
   deadline_date: string | null;
+  reward_amount: number | null;
   status: string;
   created_at: string;
   updated_at: string;
@@ -81,11 +83,11 @@ export function registerTaskRoutes(app: FastifyInstance): void {
 
     const result = await query<{ id: string }>(
       `
-        INSERT INTO tasks (title, description, employee_id, deadline_date, status, created_by)
-        VALUES ($1, $2, $3, $4::date, 'open', $5)
+        INSERT INTO tasks (title, description, employee_id, deadline_date, reward_amount, status, created_by)
+        VALUES ($1, $2, $3, $4::date, $5, 'open', $6)
         RETURNING id
       `,
-      [parsed.data.title, parsed.data.description?.trim() || null, parsed.data.employeeId, parsed.data.deadlineDate || null, user.id]
+      [parsed.data.title, parsed.data.description?.trim() || null, parsed.data.employeeId, parsed.data.deadlineDate || null, parsed.data.rewardAmount ?? null, user.id]
     );
     await audit(request, "task_create", user.id, "task", result.rows[0].id, parsed.data);
     return { ok: true, id: result.rows[0].id };
@@ -186,6 +188,7 @@ async function getOwnTasks(employeeId: string): Promise<TaskRow[]> {
         t.employee_id,
         e.display_name AS employee_name,
         t.deadline_date::text,
+        t.reward_amount,
         t.status::text,
         t.created_at::text,
         t.updated_at::text
@@ -213,6 +216,7 @@ async function getTeamTasks(): Promise<TaskRow[]> {
         t.employee_id,
         e.display_name AS employee_name,
         t.deadline_date::text,
+        t.reward_amount,
         t.status::text,
         t.created_at::text,
         t.updated_at::text
@@ -282,6 +286,7 @@ function serializeTask(task: TaskRow) {
     employeeId: task.employee_id || "",
     employeeName: task.employee_name || "",
     deadlineDate: task.deadline_date || "",
+    rewardAmount: task.reward_amount ?? null,
     status: task.status,
     createdAt: task.created_at,
     updatedAt: task.updated_at

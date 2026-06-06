@@ -693,6 +693,13 @@ function renderTaskCreatePanel(tasks){
           <span>Описание</span>
           <textarea name="description" maxlength="2000" rows="2" placeholder="Детали, если нужно"></textarea>
         </label>
+        <div class="field task-reward-field">
+          <span>Оплата</span>
+          <div class="task-reward-row">
+            <label class="reward-check"><input name="rewardOn" type="checkbox"> назначить стоимость</label>
+            <input name="rewardAmount" type="number" min="0" step="50" inputmode="numeric" placeholder="₽ за выполнение" data-reward-amount hidden>
+          </div>
+        </div>
         <button class="ghost brand-action" type="submit">Добавить</button>
       </div>
     </form>
@@ -712,6 +719,7 @@ function renderTaskCard(task, showEmployee){
         <div class="task-meta">
           ${showEmployee && task.employeeName ? `<span>${escapeHtml(task.employeeName)}</span>` : ""}
           ${task.deadlineDate ? `<span>${escapeHtml(formatDateHuman(task.deadlineDate))}</span>` : ""}
+          ${task.rewardAmount ? `<span class="task-reward">+${formatMoneyPlain(task.rewardAmount)} ₽</span>` : ""}
         </div>
       </div>
       <div class="task-actions">
@@ -730,6 +738,12 @@ function bindTasksPage(){
     form.addEventListener("submit", (event)=>{
       event.preventDefault();
       createTaskFromForm(form);
+    });
+    const rewardOn = form.elements.rewardOn;
+    const rewardAmount = form.querySelector("[data-reward-amount]");
+    rewardOn?.addEventListener("change", ()=>{
+      rewardAmount.hidden = !rewardOn.checked;
+      if(rewardOn.checked) rewardAmount.focus();
     });
   }
 
@@ -762,8 +776,11 @@ async function createTaskFromForm(form){
   const employeeId = form.elements.employeeId.value;
   const deadlineDate = form.elements.deadlineDate.value || null;
   const description = form.elements.description?.value.trim() || null;
+  const rewardOn = form.elements.rewardOn?.checked;
+  const rewardValue = Number(form.elements.rewardAmount?.value || 0);
+  const rewardAmount = rewardOn && rewardValue > 0 ? Math.round(rewardValue) : null;
   if(!title || !employeeId) return;
-  await saveTasksAction(()=>apiPost("/api/tasks", { title, description, employeeId, deadlineDate }));
+  await saveTasksAction(()=>apiPost("/api/tasks", { title, description, employeeId, deadlineDate, rewardAmount }));
 }
 
 async function setTaskStatus(id, status){
@@ -955,11 +972,6 @@ function renderRequisitionCart(){
         <textarea name="comment" maxlength="700" placeholder="Что важно учесть">${escapeHtml(state.requisitionComment)}</textarea>
       </label>
 
-      <label class="checkrow req-urgent">
-        <input name="urgent" type="checkbox" ${state.requisitionUrgent ? "checked" : ""}>
-        <span>Срочно</span>
-      </label>
-
       <button class="brand-action req-submit-link" type="submit" ${items.length && !state.requisitionSaving ? "" : "disabled"}>
         ${state.requisitionSaving ? "Отправляю" : "Отправить заявку"}
       </button>
@@ -1025,6 +1037,7 @@ function renderRequisitionCartLine(item){
       <span class="req-item-main">
         <b>${escapeHtml(item.name)}</b>
         <small>${escapeHtml(item.unit)}</small>
+        <button class="req-urgent-toggle ${item.urgent ? "on" : ""}" type="button" data-req-urgent="${escapeAttr(item.key)}">${item.urgent ? "Срочно ✓" : "Срочно"}</button>
       </span>
       <span class="req-stepper">
         <button type="button" data-req-dec="${escapeAttr(item.key)}">-</button>
@@ -1057,7 +1070,7 @@ function renderRequisitionRecord(record, canManage){
       </div>
       <div class="req-record-lines">
         ${(record.lines || []).slice(0, 8).map((line)=>`
-          <span>${escapeHtml(line.name)} <b>${formatQty(line.qty)} ${escapeHtml(line.unit)}</b></span>
+          <span class="${line.urgent ? "urgent" : ""}">${line.urgent ? "● " : ""}${escapeHtml(line.name)} <b>${formatQty(line.qty)} ${escapeHtml(line.unit)}</b></span>
         `).join("")}
         ${(record.lines || []).length > 8 ? `<span>ещё ${(record.lines || []).length - 8}</span>` : ""}
       </div>
@@ -1155,6 +1168,9 @@ function bindRequisitionCartControls(){
   app.querySelectorAll("[data-req-remove]").forEach((button)=>{
     button.addEventListener("click", ()=>removeRequisitionEntry(button.dataset.reqRemove));
   });
+  app.querySelectorAll("[data-req-urgent]").forEach((button)=>{
+    button.addEventListener("click", ()=>toggleRequisitionUrgent(button.dataset.reqUrgent));
+  });
 }
 
 function updateRequisitionCatalogResults(){
@@ -1233,7 +1249,8 @@ function addRequisitionCatalogItem(id){
       qty:1,
       unit:item.unit,
       kind:item.kind,
-      categoryName:item.categoryName
+      categoryName:item.categoryName,
+      urgent:false
     }
   };
   state.requisitionNotice = "";
@@ -1263,6 +1280,16 @@ function removeRequisitionEntry(key){
   render();
 }
 
+function toggleRequisitionUrgent(key){
+  const current = state.requisitionCart[key];
+  if(!current) return;
+  state.requisitionCart = {
+    ...state.requisitionCart,
+    [key]: { ...current, urgent: !current.urgent }
+  };
+  render();
+}
+
 function addFreeRequisitionItem(form){
   const freeName = form.elements.freeName.value.trim();
   const qty = Number(form.elements.freeQty.value);
@@ -1285,7 +1312,8 @@ function addFreeRequisitionItem(form){
       qty:Math.round(qty * 100) / 100,
       unit,
       kind,
-      categoryName
+      categoryName,
+      urgent:false
     }
   };
   state.requisitionError = "";
@@ -1301,24 +1329,23 @@ async function sendRequisition(form){
   state.requisitionError = "";
   state.requisitionNotice = "";
   state.requisitionComment = form.elements.comment.value.trim();
-  state.requisitionUrgent = form.elements.urgent.checked;
   render();
   try{
     await apiPost("/api/requisitions", {
       comment: state.requisitionComment,
-      urgent: state.requisitionUrgent,
+      urgent: false,
       lines: items.map((item)=>({
         catalogItemId: item.catalogItemId,
         freeName: item.freeName,
         qty: item.qty,
         unit: item.unit,
         kind: item.kind,
-        categoryName: item.categoryName
+        categoryName: item.categoryName,
+        urgent: Boolean(item.urgent)
       }))
     });
     state.requisitionCart = {};
     state.requisitionComment = "";
-    state.requisitionUrgent = false;
     state.requisitionNotice = "Заявка отправлена";
     await refreshRequisitionData();
   }catch(error){
@@ -1431,6 +1458,7 @@ function renderPayrollContent(payroll){
       <div class="pay-metric"><span>Начислено</span><b>${formatMoneyPlain(summary.accrued || 0)} ₽</b></div>
       <div class="pay-metric"><span>Выдано</span><b>${formatMoneyPlain(summary.paid || 0)} ₽</b></div>
       ${showHookah ? `<div class="pay-metric"><span>Кальяны</span><b>${formatMoneyPlain(summary.hookahAccrued || 0)} ₽</b></div>` : ""}
+      ${summary.taskRewardCount ? `<div class="pay-metric"><span>Премии</span><b>${formatMoneyPlain(summary.taskRewardAccrued || 0)} ₽</b></div>` : ""}
       <div class="pay-metric"><span>Смены</span><b>${summary.shifts || 0}</b></div>
       <div class="pay-metric"><span>Часы</span><b>${formatHours(summary.hours || 0)}</b></div>
     </div>
@@ -1447,6 +1475,21 @@ function renderPayrollContent(payroll){
             <i>выдано</i>
           </div>
         `).join("") : `<div class="panel muted-line">В этом месяце кальянов пока нет</div>`}
+      </div>
+    ` : ""}
+
+    ${(payroll.taskRewards || []).length ? `
+      <h2 class="sec">Премии за задачи</h2>
+      <div class="payroll-list">
+        ${payroll.taskRewards.map((row)=>`
+          <div class="payroll-row">
+            <span>
+              <b>+${formatMoneyPlain(row.amount)} ₽</b>
+              <small>${escapeHtml(row.title)} · ${escapeHtml(formatDateHuman(row.doneAt.slice(0, 10)))}</small>
+            </span>
+            <i>начислено</i>
+          </div>
+        `).join("")}
       </div>
     ` : ""}
 
@@ -1665,6 +1708,7 @@ function renderEmployeeForm(admin){
       ${state.adminError ? `<div class="error admin-form-error">${escapeHtml(state.adminError)}</div>` : ""}
 
       <div class="admin-actions">
+        ${isNew || employee.id === state.user?.id ? "" : `<button class="ghost danger-action" type="button" data-action="admin-delete">Удалить</button>`}
         <button class="ghost brand-action" type="submit">${isNew ? "Создать" : "Сохранить"}</button>
         ${isNew ? "" : `<button class="ghost" type="button" data-action="admin-reset">Сбросить</button>`}
       </div>
@@ -1717,6 +1761,25 @@ function bindAdminPage(){
   const reset = app.querySelector("[data-action='admin-reset']");
   if(reset){
     reset.addEventListener("click", render);
+  }
+
+  const del = app.querySelector("[data-action='admin-delete']");
+  if(del){
+    del.addEventListener("click", async ()=>{
+      const id = state.selectedAdminEmployeeId;
+      const emp = (state.admin?.employees || []).find((item)=>item.id === id);
+      const name = emp?.displayName || "сотрудника";
+      if(!confirm(`Удалить ${name}? Сотрудник исчезнет из списка. История смен и выплат сохранится.`)) return;
+      try{
+        await apiDelete(`/api/admin/employees/${encodeURIComponent(id)}`);
+        state.selectedAdminEmployeeId = "new";
+        state.admin = await apiGet("/api/admin/employees");
+        render();
+      }catch(error){
+        state.adminError = "Не удалось удалить сотрудника";
+        render();
+      }
+    });
   }
 
   const role = app.querySelector("select[name='role']");

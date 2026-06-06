@@ -16,7 +16,8 @@ const requisitionLineSchema = z.object({
   qty: z.number().positive().max(9999),
   unit: z.string().trim().min(1).max(30).optional().default("шт"),
   kind: requisitionKindSchema.optional().default("product"),
-  categoryName: z.string().trim().max(100).optional().default("")
+  categoryName: z.string().trim().max(100).optional().default(""),
+  urgent: z.boolean().optional().default(false)
 });
 
 const requisitionCreateSchema = z.object({
@@ -73,6 +74,7 @@ type RequisitionLineRow = {
   unit: string;
   kind: Kind;
   category_name: string;
+  urgent: boolean;
 };
 
 type NormalizedLine = {
@@ -82,6 +84,7 @@ type NormalizedLine = {
   unit: string;
   kind: Kind;
   categoryName: string;
+  urgent: boolean;
 };
 
 export function registerRequisitionRoutes(app: FastifyInstance): void {
@@ -142,13 +145,14 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
 
     await pool.query("BEGIN");
     try {
+      const anyUrgent = parsed.data.urgent || normalized.lines.some((line) => line.urgent);
       const created = await pool.query<{ id: string }>(
         `
           INSERT INTO requisitions (author_id, status, comment, urgent)
           VALUES ($1, 'new', $2, $3)
           RETURNING id
         `,
-        [user.id, parsed.data.comment, parsed.data.urgent]
+        [user.id, parsed.data.comment, anyUrgent]
       );
       const requisitionId = created.rows[0].id;
 
@@ -162,9 +166,10 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
               qty,
               unit,
               kind,
-              category_name
+              category_name,
+              urgent
             )
-            VALUES ($1, $2, $3, $4, $5, $6::requisition_kind, $7)
+            VALUES ($1, $2, $3, $4, $5, $6::requisition_kind, $7, $8)
           `,
           [
             requisitionId,
@@ -173,7 +178,8 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
             line.qty,
             line.unit,
             line.kind,
-            line.categoryName
+            line.categoryName,
+            line.urgent
           ]
         );
       }
@@ -355,7 +361,8 @@ async function normalizeLinesForUser(
         qty,
         unit: item.unit,
         kind: item.kind,
-        categoryName: item.category_name
+        categoryName: item.category_name,
+        urgent: line.urgent
       });
       continue;
     }
@@ -376,7 +383,8 @@ async function normalizeLinesForUser(
       qty,
       unit: line.unit.trim() || "шт",
       kind: category.kind,
-      categoryName: category.name
+      categoryName: category.name,
+      urgent: line.urgent
     });
   }
 
@@ -466,7 +474,8 @@ async function getLinesForRequisitions(ids: string[]): Promise<Map<string, Requi
         l.qty::text,
         l.unit,
         l.kind::text AS kind,
-        l.category_name
+        l.category_name,
+        l.urgent
       FROM requisition_lines l
       LEFT JOIN requisition_catalog_items i ON i.id = l.catalog_item_id
       WHERE l.requisition_id = ANY($1::uuid[])
@@ -538,7 +547,8 @@ function serializeLine(line: RequisitionLineRow) {
     qty: Number(line.qty || 0),
     unit: line.unit || "шт",
     kind: line.kind,
-    categoryName: line.category_name || ""
+    categoryName: line.category_name || "",
+    urgent: Boolean(line.urgent)
   };
 }
 

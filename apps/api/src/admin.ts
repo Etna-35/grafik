@@ -166,6 +166,39 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       throw error;
     }
   });
+
+  app.delete("/api/admin/employees/:id", async (request, reply) => {
+    const user = await requireAdmin(request, reply);
+    if (!user) return;
+
+    const params = employeeParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      await reply.code(400).send({ error: "bad_employee" });
+      return;
+    }
+    if (params.data.id === user.id) {
+      await reply.code(400).send({ error: "cannot_delete_self" });
+      return;
+    }
+    const target = await getEmployeeRole(params.data.id);
+    if (!target) {
+      await reply.code(404).send({ error: "not_found" });
+      return;
+    }
+    if (!canManageRole(user, target.role)) {
+      await reply.code(403).send({ error: "forbidden_role" });
+      return;
+    }
+
+    await archiveEmployee(params.data.id);
+    await audit(request, "employee_archive", user.id, "employee", params.data.id, {});
+    return { ok: true };
+  });
+}
+
+async function archiveEmployee(employeeId: string): Promise<void> {
+  await pool.query("DELETE FROM employee_service_access WHERE employee_id = $1", [employeeId]);
+  await pool.query("UPDATE employees SET is_active = false, archived_at = now() WHERE id = $1", [employeeId]);
 }
 
 async function requireAdmin(request: FastifyRequest, reply: FastifyReply): Promise<SessionUser | undefined> {
@@ -209,6 +242,7 @@ async function getAdminEmployees() {
           e.hookah_rate,
           EXISTS(SELECT 1 FROM employee_auth a WHERE a.employee_id = e.id) AS has_pin
         FROM employees e
+        WHERE e.archived_at IS NULL
         ORDER BY e.is_active DESC,
           CASE e.role
             WHEN 'owner' THEN 1
