@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
+import { sendMessage, teamChatId, tgEscape } from "./telegram.js";
 
 const createSchema = z.object({
   employeeId: z.string().uuid(),
@@ -160,6 +161,16 @@ export function registerSalesGoalRoutes(app: FastifyInstance): void {
       `,
       [params.data.id, parsed.data.delta]
     );
+    if (goal.rows[0].status !== "reached" && teamChatId()) {
+      const after = await query<{ status: string; name: string }>(
+        `SELECT g.status, e.display_name AS name FROM sales_goals g JOIN employees e ON e.id = g.employee_id WHERE g.id = $1`,
+        [params.data.id]
+      );
+      const row = after.rows[0];
+      if (row && row.status === "reached") {
+        void sendMessage(teamChatId(), `🎯 ${tgEscape(row.name)} выполнил план по продажам!`).catch(() => {});
+      }
+    }
     return { ok: true };
   });
 

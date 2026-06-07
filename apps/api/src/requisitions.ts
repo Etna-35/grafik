@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, getServices, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
+import { sendMessage, teamChatId, tgEscape } from "./telegram.js";
 
 const requisitionParamsSchema = z.object({
   id: z.string().uuid()
@@ -190,7 +191,9 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
         urgent: parsed.data.urgent
       });
 
-      return await getRequisitionById(requisitionId, user);
+      const created2 = await getRequisitionById(requisitionId, user);
+      if (created2) void notifyRequisition(created2).catch(() => {});
+      return created2;
     } catch (error) {
       await pool.query("ROLLBACK");
       throw error;
@@ -457,6 +460,19 @@ async function getRequisitionById(id: string, user: SessionUser) {
   const row = result.rows[0];
   if (!row) return undefined;
   return serializeRequisitions([row], await getLinesForRequisitions([row.id]))[0];
+}
+
+async function notifyRequisition(req: NonNullable<Awaited<ReturnType<typeof getRequisitionById>>>): Promise<void> {
+  if (!teamChatId()) return;
+  const lines = req.lines.map((line) => `• ${tgEscape(line.name)} — ${line.qty} ${tgEscape(line.unit)}${line.urgent ? " ⚠️" : ""}`);
+  const parts = [
+    `🧾 <b>Новая заявка продуктов</b>`,
+    `От: ${tgEscape(req.authorName || "—")}${req.urgent ? " · ⚠️ срочно" : ""}`,
+    "",
+    ...lines
+  ];
+  if (req.comment) parts.push("", `💬 ${tgEscape(req.comment)}`);
+  await sendMessage(teamChatId(), parts.join("\n"));
 }
 
 async function getLinesForRequisitions(ids: string[]): Promise<Map<string, RequisitionLineRow[]>> {

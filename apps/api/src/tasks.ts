@@ -3,6 +3,7 @@ import { z } from "zod";
 import { audit, getServices, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
 import { awardPoints, awardPointsToRole } from "./progress.js";
+import { sendMessage, teamChatId, tgEscape } from "./telegram.js";
 
 const taskParamsSchema = z.object({
   id: z.string().uuid()
@@ -132,9 +133,17 @@ export function registerTaskRoutes(app: FastifyInstance): void {
       [params.data.id, parsed.data.status]
     );
     await audit(request, "task_status_update", user.id, "task", params.data.id, parsed.data);
-    if (parsed.data.status === "done") {
+    if (parsed.data.status === "done" && task.status !== "done") {
       if (task.employee_id) {
         await awardPoints(task.employee_id, "manager_task", "Задание выполнено", "task", params.data.id);
+        if (teamChatId()) {
+          const info = await query<{ name: string }>(
+            `SELECT e.display_name AS name FROM tasks t JOIN employees e ON e.id = t.employee_id WHERE t.id = $1`,
+            [params.data.id]
+          );
+          const name = info.rows[0]?.name;
+          if (name) void sendMessage(teamChatId(), `✅ ${tgEscape(name)} завершил работу над личной задачей`).catch(() => {});
+        }
       } else if (task.audience_role) {
         await awardPointsToRole(task.audience_role, "role_task", "Задание смены выполнено", "task", params.data.id);
       }
@@ -287,9 +296,9 @@ async function getTeamSummary(employeeId: string): Promise<TeamSummaryRow> {
   return result.rows[0] || { total: "0", open_total: "0", done_total: "0", done_by_others: "0" };
 }
 
-async function getTaskOwner(id: string): Promise<{ employee_id: string | null; audience_role: string | null } | undefined> {
-  const result = await query<{ employee_id: string | null; audience_role: string | null }>(
-    "SELECT employee_id::text, audience_role FROM tasks WHERE id = $1 AND status <> 'cancelled'",
+async function getTaskOwner(id: string): Promise<{ employee_id: string | null; audience_role: string | null; status: string } | undefined> {
+  const result = await query<{ employee_id: string | null; audience_role: string | null; status: string }>(
+    "SELECT employee_id::text, audience_role, status FROM tasks WHERE id = $1 AND status <> 'cancelled'",
     [id]
   );
   return result.rows[0];
