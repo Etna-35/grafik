@@ -2708,20 +2708,14 @@ function renderShiftClosingForm(){
   const form = state.shiftClosingForm;
   const preview = computeShiftClosingPreview(form, init);
   const existing = state.shiftClosingRecord;
-  const cashDiffOk = Math.abs(preview.closingCashDiff) <= init.cashDiffLimit;
-  const msk = moscowNow();
-  const nightWarn = msk.hour < 6;
   const serverShiftDate = init.serverShiftDate || init.workDate;
   const canGoNext = init.workDate < serverShiftDate;
+  const openingDiff = Number(preview.openingCashDiff || 0);
 
   return `
     <form id="shiftClosingForm" class="shift-close-form">
       <header class="shift-close-head">
         <div class="shift-head-main">
-          <div class="whorow">
-            <span class="chip"><span class="dot"></span>${escapeHtml(firstName(init.user.displayName))}</span>
-            <span class="chip muted">МСК ${msk.hh}:${msk.mm}</span>
-          </div>
           <div class="shift-date-nav">
             <button class="iconbtn small" type="button" data-shift-date="prev" aria-label="Предыдущий день">${arrowLeftIcon()}</button>
             <div class="shift-date-label">
@@ -2730,15 +2724,13 @@ function renderShiftClosingForm(){
             </div>
             <button class="iconbtn small" type="button" data-shift-date="next" ${canGoNext ? "" : "disabled"} aria-label="Следующий день">${arrowRightIcon()}</button>
           </div>
-          ${existing ? `<div class="row-sub">Запись уже есть, изменения обновят закрытие смены</div>` : ""}
         </div>
-        ${existing ? `<button class="ghost mini" type="button" data-shift-action="send-telegram">Telegram</button>` : ""}
       </header>
-      ${nightWarn ? `<div class="shift-night-warn">Сейчас ${msk.hh}:${msk.mm} по МСК — день уже сменился. Проверь, что закрываешь смену за <b>${escapeHtml(formatDateHuman(init.workDate))}</b>, а не за сегодня.</div>` : ""}
 
       <h2 class="sec">Касса на открытии</h2>
+      ${autoRow("Расчётный остаток (со вчера)", preview.openingCashExpected)}
       ${moneyField("openingCashActual", "Фактический остаток (пересчитай кассу)", form.openingCashActual)}
-      ${autoRow("Расчётный остаток", preview.openingCashExpected)}
+      ${openingDiff !== 0 ? `<div class="shift-cash-alert">Расхождение на открытии: <b>${formatMoneyPlain(openingDiff)} ₽</b> — зафиксировано.</div>` : ""}
 
       <h2 class="sec">Доходы</h2>
       <div class="two">
@@ -2808,7 +2800,7 @@ function renderShiftClosingForm(){
 
       <h2 class="sec">Прочее</h2>
       ${moneyField("taxiAmount", "Такси", form.taxiAmount)}
-      <div class="hint">Не вычитается из кассы.</div>
+      <div class="hint">Если такси оплачивается наличными, оставьте 0, а сумму внесите в «Дополнительные расходы».</div>
 
       <h2 class="sec">Инкассация</h2>
       ${moneyField("collectionAmount", "Изъято из кассы", form.collectionAmount)}
@@ -2816,7 +2808,7 @@ function renderShiftClosingForm(){
       <h2 class="sec">Касса на закрытии</h2>
       ${moneyField("closingCashActual", "Фактический остаток (пересчитай кассу)", form.closingCashActual)}
       ${autoRow("Расчётный остаток", preview.closingCashExpected)}
-      ${resultRow("Разница", preview.closingCashDiff, cashDiffOk ? "ok" : "warn", cashDiffOk ? `в пределах нормы (порог ${formatMoneyPlain(init.cashDiffLimit)} ₽)` : `выше порога ${formatMoneyPlain(init.cashDiffLimit)} ₽`)}
+      ${resultRow("Разница", preview.closingCashDiff, preview.closingCashDiff === 0 ? "ok" : "warn", preview.closingCashDiff === 0 ? "" : (preview.closingCashDiff < 0 ? "недосдача" : "излишек"))}
 
       <h2 class="sec">Фото чеков</h2>
       <div class="photo-grid">
@@ -2833,9 +2825,10 @@ function renderShiftClosingForm(){
       </label>
 
       ${state.shiftClosingError ? `<div class="error shift-error">${escapeHtml(state.shiftClosingError)}</div>` : ""}
+      ${state.shiftClosingNotice ? `<div class="shift-notice">${escapeHtml(state.shiftClosingNotice)}</div>` : ""}
 
       <div class="shift-footer">
-        <button class="btn brand-action" type="submit">${existing ? "Обновить смену" : "Закрыть смену"}</button>
+        <button class="btn brand-action" type="submit">Отправить отчёт</button>
       </div>
     </form>
   `;
@@ -3003,13 +2996,15 @@ function moscowNow(){
 async function loadShiftClosing(date){
   state.shiftClosingLoading = true;
   state.shiftClosingError = "";
+  state.shiftClosingNotice = "";
   if(date !== undefined) state.shiftClosingDate = date;
   render();
   try{
     const init = await apiGet(shiftInitUrl(state.shiftClosingDate));
     state.shiftClosingInit = init;
-    state.shiftClosingRecord = init.existing;
-    state.shiftClosingForm = shiftClosingFormFrom(init, init.existing);
+    // Пустая форма при перелистывании дат: ранее внесённые значения НЕ показываем (privacy).
+    state.shiftClosingRecord = null;
+    state.shiftClosingForm = shiftClosingFormFrom(init, null);
     state.shiftClosingPhotos = {};
   }catch(error){
     state.shiftClosingError = error.status === 403 ? "Нет доступа к закрытию смены" : "Проверь соединение и попробуй ещё раз";
@@ -3121,25 +3116,60 @@ function readFileAsDataUrl(file){
   });
 }
 
+const REQUIRED_SHIFT_FIELDS = [
+  ["openingCashActual", "Остаток на открытии"],
+  ["terminal1", "Терминал 1"],
+  ["terminal2", "Терминал 2"],
+  ["netmonet", "Нетмонет"],
+  ["yandexFood", "Яндекс.Еда"],
+  ["cashRevenue", "Наличные"],
+  ["washCost", "Мойка"],
+  ["taxiAmount", "Такси"],
+  ["collectionAmount", "Инкассация"],
+  ["closingCashActual", "Остаток на закрытии"]
+];
+
+function firstMissingShiftField(){
+  const formEl = app.querySelector("#shiftClosingForm");
+  if(!formEl) return null;
+  for(const [name, label] of REQUIRED_SHIFT_FIELDS){
+    const input = formEl.elements[name];
+    if(!input || String(input.value).trim() === "") return { name, label };
+  }
+  return null;
+}
+
 async function submitShiftClosing(){
   if(state.shiftClosingSaving) return;
+
+  const missing = firstMissingShiftField();
+  if(missing){
+    collectShiftClosingForm();
+    state.shiftClosingNotice = "";
+    state.shiftClosingError = `Заполните обязательное поле «${missing.label}» (можно 0)`;
+    render();
+    const input = app.querySelector(`#shiftClosingForm [name='${missing.name}']`);
+    if(input){ input.classList.add("field-invalid"); input.scrollIntoView({ behavior:"smooth", block:"center" }); }
+    return;
+  }
+
   const form = collectShiftClosingForm();
   state.shiftClosingSaving = true;
   state.shiftClosingError = "";
+  state.shiftClosingNotice = "";
   render();
   try{
     const payload = shiftClosingPayload(form);
-    const record = state.shiftClosingRecord?.id
-      ? await apiPatch(`/api/shift-closing/${encodeURIComponent(state.shiftClosingRecord.id)}`, payload)
-      : await apiPost("/api/shift-closing", payload);
-    state.shiftClosingRecord = record;
+    const record = await apiPost("/api/shift-closing", payload);
     await uploadShiftPhotos(record.id);
+    // Отчёт отправлен — снова пустая форма (значения не показываем).
     state.shiftClosingInit = await apiGet(shiftInitUrl(state.shiftClosingDate));
-    state.shiftClosingRecord = state.shiftClosingInit.existing || record;
-    state.shiftClosingForm = shiftClosingFormFrom(state.shiftClosingInit, state.shiftClosingRecord);
+    state.shiftClosingRecord = null;
+    state.shiftClosingForm = shiftClosingFormFrom(state.shiftClosingInit, null);
     state.shiftClosingPhotos = {};
+    state.shiftClosingNotice = "Отчёт отправлен";
   }catch(error){
-    state.shiftClosingError = error.code === "shift_already_closed" ? "Смена за эту дату уже закрыта" : "Не удалось закрыть смену";
+    state.shiftClosingError = error.code === "shift_already_closed" ? "Отчёт за эту дату уже отправлен" : "Не удалось отправить отчёт";
   }finally{
     state.shiftClosingSaving = false;
     render();
