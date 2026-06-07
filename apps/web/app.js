@@ -149,6 +149,13 @@ function render(){
     return;
   }
 
+  if(window.location.hash === "#praise" && !state.praiseHashHandled){
+    state.praiseHashHandled = true;
+    history.replaceState(null, "", "/");
+    openPraise();
+    return;
+  }
+
   const path = window.location.pathname;
   if(!path.startsWith("/grafik") && state.scheduleEditUnlocked){
     state.scheduleEditUnlocked = false;
