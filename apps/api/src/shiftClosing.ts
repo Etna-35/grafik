@@ -17,16 +17,21 @@ const hookahLineSchema = z.object({
   count: z.number().int().min(0).max(1000).default(0)
 });
 
+const transferLineSchema = z.object({
+  employeeId: z.string().uuid(),
+  amount: moneySchema
+});
+
 const closingInputSchema = z.object({
   workDate: dateSchema.optional(),
   hookah: z.array(hookahLineSchema).max(10).default([]),
+  transfers: z.array(transferLineSchema).max(20).default([]),
   openingCashActual: moneySchema,
   terminal1: moneySchema,
   terminal2: moneySchema,
   netmonet: moneySchema,
   yandexFood: moneySchema,
   cashRevenue: moneySchema,
-  transferRevenue: moneySchema,
   washCost: moneySchema,
   taxiAmount: moneySchema,
   collectionAmount: moneySchema,
@@ -66,11 +71,18 @@ type HookahLine = {
   payout: number;
 };
 
+type TransferLine = {
+  employeeId: string;
+  name: string;
+  amount: number;
+};
+
 type ShiftClosingComputed = {
   workDate: string;
   submittedBy: string;
   hookahLines: HookahLine[];
   hookahEmployeeId: string | null;
+  transferLines: TransferLine[];
   cashDiffLimit: number;
   taxiLimit: number;
   revenuePlan: number;
@@ -153,6 +165,13 @@ type HookahLineRow = {
   payout: number;
 };
 
+type TransferLineRow = {
+  id: string;
+  employee_id: string;
+  employee_name: string | null;
+  amount: number;
+};
+
 type PhotoRow = {
   id: string;
   photo_type: string;
@@ -183,10 +202,11 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
     const requestedDate = (request.query as { date?: string }).date;
     const parsedDate = requestedDate ? dateSchema.safeParse(requestedDate) : null;
     const workDate = parsedDate && parsedDate.success ? parsedDate.data : serverShiftDate;
-    const [openingCashExpected, revenuePlan, hookahEmployees, existing] = await Promise.all([
+    const [openingCashExpected, revenuePlan, hookahEmployees, transferEmployees, existing] = await Promise.all([
       getOpeningCashExpected(workDate),
       getRevenuePlan(workDate),
       getHookahEmployees(),
+      getActiveEmployees(),
       getClosingByDate(workDate, user)
     ]);
     const hookahEmployee = selectedHookahEmployee(existing?.hookahEmployee, hookahEmployees);
@@ -205,6 +225,7 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
       taxiLimit: 2000,
       hookahEmployee,
       hookahEmployees,
+      transferEmployees,
       existing
     };
   });
@@ -234,6 +255,10 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
       }
       if (isHookahEmployeeError(error)) {
         await reply.code(400).send({ error: "bad_hookah_employee" });
+        return;
+      }
+      if (isTransferEmployeeError(error)) {
+        await reply.code(400).send({ error: "bad_transfer_employee" });
         return;
       }
       throw error;
@@ -287,6 +312,10 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
     } catch (error) {
       if (isHookahEmployeeError(error)) {
         await reply.code(400).send({ error: "bad_hookah_employee" });
+        return;
+      }
+      if (isTransferEmployeeError(error)) {
+        await reply.code(400).send({ error: "bad_transfer_employee" });
         return;
       }
       throw error;
@@ -399,10 +428,11 @@ function canEditClosing(user: SessionUser, submittedBy: string | null): boolean 
 
 async function computeClosing(user: SessionUser, input: ShiftClosingInput): Promise<ShiftClosingComputed> {
   const workDate = input.workDate || currentShiftWorkDate();
-  const [openingCashExpected, revenuePlan, hookahLines] = await Promise.all([
+  const [openingCashExpected, revenuePlan, hookahLines, transferLines] = await Promise.all([
     getOpeningCashExpected(workDate),
     getRevenuePlan(workDate),
-    resolveHookahLines(input.hookah)
+    resolveHookahLines(input.hookah),
+    resolveTransferLines(input.transfers)
   ]);
 
   const extraExpenses = input.extraExpenses
@@ -413,12 +443,13 @@ async function computeClosing(user: SessionUser, input: ShiftClosingInput): Prom
   const hookahPayout = hookahLines.reduce((sum, line) => sum + line.payout, 0);
   const primaryHookah = hookahLines.length === 1 ? hookahLines[0] : null;
   const hookahRate = primaryHookah ? primaryHookah.rate : 0;
+  const transferRevenue = transferLines.reduce((sum, line) => sum + line.amount, 0);
   const cashlessTotal = cleanInt(input.terminal1) + cleanInt(input.terminal2) + cleanInt(input.netmonet) + cleanInt(input.yandexFood);
-  const revenueTotal = cashlessTotal + cleanInt(input.cashRevenue) + cleanInt(input.transferRevenue);
+  const revenueTotal = cashlessTotal + cleanInt(input.cashRevenue) + transferRevenue;
+  // Переводы в выручку входят, но на физический остаток наличных НЕ влияют (решение 2026-06-07)
   const closingCashExpected =
     cleanInt(input.openingCashActual)
     + cleanInt(input.cashRevenue)
-    + cleanInt(input.transferRevenue)
     - cleanInt(input.washCost)
     - hookahPayout
     - extraExpensesTotal
@@ -431,6 +462,7 @@ async function computeClosing(user: SessionUser, input: ShiftClosingInput): Prom
     submittedBy: user.id,
     hookahLines,
     hookahEmployeeId: primaryHookah ? primaryHookah.employeeId : null,
+    transferLines,
     cashDiffLimit: 500,
     taxiLimit: 2000,
     revenuePlan,
@@ -443,7 +475,7 @@ async function computeClosing(user: SessionUser, input: ShiftClosingInput): Prom
     yandexFood: cleanInt(input.yandexFood),
     cashlessTotal,
     cashRevenue: cleanInt(input.cashRevenue),
-    transferRevenue: cleanInt(input.transferRevenue),
+    transferRevenue,
     revenueTotal,
     washCost: cleanInt(input.washCost),
     hookahCount,
@@ -507,6 +539,7 @@ async function createClosing(computed: ShiftClosingComputed, extraExpenses: Shif
     );
     await replaceExtraExpenses(result.rows[0].id, extraExpenses);
     await replaceHookahLines(result.rows[0].id, computed.hookahLines);
+    await replaceTransferLines(result.rows[0].id, computed.transferLines);
     await pool.query("COMMIT");
     return result.rows[0].id;
   } catch (error) {
@@ -556,6 +589,7 @@ async function updateClosing(id: string, computed: ShiftClosingComputed, extraEx
     );
     await replaceExtraExpenses(id, extraExpenses);
     await replaceHookahLines(id, computed.hookahLines);
+    await replaceTransferLines(id, computed.transferLines);
     await pool.query("COMMIT");
   } catch (error) {
     await pool.query("ROLLBACK");
@@ -621,6 +655,32 @@ async function replaceHookahLines(id: string, hookahLines: HookahLine[]): Promis
       [id, line.employeeId, line.count, line.rate, line.payout]
     );
   }
+}
+
+async function replaceTransferLines(id: string, transferLines: TransferLine[]): Promise<void> {
+  await pool.query("DELETE FROM shift_closing_transfers WHERE shift_closing_id = $1", [id]);
+  for (const line of transferLines) {
+    await pool.query(
+      `INSERT INTO shift_closing_transfers (shift_closing_id, employee_id, amount) VALUES ($1, $2, $3)`,
+      [id, line.employeeId, line.amount]
+    );
+  }
+}
+
+async function resolveTransferLines(input: ShiftClosingInput["transfers"]): Promise<TransferLine[]> {
+  const valid = input.filter((line) => cleanInt(line.amount) > 0);
+  if (valid.length === 0) return [];
+  const ids = [...new Set(valid.map((line) => line.employeeId))];
+  const result = await query<{ id: string; display_name: string }>(
+    `SELECT id, display_name FROM employees WHERE id = ANY($1::uuid[]) AND is_active = true`,
+    [ids]
+  );
+  const byId = new Map(result.rows.map((row) => [row.id, row.display_name]));
+  return valid.map((line) => {
+    const name = byId.get(line.employeeId);
+    if (!name) throw new Error("transfer_employee_not_found");
+    return { employeeId: line.employeeId, name, amount: cleanInt(line.amount) };
+  });
 }
 
 async function resolveHookahLines(input: ShiftClosingInput["hookah"]): Promise<HookahLine[]> {
@@ -709,7 +769,7 @@ async function getClosingById(id: string, user?: SessionUser) {
   if (!row) return null;
   if (user && !canEditClosing(user, row.submitted_by)) return null;
 
-  const [expenses, hookah, photos, reports] = await Promise.all([
+  const [expenses, hookah, transfers, photos, reports] = await Promise.all([
     query<ExtraExpenseRow>(
       `
         SELECT id, amount, comment
@@ -726,6 +786,16 @@ async function getClosingById(id: string, user?: SessionUser) {
         LEFT JOIN employees e ON e.id = h.employee_id
         WHERE h.shift_closing_id = $1
         ORDER BY h.created_at, h.id
+      `,
+      [id]
+    ),
+    query<TransferLineRow>(
+      `
+        SELECT t.id, t.employee_id, e.display_name AS employee_name, t.amount
+        FROM shift_closing_transfers t
+        LEFT JOIN employees e ON e.id = t.employee_id
+        WHERE t.shift_closing_id = $1
+        ORDER BY t.created_at, t.id
       `,
       [id]
     ),
@@ -750,7 +820,7 @@ async function getClosingById(id: string, user?: SessionUser) {
     )
   ]);
 
-  return serializeClosing(row, expenses.rows, hookah.rows, photos.rows, reports.rows);
+  return serializeClosing(row, expenses.rows, hookah.rows, transfers.rows, photos.rows, reports.rows);
 }
 
 async function getClosingOwner(id: string): Promise<{ submitted_by: string | null; work_date: string } | undefined> {
@@ -765,6 +835,7 @@ function serializeClosing(
   row: ShiftClosingRow,
   expenses: ExtraExpenseRow[],
   hookah: HookahLineRow[],
+  transfers: TransferLineRow[],
   photos: PhotoRow[],
   reports: TelegramReportRow[]
 ) {
@@ -787,6 +858,12 @@ function serializeClosing(
       count: line.count,
       rate: line.rate,
       payout: line.payout
+    })),
+    transfers: transfers.map((line) => ({
+      id: line.id,
+      employeeId: line.employee_id,
+      name: line.employee_name || "",
+      amount: line.amount
     })),
     status: row.status,
     limits: {
@@ -906,6 +983,17 @@ function isHookahEmployeeError(error: unknown): boolean {
   return error instanceof Error && error.message === "hookah_employee_not_found";
 }
 
+function isTransferEmployeeError(error: unknown): boolean {
+  return error instanceof Error && error.message === "transfer_employee_not_found";
+}
+
+async function getActiveEmployees(): Promise<{ id: string; name: string }[]> {
+  const result = await query<{ id: string; display_name: string }>(
+    `SELECT id, display_name FROM employees WHERE is_active = true ORDER BY display_name`
+  );
+  return result.rows.map((row) => ({ id: row.id, name: row.display_name }));
+}
+
 async function sendTelegramReports(id: string, audiences: Array<"manager" | "team">) {
   const closing = await getClosingById(id);
   if (!closing) return [];
@@ -990,6 +1078,9 @@ function managerReportText(closing: Awaited<ReturnType<typeof getClosingById>>):
   const hookahLines = closing.hookah.length
     ? closing.hookah.map((h) => `Кальяны ×${h.count} (${escapeTelegram(h.name)}): ${money(h.payout)}`)
     : [`Кальяны: ${money(0)}`];
+  const transferLines = closing.transfers.length
+    ? closing.transfers.map((t) => `Переводы · ${escapeTelegram(t.name)}: ${money(t.amount)}`)
+    : [`Переводы: ${money(0)}`];
   return [
     `<b>Etna · закрытие смены</b>`,
     `Дата: ${escapeTelegram(closing.workDate)}`,
@@ -1002,7 +1093,7 @@ function managerReportText(closing: Awaited<ReturnType<typeof getClosingById>>):
     `Яндекс.Еда: ${money(v.yandexFood)}`,
     `Безнал итого: ${money(v.cashlessTotal)}`,
     `Наличные: ${money(v.cashRevenue)}`,
-    `Переводы: ${money(v.transferRevenue)}`,
+    ...transferLines,
     `Выручка итого: ${money(v.revenueTotal)}`,
     ``,
     `<b>Расходы</b>`,

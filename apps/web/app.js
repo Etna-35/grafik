@@ -2750,10 +2750,25 @@ function renderShiftClosingForm(){
         ${moneyField("yandexFood", "Яндекс.Еда", form.yandexFood)}
       </div>
       ${autoRow("Безнал итого", preview.cashlessTotal)}
-      <div class="two">
-        ${moneyField("cashRevenue", "Наличные", form.cashRevenue)}
-        ${moneyField("transferRevenue", "Переводы", form.transferRevenue)}
+      ${moneyField("cashRevenue", "Наличные", form.cashRevenue)}
+      <div class="extra-box">
+        <div class="extra-head">
+          <span class="row-title">Переводы</span>
+          <button class="ghost mini" type="button" data-shift-action="add-transfer">Добавить</button>
+        </div>
+        ${(form.transfers || []).map((line, index)=>`
+          <div class="extra-row transfer-row" data-transfer-row="${index}">
+            <select class="inp" name="transferEmployeeId" data-transfer-employee="${index}">
+              ${(init.transferEmployees || []).map((employee)=>`
+                <option value="${escapeAttr(employee.id)}" ${line.employeeId === employee.id ? "selected" : ""}>${escapeHtml(employee.name)}</option>
+              `).join("") || `<option value="">Нет сотрудников</option>`}
+            </select>
+            <input name="transferAmount" type="number" min="0" step="1" value="${line.amount || ""}" placeholder="сумма">
+            <button class="ghost mini danger-action" type="button" data-remove-transfer="${index}">×</button>
+          </div>
+        `).join("") || `<div class="muted-line">Переводов нет</div>`}
       </div>
+      ${autoRow("Переводы итого", preview.transferRevenue)}
       ${resultRow("Выручка итого", preview.revenueTotal, "big")}
 
       <h2 class="sec">Расходы из кассы</h2>
@@ -2924,6 +2939,28 @@ function bindShiftClosingForm(){
     });
   });
 
+  app.querySelector("[data-shift-action='add-transfer']")?.addEventListener("click", ()=>{
+    collectShiftClosingForm();
+    const def = (state.shiftClosingInit?.transferEmployees || [])[0];
+    state.shiftClosingForm.transfers.push({ employeeId: def?.id || "", amount: 0 });
+    render();
+  });
+
+  app.querySelectorAll("[data-remove-transfer]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      collectShiftClosingForm();
+      state.shiftClosingForm.transfers.splice(Number(button.dataset.removeTransfer), 1);
+      render();
+    });
+  });
+
+  app.querySelectorAll("[data-transfer-row] select, [data-transfer-row] input").forEach((input)=>{
+    input.addEventListener("change", ()=>{
+      collectShiftClosingForm();
+      render();
+    });
+  });
+
   app.querySelector("[data-shift-action='add-expense']")?.addEventListener("click", ()=>{
     collectShiftClosingForm();
     state.shiftClosingForm.extraExpenses.push({ amount:0, comment:"" });
@@ -2992,9 +3029,9 @@ function shiftClosingFormFrom(init, record){
     netmonet: values.netmonet || 0,
     yandexFood: values.yandexFood || 0,
     cashRevenue: values.cashRevenue || 0,
-    transferRevenue: values.transferRevenue || 0,
     washCost: values.washCost || 0,
     hookah: (record?.hookah || []).map((line)=>({ employeeId: line.employeeId, count: line.count || 0 })),
+    transfers: (record?.transfers || []).map((line)=>({ employeeId: line.employeeId, amount: line.amount || 0 })),
     taxiAmount: values.taxiAmount || 0,
     collectionAmount: values.collectionAmount || 0,
     closingCashActual: values.closingCashActual || 0,
@@ -3011,7 +3048,7 @@ function collectShiftClosingForm(){
   if(!form || !state.shiftClosingForm) return state.shiftClosingForm;
 
   const next = { ...state.shiftClosingForm };
-  ["openingCashActual","terminal1","terminal2","netmonet","yandexFood","cashRevenue","transferRevenue","washCost","taxiAmount","collectionAmount","closingCashActual"].forEach((field)=>{
+  ["openingCashActual","terminal1","terminal2","netmonet","yandexFood","cashRevenue","washCost","taxiAmount","collectionAmount","closingCashActual"].forEach((field)=>{
     next[field] = integerOrNull(form.elements[field]?.value) || 0;
   });
   next.comment = form.elements.comment?.value || "";
@@ -3023,6 +3060,10 @@ function collectShiftClosingForm(){
     employeeId: row.querySelector("select[name='hookahEmployeeId']")?.value || "",
     count: integerOrNull(row.querySelector("input[name='hookahCount']")?.value) || 0
   }));
+  next.transfers = Array.from(app.querySelectorAll("[data-transfer-row]")).map((row)=>({
+    employeeId: row.querySelector("select[name='transferEmployeeId']")?.value || "",
+    amount: integerOrNull(row.querySelector("input[name='transferAmount']")?.value) || 0
+  }));
   state.shiftClosingForm = next;
   return next;
 }
@@ -3032,12 +3073,12 @@ function computeShiftClosingPreview(form, init){
   const hookahRateById = new Map((init.hookahEmployees || []).map((employee)=>[employee.id, Number(employee.rate || 0)]));
   const hookahCount = (form.hookah || []).reduce((sum, line)=>sum + Number(line.count || 0), 0);
   const hookahPayout = (form.hookah || []).reduce((sum, line)=>sum + Number(line.count || 0) * (hookahRateById.get(line.employeeId) || 0), 0);
+  const transferRevenue = (form.transfers || []).reduce((sum, line)=>sum + Number(line.amount || 0), 0);
   const cashlessTotal = Number(form.terminal1 || 0) + Number(form.terminal2 || 0) + Number(form.netmonet || 0) + Number(form.yandexFood || 0);
-  const revenueTotal = cashlessTotal + Number(form.cashRevenue || 0) + Number(form.transferRevenue || 0);
+  const revenueTotal = cashlessTotal + Number(form.cashRevenue || 0) + transferRevenue;
   const closingCashExpected =
     Number(form.openingCashActual || 0)
     + Number(form.cashRevenue || 0)
-    + Number(form.transferRevenue || 0)
     - Number(form.washCost || 0)
     - hookahPayout
     - extraExpensesTotal
@@ -3047,6 +3088,7 @@ function computeShiftClosingPreview(form, init){
     openingCashExpected: Number(init.openingCashExpected || 0),
     openingCashDiff: Number(form.openingCashActual || 0) - Number(init.openingCashExpected || 0),
     hookahCount,
+    transferRevenue,
     cashlessTotal,
     revenueTotal,
     hookahPayout,
@@ -3116,7 +3158,9 @@ function shiftClosingPayload(form){
     netmonet: Number(form.netmonet || 0),
     yandexFood: Number(form.yandexFood || 0),
     cashRevenue: Number(form.cashRevenue || 0),
-    transferRevenue: Number(form.transferRevenue || 0),
+    transfers: (form.transfers || [])
+      .map((line)=>({ employeeId: line.employeeId, amount: Number(line.amount || 0) }))
+      .filter((line)=>line.employeeId && line.amount > 0),
     washCost: Number(form.washCost || 0),
     taxiAmount: Number(form.taxiAmount || 0),
     collectionAmount: Number(form.collectionAmount || 0),
