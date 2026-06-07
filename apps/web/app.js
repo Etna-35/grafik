@@ -3249,6 +3249,8 @@ async function submitShiftClosing(){
     const payload = shiftClosingPayload(form);
     const record = await apiPost("/api/shift-closing", payload);
     await uploadShiftPhotos(record.id);
+    // Фото загружены — теперь шлём отчёты в Telegram (руководителю с фото + команде).
+    try{ await apiPost(`/api/shift-closing/${encodeURIComponent(record.id)}/send-telegram-report`, { audience:"both" }); }catch(e){ /* отчёт не критичен для закрытия */ }
     // Отчёт отправлен — снова пустая форма (значения не показываем).
     state.shiftClosingInit = await apiGet(shiftInitUrl(state.shiftClosingDate));
     state.shiftClosingRecord = null;

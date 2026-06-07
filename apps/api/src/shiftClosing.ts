@@ -3,6 +3,16 @@ import { z } from "zod";
 import { audit, getServices, requireUser, type SessionUser } from "./auth.js";
 import { env } from "./env.js";
 import { pool, query } from "./db.js";
+import {
+  PUBLIC_BASE_URL,
+  managerChatId,
+  teamChatId,
+  sendMessage,
+  sendPhotos,
+  tgEscape,
+  tgTable,
+  type OutPhoto
+} from "./telegram.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const moneySchema = z.number().int().min(0).max(10000000).default(0);
@@ -263,9 +273,7 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
       const computed = await computeClosing(user, parsed.data);
       const id = await createClosing(computed, parsed.data.extraExpenses);
       await audit(request, "shift_closing_create", user.id, "shift_closing", id, computed);
-      void sendTelegramReports(id, ["manager", "team"]).catch((telegramError) => {
-        app.log.warn({ err: telegramError, shiftClosingId: id }, "Shift closing Telegram report failed");
-      });
+      // Отчёты шлём после загрузки фото — фронт вызовет /send-telegram-report.
       return getClosingById(id, user);
     } catch (error) {
       if (isUniqueViolation(error)) {
@@ -1098,37 +1106,52 @@ async function sendTelegramReports(id: string, audiences: Array<"manager" | "tea
 
   const reports = [];
   for (const audience of audiences) {
-    const message = audience === "manager" ? managerReportText(closing) : teamReportText(closing);
-    const chatId = audience === "manager" ? env.telegramManagerChatId : env.telegramTeamChatId;
+    const chatId = audience === "manager" ? managerChatId() : teamChatId();
+    let message: string;
+    if (audience === "manager") {
+      message = managerReportText(closing);
+    } else {
+      const [y, m] = closing.workDate.split("-").map(Number);
+      const dash = await getManagerDashboard(y, m);
+      message = teamReportText(closing, dash.ahead ? 0 : dash.needPerDay);
+    }
+
     if (!env.telegramBotToken || !chatId) {
       reports.push(await saveTelegramReport(id, audience, "skipped", message, "", "telegram_not_configured"));
       continue;
     }
 
-    try {
-      const result = await fetch(`https://api.telegram.org/bot${env.telegramBotToken}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: chatId,
-          text: message,
-          parse_mode: "HTML",
-          disable_web_page_preview: true
-        })
-      });
-      if (!result.ok) {
-        const errorText = await result.text();
-        reports.push(await saveTelegramReport(id, audience, "failed", message, "", cleanText(errorText).slice(0, 500)));
-        continue;
+    if (audience === "manager") {
+      const textRes = await sendMessage(chatId, message);
+      let ok = textRes.ok;
+      let error = textRes.error;
+      const photos = await getClosingPhotos(id);
+      if (photos.length > 0) {
+        const photoRes = await sendPhotos(chatId, photos, "");
+        ok = ok && photoRes.ok;
+        if (!photoRes.ok) error = error || photoRes.error;
+        // После успешной отправки фото в Telegram больше не храним их у нас (экономия места).
+        if (photoRes.ok) await query("DELETE FROM shift_closing_photos WHERE shift_closing_id = $1", [id]);
       }
-      const body = await result.json() as { result?: { message_id?: number } };
-      reports.push(await saveTelegramReport(id, audience, "sent", message, String(body.result?.message_id || ""), ""));
-    } catch (error) {
-      const text = error instanceof Error ? error.message : String(error);
-      reports.push(await saveTelegramReport(id, audience, "failed", message, "", cleanText(text).slice(0, 500)));
+      reports.push(await saveTelegramReport(id, audience, ok ? "sent" : "failed", message, textRes.messageId, ok ? "" : error.slice(0, 500)));
+    } else {
+      const res = await sendMessage(chatId, message);
+      reports.push(await saveTelegramReport(id, audience, res.ok ? "sent" : "failed", message, res.messageId, res.ok ? "" : res.error.slice(0, 500)));
     }
   }
   return reports;
+}
+
+async function getClosingPhotos(id: string): Promise<OutPhoto[]> {
+  const result = await query<{ filename: string; mime_type: string; data: Buffer }>(
+    `SELECT filename, mime_type, data FROM shift_closing_photos WHERE shift_closing_id = $1 ORDER BY created_at, id`,
+    [id]
+  );
+  return result.rows.map((row) => ({
+    buffer: row.data,
+    filename: row.filename || "photo.jpg",
+    mimeType: row.mime_type || "image/jpeg"
+  }));
 }
 
 async function saveTelegramReport(
@@ -1170,62 +1193,97 @@ async function saveTelegramReport(
   };
 }
 
-function managerReportText(closing: Awaited<ReturnType<typeof getClosingById>>): string {
-  if (!closing) return "";
-  const v = closing.values;
-  const hookahLines = closing.hookah.length
-    ? closing.hookah.map((h) => `Кальяны ×${h.count} (${escapeTelegram(h.name)}): ${money(h.payout)}`)
-    : [`Кальяны: ${money(0)}`];
-  const transferLines = closing.transfers.length
-    ? closing.transfers.map((t) => `Переводы · ${escapeTelegram(t.name)}: ${money(t.amount)}`)
-    : [`Переводы: ${money(0)}`];
-  return [
-    `<b>Etna · закрытие смены</b>`,
-    `Дата: ${escapeTelegram(closing.workDate)}`,
-    `Сотрудник: ${escapeTelegram(closing.submittedBy.name)}`,
-    ``,
-    `<b>Выручка</b>`,
-    `Терминал 1: ${money(v.terminal1)}`,
-    `Терминал 2: ${money(v.terminal2)}`,
-    `Нетмонет: ${money(v.netmonet)}`,
-    `Яндекс.Еда: ${money(v.yandexFood)}`,
-    `Безнал итого: ${money(v.cashlessTotal)}`,
-    `Наличные: ${money(v.cashRevenue)}`,
-    ...transferLines,
-    `Выручка итого: ${money(v.revenueTotal)}`,
-    ``,
-    `<b>Расходы</b>`,
-    `Мойка: ${money(v.washCost)}`,
-    ...hookahLines,
-    `Доп. расходы: ${money(v.extraExpensesTotal)}`,
-    `Такси: ${money(v.taxiAmount)} (не вычитается из кассы)`,
-    `Инкассация: ${money(v.collectionAmount)}`,
-    ``,
-    `<b>Касса</b>`,
-    `Открытие расч.: ${money(v.openingCashExpected)}`,
-    `Открытие факт: ${money(v.openingCashActual)}`,
-    `Открытие Δ: ${money(v.openingCashDiff)}`,
-    `Закрытие расч.: ${money(v.closingCashExpected)}`,
-    `Закрытие факт: ${money(v.closingCashActual)}`,
-    `Разница: ${money(v.closingCashDiff)}${closing.flags.cashDiffExceeded ? " · выше лимита" : ""}`,
-    ``,
-    `<b>План</b>`,
-    `План: ${money(v.revenuePlan)}`,
-    `Выполнение: ${percent(v.revenuePlanPercent)}`,
-    v.comment ? `\nКомментарий: ${escapeTelegram(v.comment)}` : ""
-  ].filter((line) => line !== "").join("\n");
+const RU_DOW = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+
+function ruDateFull(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dow = RU_DOW[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")}.${y} (${dow})`;
 }
 
-function teamReportText(closing: Awaited<ReturnType<typeof getClosingById>>): string {
-  if (!closing) return "";
+function ruDateShort(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dow = RU_DOW[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return `${String(d).padStart(2, "0")}.${String(m).padStart(2, "0")} (${dow})`;
+}
+
+function fmtNum(value: number): string {
+  return Math.round(Number(value || 0)).toLocaleString("ru-RU");
+}
+
+function cashStatusLine(diff: number): string {
+  if (diff < 0) return `⚠️ Касса сдана с недосдачей в ${fmtNum(-diff)}`;
+  if (diff > 0) return `⚠️ Излишек в кассе ${fmtNum(diff)}`;
+  return "✅ Касса сошлась";
+}
+
+function managerReportText(closing: NonNullable<Awaited<ReturnType<typeof getClosingById>>>): string {
   const v = closing.values;
-  return [
-    `<b>Etna · смена закрыта</b>`,
-    `Дата: ${escapeTelegram(closing.workDate)}`,
-    `Сотрудник: ${escapeTelegram(closing.submittedBy.name)}`,
-    `Выручка: ${money(v.revenueTotal)}`,
-    `План: ${percent(v.revenuePlanPercent)}`
-  ].join("\n");
+  const cashPlan = Math.round(v.revenuePlan * 0.23);
+  const cashPercent = cashPlan > 0 ? Math.round((v.cashRevenue / cashPlan) * 100) : 0;
+
+  const incomeRows: Array<[string, number]> = [
+    ["Безнал", v.cashlessTotal],
+    ["Наличные", v.cashRevenue],
+    ...(closing.transfers.length
+      ? closing.transfers.map((t): [string, number] => [`Перевод (${t.name})`, t.amount])
+      : [["Переводы", 0] as [string, number]])
+  ];
+
+  const expenseRows: Array<[string, number]> = [
+    ["Мойка", v.washCost],
+    ...closing.hookah.map((h): [string, number] => [`Кальяны ×${h.count} (${h.name})`, h.payout]),
+    ...closing.extraExpenses.map((e): [string, number] => [e.comment || "Доп. расход", e.amount])
+  ];
+  const expenseTotal = v.washCost + v.hookahPayout + v.extraExpensesTotal;
+
+  const cashRows: Array<[string, number]> = [
+    ["Инкассация", v.collectionAmount],
+    ["Остаток", v.closingCashExpected]
+  ];
+
+  const lines = [
+    `<b>СМЕНА · ${ruDateFull(closing.workDate)}</b>`,
+    `${tgEscape(closing.submittedBy.name)} · ${cashStatusLine(v.closingCashDiff)}`,
+    ``,
+    `<b>Выручка · ${v.revenuePlanPercent ? Math.round(v.revenuePlanPercent) : 0}%</b>`,
+    `${fmtNum(v.revenueTotal)} из ${fmtNum(v.revenuePlan)}`,
+    ``,
+    `<b>Наличные · ${cashPercent}%</b>`,
+    `${fmtNum(v.cashRevenue)} из ${fmtNum(cashPlan)}`,
+    ``,
+    `📥 <b>Поступления</b>`,
+    tgTable(incomeRows, ["Итого", v.revenueTotal]),
+    `📤 <b>Расходы</b>`,
+    tgTable(expenseRows, ["Итого", expenseTotal]),
+    `🏦 <b>Касса</b>`,
+    tgTable(cashRows),
+    ...(v.openingCashDiff !== 0 ? [`⚠️ Расхождение на открытии: ${fmtNum(v.openingCashDiff)}`] : []),
+    ...(v.taxiAmount ? [`Такси (безнал): ${fmtNum(v.taxiAmount)}`] : []),
+    ...(v.comment ? [``, `💬 ${tgEscape(v.comment)}`] : [])
+  ];
+  return lines.join("\n");
+}
+
+function teamReportText(closing: NonNullable<Awaited<ReturnType<typeof getClosingById>>>, deficitPerDay: number): string {
+  const v = closing.values;
+  const cashPlan = Math.round(v.revenuePlan * 0.23);
+  const cashPercent = cashPlan > 0 ? Math.round((v.cashRevenue / cashPlan) * 100) : 0;
+
+  const lines = [
+    `📊 ${ruDateShort(closing.workDate)} · Результаты смены`,
+    ``,
+    `Выручка · ${v.revenuePlanPercent ? Math.round(v.revenuePlanPercent) : 0}%`,
+    `${fmtNum(v.revenueTotal)} из ${fmtNum(v.revenuePlan)}`,
+    ``,
+    `Наличные · ${cashPercent}%`,
+    `${fmtNum(v.cashRevenue)} из ${fmtNum(cashPlan)}`
+  ];
+  if (deficitPerDay > 0) {
+    lines.push(``, `Нам не хватает ${fmtNum(deficitPerDay)} ₽ ежедневной выручки, чтобы выполнить месячный план.`);
+  }
+  lines.push(``, `Спасибо за смену 🙏`, `<a href="${PUBLIC_BASE_URL}/#praise">Спасибо, особенно тебе…</a>`);
+  return lines.join("\n");
 }
 
 function currentShiftWorkDate(): string {
@@ -1250,21 +1308,6 @@ function cleanInt(value: unknown): number {
 
 function cleanText(value: unknown): string {
   return String(value || "").replace(/\s+/g, " ").trim();
-}
-
-function money(value: number): string {
-  return `${Math.round(Number(value || 0)).toLocaleString("ru-RU")} ₽`;
-}
-
-function percent(value: number): string {
-  return `${Math.round(Number(value || 0))}%`;
-}
-
-function escapeTelegram(value: string): string {
-  return cleanText(value)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;");
 }
 
 function isUniqueViolation(error: unknown): boolean {
