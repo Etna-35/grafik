@@ -230,6 +230,25 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
     };
   });
 
+  app.get("/api/shift-closing/dashboard", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    if (user.role !== "owner" && user.role !== "manager") {
+      await reply.code(403).send({ error: "forbidden" });
+      return;
+    }
+    const q = request.query as { month?: string };
+    const now = new Date();
+    let year = now.getUTCFullYear();
+    let month = now.getUTCMonth() + 1;
+    if (q.month && /^\d{4}-\d{2}$/.test(q.month)) {
+      const [y, m] = q.month.split("-").map(Number);
+      year = y;
+      month = m;
+    }
+    return getManagerDashboard(year, month);
+  });
+
   app.post("/api/shift-closing", async (request, reply) => {
     const user = await requireShiftCloseAccess(request, reply);
     if (!user) return;
@@ -942,6 +961,85 @@ async function getOpeningCashExpected(workDate: string): Promise<number> {
     [workDate]
   );
   return result.rows[0]?.closing_cash_actual || 0;
+}
+
+async function getManagerDashboard(year: number, month: number) {
+  const monthStart = `${year}-${String(month).padStart(2, "0")}-01`;
+  const result = await query<{
+    work_date: string;
+    revenue_total: number;
+    revenue_plan: number;
+    terminal_1: number;
+    terminal_2: number;
+    netmonet: number;
+    yandex_food: number;
+    taxi_amount: number;
+  }>(
+    `
+      SELECT work_date::text, revenue_total, revenue_plan, terminal_1, terminal_2, netmonet, yandex_food, taxi_amount
+      FROM shift_closings
+      WHERE work_date >= $1::date AND work_date < ($1::date + interval '1 month')
+      ORDER BY work_date
+    `,
+    [monthStart]
+  );
+
+  const now = new Date();
+  const todayIso = now.toISOString().slice(0, 10);
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const isCurrentMonth = year === now.getUTCFullYear() && month === now.getUTCMonth() + 1;
+  const isPastMonth = year < now.getUTCFullYear() || (year === now.getUTCFullYear() && month < now.getUTCMonth() + 1);
+  const remainingDays = isCurrentMonth ? Math.max(0, daysInMonth - now.getUTCDate() + 1) : isPastMonth ? 0 : daysInMonth;
+
+  let monthRevenue = 0;
+  let monthPlan = 0;
+  let balance = 0;
+  const days = result.rows.map((row) => {
+    const revenue = Number(row.revenue_total || 0);
+    const plan = Number(row.revenue_plan || 0);
+    monthRevenue += revenue;
+    monthPlan += plan;
+    if (row.work_date <= todayIso) balance += revenue - plan;
+    const toAccount = Math.round(
+      (Number(row.terminal_1 || 0) + Number(row.terminal_2 || 0)) * 0.98
+      + Number(row.yandex_food || 0) * 0.65
+      + Number(row.netmonet || 0) * 0.995
+      - Number(row.taxi_amount || 0)
+    );
+    return { date: row.work_date, revenue, plan, diff: revenue - plan, toAccount };
+  });
+
+  const latest = days.length ? days[days.length - 1] : null;
+  const needPerDay = balance < 0 && remainingDays > 0 ? Math.round(-balance / remainingDays) : 0;
+
+  const weekday = await query<{ dow: number; avg: number }>(
+    `
+      SELECT EXTRACT(DOW FROM work_date)::int AS dow, round(avg(revenue_total))::int AS avg
+      FROM shift_closings
+      WHERE work_date >= (CURRENT_DATE - interval '35 days') AND revenue_total > 0
+      GROUP BY 1
+    `
+  );
+  const avgByDow = new Map(weekday.rows.map((r) => [r.dow, Number(r.avg || 0)]));
+  // Пн..Вс (dow: 1..6, 0=Вс)
+  const weekdayAvg = [1, 2, 3, 4, 5, 6, 0].map((dow) => ({ dow, avg: avgByDow.get(dow) || 0 }));
+
+  return {
+    year,
+    month,
+    monthRevenue,
+    monthPlan,
+    monthPercent: monthPlan > 0 ? Math.round((monthRevenue / monthPlan) * 100) : 0,
+    latest: latest
+      ? { ...latest, percent: latest.plan > 0 ? Math.round((latest.revenue / latest.plan) * 100) : 0 }
+      : null,
+    balance,
+    ahead: balance >= 0,
+    needPerDay,
+    remainingDays,
+    days,
+    weekdayAvg
+  };
 }
 
 async function getRevenuePlan(workDate: string): Promise<number> {

@@ -183,6 +183,27 @@ button.stat{cursor:pointer;color:var(--ink);text-align:left;font:inherit}
 .shift-cash-alert{margin:6px 2px 10px;border:1px solid var(--danger-line);background:var(--danger-bg);color:var(--danger);border-radius:11px;padding:10px 12px;font-size:12px;font-weight:600}
 .shift-cash-alert b{color:var(--danger)}
 .field-invalid{border-color:var(--danger) !important;box-shadow:0 0 0 2px var(--danger-bg)}
+.dash{margin:0 0 16px;border:1px solid var(--line);background:var(--card);border-radius:14px;padding:12px}
+.dash .monthbar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+.dash .mname{font-weight:600;color:var(--ink)}
+.dash-top{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+@media(max-width:560px){.dash-top{grid-template-columns:1fr}}
+.dash-metric{border:1px solid var(--line);background:var(--card-2);border-radius:11px;padding:10px}
+.dash-metric span{display:block;font-size:11px;color:var(--ink-soft)}
+.dash-metric b{display:block;font-family:var(--font-display);font-size:18px;color:var(--ink);margin:2px 0}
+.dash-metric small{font-size:11px;color:var(--ink-soft)}
+.dash-metric.ok b{color:var(--green)}
+.dash-metric.warn b{color:var(--gold)}
+.dash-weekdays{margin:10px 0;font-size:12px;color:var(--ink);line-height:1.5}
+.dash-weekdays .dash-cap{display:block;font-size:11px;color:var(--ink-soft);margin-bottom:2px}
+.dash-days{display:flex;flex-direction:column;gap:6px}
+.dash-day{display:flex;align-items:baseline;justify-content:space-between;gap:8px;border-top:1px solid var(--line);padding-top:6px;font-size:12px}
+.dash-day .dd-date{color:var(--ink-soft);min-width:64px}
+.dash-day .dd-rev{color:var(--ink);font-weight:600}
+.dash-day .dd-rev i{font-style:normal;font-size:11px;font-weight:600}
+.dash-day .dd-rev i.up{color:var(--green)}
+.dash-day .dd-rev i.down{color:var(--danger)}
+.dash-day .dd-acc{color:var(--ink-soft);font-size:11px}
 .auto-inp{background:var(--card-2);border-color:var(--line);box-shadow:none}
 .phone.schedule-phone{max-width:none;border-radius:0}
 .schedule-screen{padding:18px 14px 28px}

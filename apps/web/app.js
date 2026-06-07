@@ -2675,6 +2675,13 @@ function renderShiftClosingPage(service){
     loadShiftClosing();
   }
 
+  const role = state.user?.role;
+  const isManager = role === "owner" || role === "manager";
+  if(isManager && !state.shiftDashboard && !state.shiftDashboardLoading){
+    loadShiftDashboard();
+  }
+  const dashHtml = isManager ? renderShiftDashboard() : "";
+
   const body = state.shiftClosingLoading
     ? `<div class="panel"><div class="loader compact">Загружаю смену</div></div>`
     : state.shiftClosingError && !state.shiftClosingInit
@@ -2690,6 +2697,7 @@ function renderShiftClosingPage(service){
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
         </div>
+        ${dashHtml}
         ${body}
       </section>
     </div>
@@ -2701,6 +2709,85 @@ function renderShiftClosingPage(service){
   });
 
   bindShiftClosingForm();
+  bindShiftDashboard();
+}
+
+async function loadShiftDashboard(month){
+  state.shiftDashboardLoading = true;
+  if(month) state.shiftDashboardMonth = month;
+  render();
+  try{
+    const url = state.shiftDashboardMonth
+      ? `/api/shift-closing/dashboard?month=${encodeURIComponent(state.shiftDashboardMonth)}`
+      : "/api/shift-closing/dashboard";
+    const data = await apiGet(url);
+    state.shiftDashboard = data;
+    state.shiftDashboardMonth = `${data.year}-${String(data.month).padStart(2,"0")}`;
+  }catch(error){
+    state.shiftDashboard = null;
+  }finally{
+    state.shiftDashboardLoading = false;
+    render();
+  }
+}
+
+function shiftDashMonthDelta(ym, delta){
+  const [y, m] = String(ym).split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1 + delta, 1));
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2,"0")}`;
+}
+
+function renderShiftDashboard(){
+  if(state.shiftDashboardLoading && !state.shiftDashboard){
+    return `<div class="panel"><div class="loader compact">Загружаю сводку</div></div>`;
+  }
+  const d = state.shiftDashboard;
+  if(!d) return "";
+  const k = (n)=> `${Math.round(Number(n||0)/1000)}к`;
+  const wdNames = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+  const weekdays = (d.weekdayAvg||[]).map((w,i)=>`${wdNames[i]} — ${w.avg ? k(w.avg) : "—"}`).join(" · ");
+  const latest = d.latest;
+  const goalClass = d.ahead ? "ok" : "warn";
+  const goalLabel = d.ahead ? "Опережение плана" : "Нужно доп. в день";
+  const goalValue = d.ahead ? `+${formatMoneyPlain(d.balance)} ₽` : `${formatMoneyPlain(d.needPerDay)} ₽`;
+  const goalSub = d.ahead
+    ? "по итогам прошедших дней"
+    : `чтобы догнать план · осталось ${d.remainingDays} дн.`;
+
+  return `
+    <section class="dash">
+      <div class="monthbar">
+        <button class="btn icon" data-dash-month="prev">‹</button>
+        <div class="mname">${formatScheduleMonth(d.year, d.month)}</div>
+        <button class="btn icon" data-dash-month="next">›</button>
+      </div>
+      <div class="dash-top">
+        <div class="dash-metric"><span>Выручка за месяц</span><b>${formatMoneyPlain(d.monthRevenue)} ₽</b><small>план ${k(d.monthPlan)} · ${d.monthPercent}%</small></div>
+        <div class="dash-metric"><span>За день${latest ? " · " + escapeHtml(formatDateShort(latest.date)) : ""}</span><b>${latest ? formatMoneyPlain(latest.revenue) : 0} ₽</b><small>${latest ? `план ${k(latest.plan)} · ${latest.percent}%` : "нет данных"}</small></div>
+        <div class="dash-metric ${goalClass}"><span>${goalLabel}</span><b>${goalValue}</b><small>${goalSub}</small></div>
+      </div>
+      <div class="dash-weekdays"><span class="dash-cap">Средняя по дням недели</span>${weekdays}</div>
+      <div class="dash-days">
+        ${(d.days||[]).slice().reverse().map((day)=>`
+          <div class="dash-day">
+            <span class="dd-date">${escapeHtml(formatDateShort(day.date))}</span>
+            <span class="dd-rev">${formatMoneyPlain(day.revenue)} ₽ <i class="${day.diff>=0?"up":"down"}">${day.diff>=0?"+":""}${formatMoneyPlain(day.diff)}</i></span>
+            <span class="dd-acc">на счёт ${formatMoneyPlain(day.toAccount)} ₽</span>
+          </div>
+        `).join("") || `<div class="muted-line">Нет закрытых смен за месяц</div>`}
+      </div>
+    </section>
+  `;
+}
+
+function bindShiftDashboard(){
+  app.querySelectorAll("[data-dash-month]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      const base = state.shiftDashboardMonth;
+      if(!base) return;
+      loadShiftDashboard(shiftDashMonthDelta(base, button.dataset.dashMonth === "next" ? 1 : -1));
+    });
+  });
 }
 
 function renderShiftClosingForm(){
@@ -4151,6 +4238,10 @@ function formatInputNumber(value){
 
 function formatDateHuman(date){
   return new Intl.DateTimeFormat("ru-RU", { day:"numeric", month:"long", weekday:"short" }).format(new Date(`${date}T00:00:00`));
+}
+
+function formatDateShort(date){
+  return new Intl.DateTimeFormat("ru-RU", { day:"2-digit", month:"2-digit", weekday:"short" }).format(new Date(`${date}T00:00:00`));
 }
 
 function formatDateTimeHuman(value){
