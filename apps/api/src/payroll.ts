@@ -112,13 +112,14 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
     ),
     query<HookahRow>(
       `
-        SELECT id::text, work_date::text, hookah_count, hookah_rate, hookah_payout
-        FROM shift_closings
-        WHERE hookah_employee_id = $2
-          AND work_date >= $1::date
-          AND work_date < ($1::date + interval '1 month')
-          AND hookah_payout > 0
-        ORDER BY work_date DESC, updated_at DESC
+        SELECT h.id::text, sc.work_date::text, h.count AS hookah_count, h.rate AS hookah_rate, h.payout AS hookah_payout
+        FROM shift_closing_hookah h
+        JOIN shift_closings sc ON sc.id = h.shift_closing_id
+        WHERE h.employee_id = $2
+          AND sc.work_date >= $1::date
+          AND sc.work_date < ($1::date + interval '1 month')
+          AND h.payout > 0
+        ORDER BY sc.work_date DESC, h.created_at DESC
       `,
       [start, user.id]
     ),

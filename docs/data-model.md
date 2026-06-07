@@ -399,16 +399,34 @@ PIN в открытом виде не хранится.
 
 Правила:
 
-- `hookah_employee_id` выбирается в форме закрытия смены из активных сотрудников, у которых включена доп. роль `Кальянщик`;
+- кальянщики смены хранятся в дочерней таблице `shift_closing_hookah` (миграция 022) — их может быть несколько;
+- колонки `shift_closings.hookah_*` — денормализованный итог за смену: `hookah_count`/`hookah_payout` = суммы по
+  всем кальянщикам; `hookah_employee_id`/`hookah_rate` заполнены, когда кальянщик ровно один (иначе `NULL`/`0`);
 - `opening_cash_expected` берется из `closing_cash_actual` предыдущей закрытой смены;
 - `cashless_total = terminal_1 + terminal_2 + netmonet + yandex_food`;
 - `revenue_total = cashless_total + cash_revenue + transfer_revenue`;
-- `hookah_payout = hookah_count * hookah_rate`;
+- `hookah_payout = Σ(shift_closing_hookah.payout)`, где `payout = count * rate` по каждому кальянщику;
 - `closing_cash_expected = opening_cash_actual + cash_revenue + transfer_revenue - wash_cost - hookah_payout - extra_expenses_total - collection_amount`;
 - `taxi_amount` не вычитается из кассы;
 - `revenue_plan` берется из модуля `График`;
-- `hookah_payout` попадает в личный раздел `Выплаты` выбранного кальянщика как отдельное начисление, которое считается уже выданным из кассы закрытия смены;
+- `hookah_payout` каждого кальянщика попадает в его личный раздел `Выплаты` как отдельное начисление, которое
+  считается уже выданным из кассы закрытия смены;
 - Telegram не блокирует закрытие смены.
+
+### shift_closing_hookah
+
+Кальянщики смены (несколько на одну запись `shift_closings`). Миграция 022. Источник для раздела «Выплаты»
+каждого кальянщика (`payroll` фильтрует по `employee_id`).
+
+Поля:
+
+- `id`;
+- `shift_closing_id`;
+- `employee_id` — активный сотрудник с ролью `Кальянщик`;
+- `count` — количество кальянов;
+- `rate` — ставка сотрудника на момент закрытия (снимок из `employees.hookah_rate`);
+- `payout` = `count * rate`;
+- `created_at`.
 
 ### shift_closing_extra_expenses
 

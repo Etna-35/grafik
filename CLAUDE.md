@@ -83,7 +83,8 @@
 read_marks/assignments) · 010 task description · 011 employee archived_at · 012 requisition_lines.urgent ·
 013 tasks.reward_amount · 014 shift_handovers · 015 employees start_date/birth_date · 016 praises ·
 017 DROP unique(display_name) — имена НЕ уникальны · 018 sales_goals · 019 progress_events · 020 tasks
-employee_id nullable + audience_role · 021 quiz (quiz_questions/options/attempts).
+employee_id nullable + audience_role · 021 quiz (quiz_questions/options/attempts) ·
+022 shift_closing_hookah (несколько кальянщиков в смене; колонки shift_closings.hookah_* = денорм. итог).
 
 ## 7. Что построено (всё на проде)
 - **Главная/ЛК:** приветствие + «цель дня» (план выручки = ФОТ_дня/0.23, ×0.8 будни / ×1.5 ПТ-СБ; наличный план =
@@ -130,7 +131,8 @@ employee_id nullable + audience_role · 021 quiz (quiz_questions/options/attempt
 «Интерьер» из PDF-гайда; вынос порога 80%/90с/2ч в настройки; серверная валидация таймера квиза; Telegram-уведомления
 (план выполнен/аттестация/цель — места в коде заложены); сделать репозиторий приватным + перевыпустить токен бота;
 однократная инициализация PIN владельца; (опц.) пиксель-перфект иконки наград и порядок «уровень→кукла».
-**ОТМЕНЕНО пользователем (НЕ реализовывать без явного запроса):** такси «за наличные» в закрытии смены; два кальянщика в смену.
+**ОТМЕНЕНО пользователем (НЕ реализовывать без явного запроса):** такси «за наличные» в закрытии смены.
+(«Несколько кальянщиков в смену» — РЕАЛИЗОВАНО, миграция 022; ранее было отменено, возвращено по запросу 2026-06-07.)
 
 ## 10. Контент и инструменты
 - **ТТК меню:** Google Sheet `1iu8_-NKfkJqec4-pzZzupTvVt45Omyh8Scumoowb4-o` (CSV-экспорт по gid РАБОТАЕТ);

@@ -12,9 +12,14 @@ const extraExpenseSchema = z.object({
   comment: z.string().trim().max(300).default("")
 });
 
+const hookahLineSchema = z.object({
+  employeeId: z.string().uuid(),
+  count: z.number().int().min(0).max(1000).default(0)
+});
+
 const closingInputSchema = z.object({
   workDate: dateSchema.optional(),
-  hookahEmployeeId: z.string().uuid().nullable().optional(),
+  hookah: z.array(hookahLineSchema).max(10).default([]),
   openingCashActual: moneySchema,
   terminal1: moneySchema,
   terminal2: moneySchema,
@@ -23,7 +28,6 @@ const closingInputSchema = z.object({
   cashRevenue: moneySchema,
   transferRevenue: moneySchema,
   washCost: moneySchema,
-  hookahCount: z.number().int().min(0).max(1000).default(0),
   taxiAmount: moneySchema,
   collectionAmount: moneySchema,
   closingCashActual: moneySchema,
@@ -54,10 +58,19 @@ type HookahEmployee = {
   rate: number;
 };
 
+type HookahLine = {
+  employeeId: string;
+  name: string;
+  count: number;
+  rate: number;
+  payout: number;
+};
+
 type ShiftClosingComputed = {
   workDate: string;
   submittedBy: string;
-  hookahEmployee: HookahEmployee;
+  hookahLines: HookahLine[];
+  hookahEmployeeId: string | null;
   cashDiffLimit: number;
   taxiLimit: number;
   revenuePlan: number;
@@ -129,6 +142,15 @@ type ExtraExpenseRow = {
   id: string;
   amount: number;
   comment: string;
+};
+
+type HookahLineRow = {
+  id: string;
+  employee_id: string;
+  employee_name: string | null;
+  count: number;
+  rate: number;
+  payout: number;
 };
 
 type PhotoRow = {
@@ -377,21 +399,22 @@ function canEditClosing(user: SessionUser, submittedBy: string | null): boolean 
 
 async function computeClosing(user: SessionUser, input: ShiftClosingInput): Promise<ShiftClosingComputed> {
   const workDate = input.workDate || currentShiftWorkDate();
-  const [openingCashExpected, revenuePlan, hookahEmployee] = await Promise.all([
+  const [openingCashExpected, revenuePlan, hookahLines] = await Promise.all([
     getOpeningCashExpected(workDate),
     getRevenuePlan(workDate),
-    getHookahEmployee(input.hookahEmployeeId)
+    resolveHookahLines(input.hookah)
   ]);
 
   const extraExpenses = input.extraExpenses
     .filter((expense) => expense.amount > 0)
     .map((expense) => ({ amount: cleanInt(expense.amount), comment: cleanText(expense.comment) }));
   const extraExpensesTotal = extraExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-  const hookahRate = cleanInt(hookahEmployee.rate);
-  const hookahCount = cleanInt(input.hookahCount);
+  const hookahCount = hookahLines.reduce((sum, line) => sum + line.count, 0);
+  const hookahPayout = hookahLines.reduce((sum, line) => sum + line.payout, 0);
+  const primaryHookah = hookahLines.length === 1 ? hookahLines[0] : null;
+  const hookahRate = primaryHookah ? primaryHookah.rate : 0;
   const cashlessTotal = cleanInt(input.terminal1) + cleanInt(input.terminal2) + cleanInt(input.netmonet) + cleanInt(input.yandexFood);
   const revenueTotal = cashlessTotal + cleanInt(input.cashRevenue) + cleanInt(input.transferRevenue);
-  const hookahPayout = hookahCount * hookahRate;
   const closingCashExpected =
     cleanInt(input.openingCashActual)
     + cleanInt(input.cashRevenue)
@@ -406,7 +429,8 @@ async function computeClosing(user: SessionUser, input: ShiftClosingInput): Prom
   return {
     workDate,
     submittedBy: user.id,
-    hookahEmployee,
+    hookahLines,
+    hookahEmployeeId: primaryHookah ? primaryHookah.employeeId : null,
     cashDiffLimit: 500,
     taxiLimit: 2000,
     revenuePlan,
@@ -482,6 +506,7 @@ async function createClosing(computed: ShiftClosingComputed, extraExpenses: Shif
       closingParams(computed)
     );
     await replaceExtraExpenses(result.rows[0].id, extraExpenses);
+    await replaceHookahLines(result.rows[0].id, computed.hookahLines);
     await pool.query("COMMIT");
     return result.rows[0].id;
   } catch (error) {
@@ -530,6 +555,7 @@ async function updateClosing(id: string, computed: ShiftClosingComputed, extraEx
       [id, ...closingParams(computed).slice(1)]
     );
     await replaceExtraExpenses(id, extraExpenses);
+    await replaceHookahLines(id, computed.hookahLines);
     await pool.query("COMMIT");
   } catch (error) {
     await pool.query("ROLLBACK");
@@ -541,7 +567,7 @@ function closingParams(computed: ShiftClosingComputed): unknown[] {
   return [
     computed.workDate,
     computed.submittedBy,
-    computed.hookahEmployee.id,
+    computed.hookahEmployeeId,
     computed.cashDiffLimit,
     computed.taxiLimit,
     computed.revenuePlan,
@@ -582,6 +608,47 @@ async function replaceExtraExpenses(id: string, extraExpenses: ShiftClosingInput
       [id, cleanInt(expense.amount), cleanText(expense.comment)]
     );
   }
+}
+
+async function replaceHookahLines(id: string, hookahLines: HookahLine[]): Promise<void> {
+  await pool.query("DELETE FROM shift_closing_hookah WHERE shift_closing_id = $1", [id]);
+  for (const line of hookahLines) {
+    await pool.query(
+      `
+        INSERT INTO shift_closing_hookah (shift_closing_id, employee_id, count, rate, payout)
+        VALUES ($1, $2, $3, $4, $5)
+      `,
+      [id, line.employeeId, line.count, line.rate, line.payout]
+    );
+  }
+}
+
+async function resolveHookahLines(input: ShiftClosingInput["hookah"]): Promise<HookahLine[]> {
+  const valid = input.filter((line) => cleanInt(line.count) > 0);
+  if (valid.length === 0) return [];
+
+  const ids = [...new Set(valid.map((line) => line.employeeId))];
+  const result = await query<{ id: string; display_name: string; hookah_rate: number }>(
+    `
+      SELECT id, display_name, hookah_rate
+      FROM employees
+      WHERE id = ANY($1::uuid[])
+        AND is_active = true
+        AND is_hookah_master = true
+    `,
+    [ids]
+  );
+  const byId = new Map(result.rows.map((row) => [row.id, row]));
+
+  return valid.map((line) => {
+    const employee = byId.get(line.employeeId);
+    if (!employee) {
+      throw new Error("hookah_employee_not_found");
+    }
+    const count = cleanInt(line.count);
+    const rate = cleanInt(employee.hookah_rate);
+    return { employeeId: employee.id, name: employee.display_name, count, rate, payout: count * rate };
+  });
 }
 
 async function getClosingByDate(workDate: string, user?: SessionUser) {
@@ -642,13 +709,23 @@ async function getClosingById(id: string, user?: SessionUser) {
   if (!row) return null;
   if (user && !canEditClosing(user, row.submitted_by)) return null;
 
-  const [expenses, photos, reports] = await Promise.all([
+  const [expenses, hookah, photos, reports] = await Promise.all([
     query<ExtraExpenseRow>(
       `
         SELECT id, amount, comment
         FROM shift_closing_extra_expenses
         WHERE shift_closing_id = $1
         ORDER BY created_at, id
+      `,
+      [id]
+    ),
+    query<HookahLineRow>(
+      `
+        SELECT h.id, h.employee_id, e.display_name AS employee_name, h.count, h.rate, h.payout
+        FROM shift_closing_hookah h
+        LEFT JOIN employees e ON e.id = h.employee_id
+        WHERE h.shift_closing_id = $1
+        ORDER BY h.created_at, h.id
       `,
       [id]
     ),
@@ -673,7 +750,7 @@ async function getClosingById(id: string, user?: SessionUser) {
     )
   ]);
 
-  return serializeClosing(row, expenses.rows, photos.rows, reports.rows);
+  return serializeClosing(row, expenses.rows, hookah.rows, photos.rows, reports.rows);
 }
 
 async function getClosingOwner(id: string): Promise<{ submitted_by: string | null; work_date: string } | undefined> {
@@ -687,6 +764,7 @@ async function getClosingOwner(id: string): Promise<{ submitted_by: string | nul
 function serializeClosing(
   row: ShiftClosingRow,
   expenses: ExtraExpenseRow[],
+  hookah: HookahLineRow[],
   photos: PhotoRow[],
   reports: TelegramReportRow[]
 ) {
@@ -702,6 +780,14 @@ function serializeClosing(
       name: row.hookah_employee_name || "",
       rate: row.hookah_rate
     },
+    hookah: hookah.map((line) => ({
+      id: line.id,
+      employeeId: line.employee_id,
+      name: line.employee_name || "",
+      count: line.count,
+      rate: line.rate,
+      payout: line.payout
+    })),
     status: row.status,
     limits: {
       cashDiff: row.cash_diff_limit,
@@ -792,48 +878,6 @@ async function getRevenuePlan(workDate: string): Promise<number> {
   );
   const fot = Number(result.rows[0]?.fot || 0);
   return fot > 0 ? Math.round(fot / 0.23) : 0;
-}
-
-async function getHookahEmployee(employeeId?: string | null): Promise<HookahEmployee> {
-  if (employeeId) {
-    const selected = await query<{ id: string; display_name: string; hookah_rate: number }>(
-      `
-        SELECT id, display_name, hookah_rate
-        FROM employees
-        WHERE id = $1
-          AND is_active = true
-          AND is_hookah_master = true
-        LIMIT 1
-      `,
-      [employeeId]
-    );
-    const row = selected.rows[0];
-    if (!row) {
-      throw new Error("hookah_employee_not_found");
-    }
-    return {
-      id: row.id,
-      name: row.display_name,
-      rate: row.hookah_rate || 0
-    };
-  }
-
-  const result = await query<{ id: string; display_name: string; hookah_rate: number }>(
-    `
-      SELECT id, display_name, hookah_rate
-      FROM employees
-      WHERE is_active = true
-        AND is_hookah_master = true
-      ORDER BY updated_at DESC, display_name
-      LIMIT 1
-    `
-  );
-  const row = result.rows[0];
-  return {
-    id: row?.id || null,
-    name: row?.display_name || "",
-    rate: row?.hookah_rate || 0
-  };
 }
 
 async function getHookahEmployees(): Promise<HookahEmployee[]> {
@@ -943,6 +987,9 @@ async function saveTelegramReport(
 function managerReportText(closing: Awaited<ReturnType<typeof getClosingById>>): string {
   if (!closing) return "";
   const v = closing.values;
+  const hookahLines = closing.hookah.length
+    ? closing.hookah.map((h) => `Кальяны ×${h.count} (${escapeTelegram(h.name)}): ${money(h.payout)}`)
+    : [`Кальяны: ${money(0)}`];
   return [
     `<b>Etna · закрытие смены</b>`,
     `Дата: ${escapeTelegram(closing.workDate)}`,
@@ -960,7 +1007,7 @@ function managerReportText(closing: Awaited<ReturnType<typeof getClosingById>>):
     ``,
     `<b>Расходы</b>`,
     `Мойка: ${money(v.washCost)}`,
-    `Кальяны: ${v.hookahCount} × ${money(v.hookahRate)} = ${money(v.hookahPayout)}`,
+    ...hookahLines,
     `Доп. расходы: ${money(v.extraExpensesTotal)}`,
     `Такси: ${money(v.taxiAmount)} (не вычитается из кассы)`,
     `Инкассация: ${money(v.collectionAmount)}`,

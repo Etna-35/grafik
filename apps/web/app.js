@@ -2758,11 +2758,24 @@ function renderShiftClosingForm(){
 
       <h2 class="sec">Расходы из кассы</h2>
       ${moneyField("washCost", "Мойка", form.washCost)}
-      <div class="two">
-        ${hookahEmployeeField(form.hookahEmployeeId, init.hookahEmployees || [])}
-        ${numberField("hookahCount", "Кальяны, шт", form.hookahCount)}
+      <div class="extra-box">
+        <div class="extra-head">
+          <span class="row-title">Кальяны</span>
+          <button class="ghost mini" type="button" data-shift-action="add-hookah">Добавить</button>
+        </div>
+        ${(form.hookah || []).map((line, index)=>`
+          <div class="extra-row hookah-row" data-hookah-row="${index}">
+            <select class="inp" name="hookahEmployeeId" data-hookah-employee="${index}">
+              ${(init.hookahEmployees || []).length ? (init.hookahEmployees || []).map((employee)=>`
+                <option value="${escapeAttr(employee.id)}" ${line.employeeId === employee.id ? "selected" : ""}>${escapeHtml(employee.name)} · ${formatMoneyPlain(employee.rate)} ₽</option>
+              `).join("") : `<option value="">Нет активных кальянщиков</option>`}
+            </select>
+            <input name="hookahCount" type="number" min="0" step="1" value="${line.count || ""}" placeholder="шт">
+            <button class="ghost mini danger-action" type="button" data-remove-hookah="${index}">×</button>
+          </div>
+        `).join("") || `<div class="muted-line">Кальянов нет</div>`}
       </div>
-      ${autoRow(preview.hookahEmployeeName ? `Выпл. кальяны · ${preview.hookahEmployeeName} (${preview.hookahCount} × ${formatMoneyPlain(preview.hookahRate)})` : `Выпл. кальяны (${preview.hookahCount} × ${formatMoneyPlain(preview.hookahRate)})`, preview.hookahPayout)}
+      ${autoRow("Выпл. кальяны итого", preview.hookahPayout)}
       <div class="extra-box">
         <div class="extra-head">
           <span class="row-title">Доп. расходы</span>
@@ -2818,30 +2831,6 @@ function moneyField(name, label, value){
     <label class="field">
       <span>${escapeHtml(label)}</span>
       <input class="inp" name="${name}" data-shift-money="${name}" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="${value ? Number(value) : ""}">
-    </label>
-  `;
-}
-
-function numberField(name, label, value){
-  return `
-    <label class="field">
-      <span>${escapeHtml(label)}</span>
-      <input class="inp" name="${name}" data-shift-money="${name}" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="${value ? Number(value) : ""}">
-    </label>
-  `;
-}
-
-function hookahEmployeeField(value, employees){
-  return `
-    <label class="field">
-      <span>Кальянщик</span>
-      <select class="inp" name="hookahEmployeeId" data-shift-hookah-employee>
-        ${employees.length ? employees.map((employee)=>`
-          <option value="${escapeAttr(employee.id)}" ${value === employee.id ? "selected" : ""}>
-            ${escapeHtml(employee.name)} · ${formatMoneyPlain(employee.rate)} ₽
-          </option>
-        `).join("") : `<option value="">Нет активных кальянщиков</option>`}
-      </select>
     </label>
   `;
 }
@@ -2913,10 +2902,26 @@ function bindShiftClosingForm(){
     });
   });
 
-  app.querySelector("[data-shift-hookah-employee]")?.addEventListener("change", (event)=>{
-    state.shiftClosingForm.hookahEmployeeId = event.target.value || "";
+  app.querySelector("[data-shift-action='add-hookah']")?.addEventListener("click", ()=>{
     collectShiftClosingForm();
+    const def = (state.shiftClosingInit?.hookahEmployees || [])[0];
+    state.shiftClosingForm.hookah.push({ employeeId: def?.id || "", count: 0 });
     render();
+  });
+
+  app.querySelectorAll("[data-remove-hookah]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      collectShiftClosingForm();
+      state.shiftClosingForm.hookah.splice(Number(button.dataset.removeHookah), 1);
+      render();
+    });
+  });
+
+  app.querySelectorAll("[data-hookah-row] select[name='hookahEmployeeId'], [data-hookah-row] input[name='hookahCount']").forEach((input)=>{
+    input.addEventListener("change", ()=>{
+      collectShiftClosingForm();
+      render();
+    });
   });
 
   app.querySelector("[data-shift-action='add-expense']")?.addEventListener("click", ()=>{
@@ -2989,8 +2994,7 @@ function shiftClosingFormFrom(init, record){
     cashRevenue: values.cashRevenue || 0,
     transferRevenue: values.transferRevenue || 0,
     washCost: values.washCost || 0,
-    hookahEmployeeId: record?.hookahEmployee?.id || init.hookahEmployee?.id || "",
-    hookahCount: values.hookahCount || 0,
+    hookah: (record?.hookah || []).map((line)=>({ employeeId: line.employeeId, count: line.count || 0 })),
     taxiAmount: values.taxiAmount || 0,
     collectionAmount: values.collectionAmount || 0,
     closingCashActual: values.closingCashActual || 0,
@@ -3007,27 +3011,29 @@ function collectShiftClosingForm(){
   if(!form || !state.shiftClosingForm) return state.shiftClosingForm;
 
   const next = { ...state.shiftClosingForm };
-  ["openingCashActual","terminal1","terminal2","netmonet","yandexFood","cashRevenue","transferRevenue","washCost","hookahCount","taxiAmount","collectionAmount","closingCashActual"].forEach((field)=>{
+  ["openingCashActual","terminal1","terminal2","netmonet","yandexFood","cashRevenue","transferRevenue","washCost","taxiAmount","collectionAmount","closingCashActual"].forEach((field)=>{
     next[field] = integerOrNull(form.elements[field]?.value) || 0;
   });
-  next.hookahEmployeeId = form.elements.hookahEmployeeId?.value || "";
   next.comment = form.elements.comment?.value || "";
   next.extraExpenses = Array.from(app.querySelectorAll("[data-expense-row]")).map((row)=>({
     amount: integerOrNull(row.querySelector("input[name='extraAmount']")?.value) || 0,
     comment: row.querySelector("input[name='extraComment']")?.value || ""
   })).filter((expense)=>expense.amount > 0 || expense.comment.trim());
+  next.hookah = Array.from(app.querySelectorAll("[data-hookah-row]")).map((row)=>({
+    employeeId: row.querySelector("select[name='hookahEmployeeId']")?.value || "",
+    count: integerOrNull(row.querySelector("input[name='hookahCount']")?.value) || 0
+  }));
   state.shiftClosingForm = next;
   return next;
 }
 
 function computeShiftClosingPreview(form, init){
   const extraExpensesTotal = (form.extraExpenses || []).reduce((sum, expense)=>sum + Number(expense.amount || 0), 0);
-  const hookahEmployee = (init.hookahEmployees || []).find((employee)=>employee.id === form.hookahEmployeeId) || init.hookahEmployee || {};
-  const hookahRate = Number(hookahEmployee.rate || 0);
-  const hookahCount = Number(form.hookahCount || 0);
+  const hookahRateById = new Map((init.hookahEmployees || []).map((employee)=>[employee.id, Number(employee.rate || 0)]));
+  const hookahCount = (form.hookah || []).reduce((sum, line)=>sum + Number(line.count || 0), 0);
+  const hookahPayout = (form.hookah || []).reduce((sum, line)=>sum + Number(line.count || 0) * (hookahRateById.get(line.employeeId) || 0), 0);
   const cashlessTotal = Number(form.terminal1 || 0) + Number(form.terminal2 || 0) + Number(form.netmonet || 0) + Number(form.yandexFood || 0);
   const revenueTotal = cashlessTotal + Number(form.cashRevenue || 0) + Number(form.transferRevenue || 0);
-  const hookahPayout = hookahCount * hookahRate;
   const closingCashExpected =
     Number(form.openingCashActual || 0)
     + Number(form.cashRevenue || 0)
@@ -3041,8 +3047,6 @@ function computeShiftClosingPreview(form, init){
     openingCashExpected: Number(init.openingCashExpected || 0),
     openingCashDiff: Number(form.openingCashActual || 0) - Number(init.openingCashExpected || 0),
     hookahCount,
-    hookahRate,
-    hookahEmployeeName: hookahEmployee.name || "",
     cashlessTotal,
     revenueTotal,
     hookahPayout,
@@ -3103,7 +3107,9 @@ async function submitShiftClosing(){
 function shiftClosingPayload(form){
   return {
     workDate: form.workDate,
-    hookahEmployeeId: form.hookahEmployeeId || null,
+    hookah: (form.hookah || [])
+      .map((line)=>({ employeeId: line.employeeId, count: Number(line.count || 0) }))
+      .filter((line)=>line.employeeId && line.count > 0),
     openingCashActual: Number(form.openingCashActual || 0),
     terminal1: Number(form.terminal1 || 0),
     terminal2: Number(form.terminal2 || 0),
@@ -3112,7 +3118,6 @@ function shiftClosingPayload(form){
     cashRevenue: Number(form.cashRevenue || 0),
     transferRevenue: Number(form.transferRevenue || 0),
     washCost: Number(form.washCost || 0),
-    hookahCount: Number(form.hookahCount || 0),
     taxiAmount: Number(form.taxiAmount || 0),
     collectionAmount: Number(form.collectionAmount || 0),
     closingCashActual: Number(form.closingCashActual || 0),
