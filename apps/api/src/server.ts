@@ -31,6 +31,7 @@ import { registerPraiseRoutes } from "./praises.js";
 import { registerSalesGoalRoutes } from "./salesGoals.js";
 import { registerProgressRoutes, getProgressSummary } from "./progress.js";
 import { registerQuizRoutes } from "./quiz.js";
+import { startCron } from "./cron.js";
 
 const pinSchema = z.object({
   pin: z.string().regex(/^\d{4,8}$/)
@@ -261,6 +262,7 @@ async function main(): Promise<void> {
   await deleteExpiredSessions();
   const app = buildServer();
   await app.listen({ host: "0.0.0.0", port: env.port });
+  startCron();
 }
 
 main().catch(async (error) => {
