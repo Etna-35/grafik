@@ -102,6 +102,28 @@ export async function getServices(employeeId: string): Promise<Service[]> {
       else rows.splice(idx, 0, training.rows[0]);
     }
   }
+
+  // Руководителю: «Закрытие смены» не нужно (это для смены), вместо него — раздел «Финансы».
+  const emp = await query<{ role: string }>("SELECT role FROM employees WHERE id = $1", [employeeId]);
+  const role = emp.rows[0]?.role;
+  if (role === "owner" || role === "manager") {
+    const sc = rows.findIndex((service) => service.code === "shift_close");
+    if (sc !== -1) rows.splice(sc, 1);
+    if (!rows.some((service) => service.code === "finance")) {
+      const finance: Service = {
+        id: "finance",
+        code: "finance",
+        title: "Финансы",
+        url: "/finance",
+        is_active: true,
+        can_view: true,
+        can_edit: true
+      };
+      const idx = rows.findIndex((service) => ["requisition", "payroll", "admin"].includes(service.code));
+      if (idx === -1) rows.push(finance);
+      else rows.splice(idx, 0, finance);
+    }
+  }
   return rows;
 }
 

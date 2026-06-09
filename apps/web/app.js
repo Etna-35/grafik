@@ -35,8 +35,15 @@ const serviceMeta = {
     accent: "var(--ink)",
     description: "Сотрудники и права",
     icon: settingsIcon
+  },
+  finance: {
+    accent: "var(--gold)",
+    description: "Выручка и метрики",
+    icon: chartIcon
   }
 };
+
+function chartIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>`; }
 
 let state = {
   loading: true,
@@ -633,6 +640,10 @@ function renderServicePage(path){
   }
   if(service.code === "admin"){
     renderAdminPage(service);
+    return;
+  }
+  if(service.code === "finance"){
+    renderFinancePage(service);
     return;
   }
 
@@ -2865,13 +2876,7 @@ function renderShiftClosingPage(service){
     loadShiftClosing();
   }
 
-  const role = state.user?.role;
-  const isManager = role === "owner" || role === "manager";
-  if(isManager && !state.shiftDashboard && !state.shiftDashboardLoading){
-    loadShiftDashboard();
-  }
-  const dashHtml = isManager ? renderShiftDashboard() : "";
-
+  // Статистика/дашборд закрытий перенесены в раздел «Финансы» (для руководителя).
   const body = state.shiftClosingLoading
     ? `<div class="panel"><div class="loader compact">Загружаю смену</div></div>`
     : state.shiftClosingError && !state.shiftClosingInit
@@ -2887,7 +2892,6 @@ function renderShiftClosingPage(service){
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
         </div>
-        ${dashHtml}
         ${body}
       </section>
     </div>
@@ -2899,6 +2903,27 @@ function renderShiftClosingPage(service){
   });
 
   bindShiftClosingForm();
+}
+
+function renderFinancePage(service){
+  if(!state.shiftDashboard && !state.shiftDashboardLoading){
+    loadShiftDashboard();
+  }
+  app.innerHTML = `
+    <div class="phone wide shift-close-phone">
+      <section class="screen service-page shift-close-screen">
+        <div class="backrow">
+          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">${escapeHtml(service.title)}</h1>
+        </div>
+        ${renderShiftDashboard()}
+      </section>
+    </div>
+  `;
+  app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
   bindShiftDashboard();
 }
 
@@ -4594,7 +4619,8 @@ function tintFor(code){
     training:"rgba(143,36,51,.08)",
     requisition:"rgba(47,111,79,.1)",
     payroll:"rgba(47,111,79,.09)",
-    admin:"rgba(42,35,32,.08)"
+    admin:"rgba(42,35,32,.08)",
+    finance:"rgba(176,122,30,.1)"
   }[code] || "rgba(143,36,51,.08)";
 }
 
