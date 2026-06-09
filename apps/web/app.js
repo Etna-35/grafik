@@ -330,7 +330,7 @@ function renderMerits(){
         </button>
       </div>
       <div class="merit-badges">
-        <div class="badge-stat"><span class="bi">${heartIcon()}</span><div class="bs-num"><span class="mult">×</span>${praises}</div><span class="bs-lbl">похвалы</span></div>
+        <div class="badge-stat"><span class="bi">${heartIcon()}</span><div class="bs-num"><span class="mult">×</span>${praises}</div><span class="bs-lbl">спасибо</span></div>
         <div class="badge-stat"><span class="bi bi-score">${meritStarIcon()}</span><div class="bs-num"><span class="mult">×</span>${scores}</div><span class="bs-lbl">оценки</span></div>
         <button class="badge-stat badge-praise" data-action="praise"><span class="praise-plus">＋</span><span class="bs-lbl">Спасибо</span></button>
       </div>
@@ -384,19 +384,15 @@ function renderProgressScreen(){
         ${state.progressLoading
           ? `<div class="panel"><div class="loader compact">Загружаю</div></div>`
           : p ? `
-            <div class="progress-next">
-              <div class="prog-lock">${lockIcon()}</div>
-              <div><b>Уровень ${p.level + 1}</b><span>Скрыт — откроется, когда заполнишь шкалу</span></div>
-            </div>
             <div class="progress-hero">
               <div class="prog-badge mask">${levelMaskImg(p.level)}</div>
               <div class="prog-title">Уровень ${p.level}</div>
               <div class="award-bar big"><i style="width:${p.progressPct}%"></i></div>
-              <div class="prog-sub">${p.progressPct}% · ещё ${p.toNextPct}% до уровня ${p.level + 1}</div>
+              <div class="prog-sub">${p.progressPct}% · ещё ${p.toNextPct}% до повышения</div>
             </div>
             <h2 class="sec">За что начислено</h2>
             <div class="progress-history">
-              ${(p.history || []).length ? p.history.map(renderProgressItem).join("") : `<div class="panel muted-line">Пока пусто — выполняй задания, получай похвалы</div>`}
+              ${(p.history || []).length ? p.history.map(renderProgressItem).join("") : `<div class="panel muted-line">Пока пусто — выполняй задания, получай спасибо</div>`}
             </div>
           ` : `<div class="panel muted-line">${escapeHtml(state.progressError || "Нет данных")}</div>`}
       </section>
@@ -494,7 +490,7 @@ function renderPraiseScreen(){
       <section class="screen service-page">
         <div class="backrow">
           <button class="iconbtn" data-action="praise-back">${arrowLeftIcon()}</button>
-          <h1 class="page-title">Похвалить коллегу</h1>
+          <h1 class="page-title">Спасибо коллеге</h1>
         </div>
         ${state.praiseLoading
           ? `<div class="panel"><div class="loader compact">Загружаю</div></div>`
@@ -509,7 +505,7 @@ function renderPraiseScreen(){
                 <textarea name="body" maxlength="500" rows="3" placeholder="Спасибо за…" required></textarea>
               </label>
               ${state.praiseError ? `<div class="error" style="text-align:left">${escapeHtml(state.praiseError)}</div>` : ""}
-              <button class="ghost brand-action" type="submit" style="margin-top:12px">Отправить похвалу</button>
+              <button class="ghost brand-action" type="submit" style="margin-top:12px">Отправить спасибо</button>
             </form>
             <h2 class="sec">Лента благодарностей</h2>
             <div class="praise-list">

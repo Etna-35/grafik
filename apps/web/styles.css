@@ -576,7 +576,7 @@ button.day-block{cursor:pointer;font:inherit}
 .goal-plus{flex:1}
 
 /* Страница прогресса */
-.plan-met-btn{width:100%;margin:0 2px 12px;padding:13px}
+.plan-met-btn{width:auto;margin:0 2px 12px;padding:8px 13px;font-size:12.5px}
 .progress-next{display:flex;align-items:center;gap:12px;border:1px dashed var(--line-strong);border-radius:14px;padding:13px 14px;margin:0 2px 10px;opacity:.75}
 .prog-lock{color:var(--ink-soft);flex:none;display:flex}
 .progress-next b{display:block;font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--ink-soft)}
