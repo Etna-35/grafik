@@ -90,13 +90,21 @@ export function registerPraiseRoutes(app: FastifyInstance): void {
     );
     await audit(request, "praise_create", user.id, "praise", result.rows[0].id, { toId: parsed.data.toId });
     const fromManager = user.role === "owner" || user.role === "manager";
-    await awardPoints(
-      parsed.data.toId,
-      fromManager ? "praise_manager" : "praise_peer",
-      fromManager ? "Похвала руководителя" : "Похвала коллеги",
-      "praise",
-      result.rows[0].id
+    // Лимит против накрутки: очки за «Спасибо» начисляются максимум за 5 благодарностей в день на отправителя.
+    const todayCount = await query<{ c: string }>(
+      "SELECT COUNT(*)::text AS c FROM praises WHERE from_id = $1 AND created_at::date = (now() AT TIME ZONE 'Europe/Moscow')::date",
+      [user.id]
     );
+    if (Number(todayCount.rows[0]?.c || 0) <= 5) {
+      await awardPoints(
+        parsed.data.toId,
+        fromManager ? "praise_manager" : "praise_peer",
+        fromManager ? "Спасибо от руководителя" : "Спасибо от коллеги",
+        "praise",
+        result.rows[0].id
+      );
+      await awardPoints(user.id, "praise_giver", "Сказал спасибо коллеге", "praise_giver", result.rows[0].id);
+    }
     return { ok: true, id: result.rows[0].id };
   });
 }

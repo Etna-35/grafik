@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
+import { awardPoints } from "./progress.js";
 
 export const QUIZ_PASS_PCT = 80;
 export const QUIZ_PER_QUESTION_SEC = 90;
@@ -237,6 +238,13 @@ export function registerQuizRoutes(app: FastifyInstance): void {
       [attempt.id, correct, pct, passed]
     );
     await audit(request, "quiz_submit", user.id, "quiz_attempt", attempt.id, { scope, pct, passed });
+    if (passed) {
+      if (scope === "attestation") {
+        await awardPoints(user.id, "attestation_passed", "Сдал аттестацию", "quiz_attestation", attempt.scope_id);
+      } else {
+        await awardPoints(user.id, "quiz_passed", "Сдал тест по главе", "quiz_chapter", attempt.scope_id);
+      }
+    }
 
     let lockedUntil: string | null = null;
     if (!passed) lockedUntil = new Date(Date.now() + LOCK_MS).toISOString();

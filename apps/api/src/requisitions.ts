@@ -3,6 +3,7 @@ import { z } from "zod";
 import { audit, getServices, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
 import { sendMessage, teamChatId, tgEscape } from "./telegram.js";
+import { awardPoints } from "./progress.js";
 
 const requisitionParamsSchema = z.object({
   id: z.string().uuid()
@@ -191,6 +192,7 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
         urgent: parsed.data.urgent
       });
 
+      await awardPoints(user.id, "requisition_sent", "Отправил заявку", "requisition", requisitionId);
       const created2 = await getRequisitionById(requisitionId, user);
       if (created2) void notifyRequisition(created2).catch(() => {});
       return created2;

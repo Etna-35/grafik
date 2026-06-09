@@ -10,15 +10,31 @@ export const PROGRESS_POINTS = {
   role_task: 10,
   praise_peer: 10,
   praise_manager: 20,
-  plan_met: 50
+  praise_giver: 5,
+  plan_met: 50,
+  requisition_sent: 5,
+  handover_sent: 5,
+  shift_closed: 10,
+  chapter_read: 5,
+  quiz_passed: 15,
+  attestation_passed: 40,
+  sales_goal: 20
 } as const;
 
 const KIND_LABELS: Record<string, string> = {
   manager_task: "Задание руководителя",
   role_task: "Задание смены",
-  praise_peer: "Похвала коллеги",
-  praise_manager: "Похвала руководителя",
+  praise_peer: "Спасибо от коллеги",
+  praise_manager: "Спасибо от руководителя",
+  praise_giver: "Сказал спасибо",
   plan_met: "План выполнен",
+  requisition_sent: "Отправил заявку",
+  handover_sent: "Оставил план на завтра",
+  shift_closed: "Закрыл смену",
+  chapter_read: "Прочитал главу",
+  quiz_passed: "Сдал тест",
+  attestation_passed: "Сдал аттестацию",
+  sales_goal: "Достиг цели по продажам",
   tenure: "Стаж работы"
 };
 

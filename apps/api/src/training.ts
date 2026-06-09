@@ -3,6 +3,7 @@ import { z } from "zod";
 import { audit, getServices, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
 import { getQuizCounts, getAttemptStates, buildQuizState } from "./quiz.js";
+import { awardPoints } from "./progress.js";
 
 const chapterParamsSchema = z.object({
   id: z.string().uuid()
@@ -120,6 +121,7 @@ export function registerTrainingRoutes(app: FastifyInstance): void {
       [user.id, params.data.id]
     );
     await audit(request, "training_chapter_read", user.id, "training_chapter", params.data.id);
+    await awardPoints(user.id, "chapter_read", "Прочитал главу", "training_chapter", params.data.id);
     return { ok: true };
   });
 }

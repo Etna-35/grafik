@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
+import { awardPoints } from "./progress.js";
 
 const AUDIENCES = ["all", "cook", "bar", "waiter", "dishwasher"] as const;
 
@@ -108,6 +109,7 @@ export function registerHandoverRoutes(app: FastifyInstance): void {
       [user.id, audience, manager, parsed.data.body]
     );
     await audit(request, "handover_create", user.id, "handover", result.rows[0].id, { audience, fromManager: manager });
+    await awardPoints(user.id, "handover_sent", "Оставил план на завтра", "handover", result.rows[0].id);
     return { ok: true, id: result.rows[0].id };
   });
 
