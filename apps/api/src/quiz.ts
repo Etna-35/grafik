@@ -7,6 +7,13 @@ import { awardPoints } from "./progress.js";
 export const QUIZ_PASS_PCT = 80;
 export const QUIZ_PER_QUESTION_SEC = 90;
 export const QUIZ_LOCK_HOURS = 2;
+// На попытку выдаётся случайная подвыборка из пула (чтобы тесты не были слишком длинными).
+export const QUIZ_CHAPTER_LIMIT = 8;
+export const QUIZ_ATTESTATION_LIMIT = 15;
+
+export function quizScopeLimit(scope: "chapter" | "attestation"): number {
+  return scope === "attestation" ? QUIZ_ATTESTATION_LIMIT : QUIZ_CHAPTER_LIMIT;
+}
 const LOCK_MS = QUIZ_LOCK_HOURS * 3600 * 1000;
 
 const scopeSchema = z.enum(["chapter", "attestation"]);
@@ -109,7 +116,7 @@ export function registerQuizRoutes(app: FastifyInstance): void {
       await reply.code(400).send({ error: "bad_quiz" });
       return;
     }
-    const count = await countQuestions(params.data.scope, params.data.id);
+    const count = Math.min(await countQuestions(params.data.scope, params.data.id), quizScopeLimit(params.data.scope));
     const states = await getAttemptStates(user.id);
     return buildQuizState(count, states.get(`${params.data.scope}:${params.data.id}`));
   });
@@ -143,15 +150,19 @@ export function registerQuizRoutes(app: FastifyInstance): void {
       "DELETE FROM quiz_attempts WHERE employee_id = $1 AND scope_type = $2 AND scope_id = $3 AND finished_at IS NULL",
       [user.id, params.data.scope, params.data.id]
     );
-    const attempt = await query<{ id: string }>(
-      `INSERT INTO quiz_attempts (employee_id, scope_type, scope_id, total) VALUES ($1, $2, $3, $4) RETURNING id`,
-      [user.id, params.data.scope, params.data.id, count]
-    );
-
-    const qrows = await query<{ id: string; prompt: string }>(
+    const allQ = await query<{ id: string; prompt: string }>(
       `SELECT q.id::text, q.prompt FROM quiz_questions q WHERE ${questionWhere(params.data.scope)} ORDER BY q.sort_order, q.id`,
       [params.data.id]
     );
+    // Случайная подвыборка из пула — скоринг корректен, т.к. делитель = total попытки.
+    const selected = shuffle(allQ.rows).slice(0, quizScopeLimit(params.data.scope));
+    const selCount = selected.length;
+
+    const attempt = await query<{ id: string }>(
+      `INSERT INTO quiz_attempts (employee_id, scope_type, scope_id, total) VALUES ($1, $2, $3, $4) RETURNING id`,
+      [user.id, params.data.scope, params.data.id, selCount]
+    );
+
     const orows = await query<{ question_id: string; id: string; label: string }>(
       `
         SELECT o.question_id::text, o.id::text, o.label
@@ -168,7 +179,7 @@ export function registerQuizRoutes(app: FastifyInstance): void {
       arr.push({ id: o.id, label: o.label });
       optsByQ.set(o.question_id, arr);
     }
-    const questions = qrows.rows.map((q) => ({
+    const questions = selected.map((q) => ({
       id: q.id,
       prompt: q.prompt,
       options: shuffle(optsByQ.get(q.id) || [])
@@ -176,7 +187,7 @@ export function registerQuizRoutes(app: FastifyInstance): void {
 
     return {
       attemptId: attempt.rows[0].id,
-      durationSec: count * QUIZ_PER_QUESTION_SEC,
+      durationSec: selCount * QUIZ_PER_QUESTION_SEC,
       passPct: QUIZ_PASS_PCT,
       questions
     };

@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
-import { getQuizCounts, getAttemptStates, buildQuizState } from "./quiz.js";
+import { getQuizCounts, getAttemptStates, buildQuizState, QUIZ_CHAPTER_LIMIT, QUIZ_ATTESTATION_LIMIT } from "./quiz.js";
 import { awardPoints } from "./progress.js";
 
 const chapterParamsSchema = z.object({
@@ -260,7 +260,7 @@ async function getTrainingContent(user: SessionUser) {
     sortOrder: chapter.sort_order,
     isRead: chapter.is_read,
     readAt: chapter.read_at,
-    quiz: buildQuizState(chapterCounts.get(chapter.id) || 0, attemptStates.get(`chapter:${chapter.id}`)),
+    quiz: buildQuizState(Math.min(chapterCounts.get(chapter.id) || 0, QUIZ_CHAPTER_LIMIT), attemptStates.get(`chapter:${chapter.id}`)),
     locked: false,
     attachments: (attachmentsByChapter.get(chapter.id) || []).map(serializeAttachment)
   }));
@@ -285,7 +285,7 @@ async function getTrainingContent(user: SessionUser) {
     modules: modulesResult.rows.map((module) => {
       const list = chaptersByModule.get(module.id) || [];
       const allPassed = list.every((ch) => (ch.quiz.questionCount === 0 ? true : ch.quiz.passed));
-      const attState = buildQuizState(attCounts.get(module.id) || 0, attemptStates.get(`attestation:${module.id}`));
+      const attState = buildQuizState(Math.min(attCounts.get(module.id) || 0, QUIZ_ATTESTATION_LIMIT), attemptStates.get(`attestation:${module.id}`));
       return {
         id: module.id,
         slug: module.slug,
