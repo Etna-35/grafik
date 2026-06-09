@@ -214,6 +214,7 @@ async function login(){
   try{
     const requestedPath = window.location.pathname;
     const session = await apiPost("/api/auth/pin", { pin: state.pin });
+    clearSessionData();
     state.user = session.user;
     state.services = session.services;
     state.summary = await apiGet("/api/summary");
@@ -4328,19 +4329,42 @@ async function logout(){
   await apiPost("/api/auth/logout", {});
   state.user = null;
   state.services = [];
+  clearSessionData();
+  history.replaceState(null, "", "/");
+  render();
+}
+
+// Полный сброс кэша разделов между аккаунтами (иначе следующий вошедший видит чужие данные).
+function clearSessionData(){
   state.summary = null;
   state.schedule = null;
+  state.selectedScheduleCell = null;
+  state.selectedScheduleDate = null;
+  state.selectedDateEmployeeId = null;
   state.scheduleEditUnlocked = false;
   state.payroll = null;
   state.tasks = null;
+  state.salesGoalsData = null;
+  state.handovers = null;
+  state.praise = null;
+  state.praisePrefillTo = null;
+  state.progress = null;
+  state.training = null;
+  state.quiz = null;
+  state.selectedTrainingChapterId = "";
   state.requisitionCatalog = null;
   state.requisitionHistory = null;
   state.requisitionCart = {};
   state.requisitionComment = "";
   state.requisitionUrgent = false;
   state.requisitionNotice = "";
-  history.replaceState(null, "", "/");
-  render();
+  state.shiftClosingInit = null;
+  state.shiftClosingDate = null;
+  state.shiftClosingRecord = null;
+  state.shiftClosingForm = null;
+  state.shiftClosingPhotos = {};
+  state.admin = null;
+  state.selectedAdminEmployeeId = "new";
 }
 
 async function apiGet(url){
