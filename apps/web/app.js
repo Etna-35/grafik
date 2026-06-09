@@ -3974,7 +3974,7 @@ function renderScheduleDateEditor(service){
           const nm = (state.schedule.employees.find((e)=>e.id === pid) || {}).name || "Сотрудник";
           return `
           <div class="payout-item">
-            <span><b>${escapeHtml(nm)}</b> · ${formatMoney(payout.amount)}</span>
+            <span><b>${escapeHtml(nm)}</b> · ${formatMoneyPlain(payout.amount)} ₽</span>
             <button class="ghost mini danger-action" data-date-delete-payout="${escapeAttr(payout.id)}">Удалить</button>
           </div>`;
         }).join("") : `<div class="muted-line">Выплат за этот день нет</div>`}
@@ -4285,9 +4285,9 @@ function renderEmployeeTotal(employee){
           <span class="row-title">${escapeHtml(employee.name)}</span>
           <span class="row-sub">${escapeHtml(employee.roleLabel)} · смен ${totals.shifts || 0}</span>
         </span>
-        <span class="money">${formatMoney(totals.accrued || 0)}</span>
+        <span class="money">${formatMoneyPlain(totals.accrued || 0)} ₽</span>
       </div>
-      <div class="row-sub">Выдано ${formatMoney(totals.paid || 0)} · остаток ${formatMoney(totals.remaining || 0)}</div>
+      <div class="row-sub">Выдано ${formatMoneyPlain(totals.paid || 0)} ₽ · остаток ${formatMoneyPlain(totals.remaining || 0)} ₽</div>
     </div>
   `;
 }
@@ -4549,9 +4549,8 @@ function formatPercent(value){
 }
 
 function compactCellMoney(value){
-  const amount = Number(value || 0);
-  if(amount >= 1000) return `${Math.round(amount / 1000)}к`;
-  return String(Math.round(amount));
+  // Выплаты — целиком, без сокращений (точность до рубля важна).
+  return String(Math.round(Number(value || 0)));
 }
 
 function renderScoreDots(score){
