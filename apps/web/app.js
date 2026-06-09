@@ -2175,6 +2175,15 @@ function renderPayrollPage(service){
       loadPayroll(base.getFullYear(), base.getMonth() + 1);
     });
   });
+
+  const obligForm = app.querySelector("#obligForm");
+  obligForm?.addEventListener("submit", (event)=>{ event.preventDefault(); submitObligation(obligForm); });
+  app.querySelectorAll("[data-oblig-pay]").forEach((button)=>{
+    button.addEventListener("click", ()=>payObligation(button.dataset.obligPay));
+  });
+  app.querySelectorAll("[data-oblig-close]").forEach((button)=>{
+    button.addEventListener("click", ()=>closeObligation(button.dataset.obligClose));
+  });
 }
 
 function renderPayrollContent(payroll){
@@ -2207,6 +2216,8 @@ function renderPayrollContent(payroll){
       <div class="pay-metric"><span>Смены</span><b>${summary.shifts || 0}</b></div>
       <div class="pay-metric"><span>Часы</span><b>${formatHours(summary.hours || 0)}</b></div>
     </div>
+
+    ${renderObligations(payroll)}
 
     ${showHookah ? `
       <h2 class="sec">Кальяны</h2>
@@ -2278,7 +2289,105 @@ function renderPayrollContent(payroll){
         </div>
       `).join("") : `<div class="panel muted-line">В этом месяце смен пока нет</div>`}
     </div>
+
+    ${payroll.canManage ? renderObligationsManager(payroll) : ""}
   `;
+}
+
+function renderObligations(payroll){
+  const list = payroll.obligations || [];
+  if(!list.length) return "";
+  return `
+    <h2 class="sec">Тебе вернут</h2>
+    <div class="oblig-list">
+      ${list.map((o)=>{
+        const pct = o.amountTotal > 0 ? Math.round((o.amountPaid / o.amountTotal) * 100) : 0;
+        return `
+          <div class="oblig-card">
+            <div class="oblig-top">
+              <span class="oblig-title">${escapeHtml(o.title)}</span>
+              <b class="oblig-remain">${formatMoneyPlain(o.remaining)} ₽</b>
+            </div>
+            ${o.note ? `<div class="oblig-note">${escapeHtml(o.note)}</div>` : ""}
+            <div class="oblig-bar"><i style="width:${pct}%"></i></div>
+            <div class="oblig-sub">Уже вернули ${formatMoneyPlain(o.amountPaid)} из ${formatMoneyPlain(o.amountTotal)} ₽</div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderObligationsManager(payroll){
+  const emps = payroll.manageEmployees || [];
+  const all = payroll.allObligations || [];
+  return `
+    <h2 class="sec">Личные обязательства · управление</h2>
+    <form class="panel oblig-form" id="obligForm">
+      <label class="field"><span>Сотрудник</span>
+        <select name="employeeId" required>${emps.map((e)=>`<option value="${escapeAttr(e.id)}">${escapeHtml(e.name)}</option>`).join("")}</select>
+      </label>
+      <label class="field" style="margin-top:10px"><span>За что</span>
+        <input name="title" maxlength="120" placeholder="Напр. премия за май" required>
+      </label>
+      <label class="field" style="margin-top:10px"><span>Сумма, ₽</span>
+        <input name="amountTotal" type="number" min="1" step="1" inputmode="numeric" required>
+      </label>
+      <button class="ghost brand-action" type="submit" style="margin-top:12px">Добавить</button>
+    </form>
+    <div class="oblig-list" style="margin-top:12px">
+      ${all.length ? all.map((o)=>`
+        <div class="oblig-card manage">
+          <div class="oblig-top">
+            <span class="oblig-title">${escapeHtml(o.employeeName)} · ${escapeHtml(o.title)}</span>
+            <b class="oblig-remain">${formatMoneyPlain(o.remaining)} ₽</b>
+          </div>
+          <div class="oblig-sub">Возвращено ${formatMoneyPlain(o.amountPaid)} из ${formatMoneyPlain(o.amountTotal)} ₽</div>
+          <div class="oblig-actions">
+            <input type="number" min="1" step="1" inputmode="numeric" placeholder="Сумма выплаты" data-oblig-pay-input="${escapeAttr(o.id)}">
+            <button class="btn brand-action" type="button" data-oblig-pay="${escapeAttr(o.id)}">Выплатил</button>
+            <button class="btn ghost" type="button" data-oblig-close="${escapeAttr(o.id)}">Закрыть</button>
+          </div>
+        </div>
+      `).join("") : `<div class="panel muted-line">Активных обязательств нет</div>`}
+    </div>
+  `;
+}
+
+function reloadPayrollCurrent(){
+  const y = state.payroll?.year;
+  const m = state.payroll?.month;
+  state.payroll = null;
+  loadPayroll(y, m);
+}
+
+async function submitObligation(form){
+  const employeeId = form.elements.employeeId.value;
+  const title = form.elements.title.value.trim();
+  const amountTotal = Number(form.elements.amountTotal.value);
+  if(!employeeId || !title || !(amountTotal > 0)){ alert("Заполни сотрудника, за что и сумму"); return; }
+  try{
+    await apiPost("/api/payroll/obligations", { employeeId, title, amountTotal });
+    reloadPayrollCurrent();
+  }catch(error){ alert("Не удалось добавить"); }
+}
+
+async function payObligation(id){
+  const input = app.querySelector(`[data-oblig-pay-input="${id}"]`);
+  const amount = Number(input?.value);
+  if(!(amount > 0)){ alert("Укажи сумму выплаты"); return; }
+  try{
+    await apiPost(`/api/payroll/obligations/${encodeURIComponent(id)}/pay`, { amount });
+    reloadPayrollCurrent();
+  }catch(error){ alert("Не удалось сохранить"); }
+}
+
+async function closeObligation(id){
+  if(!confirm("Закрыть обязательство? Оно перестанет отображаться у сотрудника.")) return;
+  try{
+    await apiDelete(`/api/payroll/obligations/${encodeURIComponent(id)}`);
+    reloadPayrollCurrent();
+  }catch(error){ alert("Не удалось закрыть"); }
 }
 
 async function loadPayroll(year, month){

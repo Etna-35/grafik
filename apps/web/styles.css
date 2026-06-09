@@ -586,6 +586,19 @@ button.day-block{cursor:pointer;font:inherit}
 .bday-banner .bb-title{font-family:var(--font-display);font-weight:700;font-size:15px;line-height:1.25}
 .bday-banner .bb-sub{font-size:13px;margin-top:4px;opacity:.92}
 .bday-banner .bb-btn{margin-top:10px;width:auto;padding:8px 14px;font-size:13px}
+.oblig-list{display:flex;flex-direction:column;gap:10px}
+.oblig-card{background:var(--card);border:1px solid var(--brand-line);border-radius:14px;padding:13px 15px}
+.oblig-card.manage{border-color:var(--line)}
+.oblig-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.oblig-title{font-weight:600;color:var(--ink)}
+.oblig-remain{font-family:var(--font-display);font-weight:700;color:var(--brand-bright);white-space:nowrap}
+.oblig-note{font-size:13px;color:var(--ink-soft);margin-top:3px}
+.oblig-bar{height:6px;border-radius:6px;background:var(--line);overflow:hidden;margin:9px 0 6px}
+.oblig-bar>i{display:block;height:100%;background:var(--green);border-radius:6px}
+.oblig-sub{font-size:12.5px;color:var(--ink-soft)}
+.oblig-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.oblig-actions input{flex:1;min-width:120px}
+.oblig-actions .btn{width:auto;padding:8px 12px;font-size:13px}
 .progress-next{display:flex;align-items:center;gap:12px;border:1px dashed var(--line-strong);border-radius:14px;padding:13px 14px;margin:0 2px 10px;opacity:.75}
 .prog-lock{color:var(--ink-soft);flex:none;display:flex}
 .progress-next b{display:block;font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--ink-soft)}

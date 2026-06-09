@@ -8,6 +8,39 @@ const payrollQuerySchema = z.object({
   month: z.coerce.number().int().min(1).max(12).optional()
 });
 
+const obligationCreateSchema = z.object({
+  employeeId: z.string().uuid(),
+  title: z.string().trim().min(1).max(120),
+  amountTotal: z.coerce.number().int().min(1).max(100_000_000),
+  note: z.string().trim().max(300).optional().default("")
+});
+
+const obligationPaySchema = z.object({
+  amount: z.coerce.number().int().min(1).max(100_000_000)
+});
+
+const obligationPatchSchema = z.object({
+  title: z.string().trim().min(1).max(120).optional(),
+  amountTotal: z.coerce.number().int().min(1).max(100_000_000).optional(),
+  note: z.string().trim().max(300).optional()
+});
+
+const idParamSchema = z.object({ id: z.string().uuid() });
+
+type ObligationRow = {
+  id: string;
+  title: string;
+  amount_total: number;
+  amount_paid: number;
+  note: string | null;
+  updated_at: string;
+};
+
+type ManageObligationRow = ObligationRow & {
+  employee_id: string;
+  employee_name: string;
+};
+
 type ShiftRow = {
   work_date: string;
   planned_hours: string | null;
@@ -68,10 +101,101 @@ export function registerPayrollRoutes(app: FastifyInstance): void {
     const month = parsed.data.month || now.getMonth() + 1;
     return getPayrollMonth(user, year, month);
   });
+
+  app.post("/api/payroll/obligations", async (request, reply) => {
+    const user = await requirePayrollManager(request, reply);
+    if (!user) return;
+    const parsed = obligationCreateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_obligation" });
+      return;
+    }
+    const result = await query<{ id: string }>(
+      `
+        INSERT INTO employee_obligations (employee_id, title, amount_total, note, created_by)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+      `,
+      [parsed.data.employeeId, parsed.data.title, parsed.data.amountTotal, parsed.data.note || null, user.id]
+    );
+    return { ok: true, id: result.rows[0].id };
+  });
+
+  app.post("/api/payroll/obligations/:id/pay", async (request, reply) => {
+    const user = await requirePayrollManager(request, reply);
+    if (!user) return;
+    const params = idParamSchema.safeParse(request.params);
+    const parsed = obligationPaySchema.safeParse(request.body);
+    if (!params.success || !parsed.success) {
+      await reply.code(400).send({ error: "bad_obligation" });
+      return;
+    }
+    // Платёж уменьшает остаток; не больше общей суммы. При полном погашении — закрываем.
+    await query(
+      `
+        UPDATE employee_obligations
+        SET amount_paid = LEAST(amount_total, amount_paid + $2),
+            is_active = (LEAST(amount_total, amount_paid + $2) < amount_total),
+            updated_at = now()
+        WHERE id = $1
+      `,
+      [params.data.id, parsed.data.amount]
+    );
+    return { ok: true };
+  });
+
+  app.patch("/api/payroll/obligations/:id", async (request, reply) => {
+    const user = await requirePayrollManager(request, reply);
+    if (!user) return;
+    const params = idParamSchema.safeParse(request.params);
+    const parsed = obligationPatchSchema.safeParse(request.body);
+    if (!params.success || !parsed.success) {
+      await reply.code(400).send({ error: "bad_obligation" });
+      return;
+    }
+    await query(
+      `
+        UPDATE employee_obligations
+        SET title = COALESCE($2, title),
+            amount_total = COALESCE($3, amount_total),
+            note = COALESCE($4, note),
+            updated_at = now()
+        WHERE id = $1
+      `,
+      [params.data.id, parsed.data.title ?? null, parsed.data.amountTotal ?? null, parsed.data.note ?? null]
+    );
+    return { ok: true };
+  });
+
+  app.delete("/api/payroll/obligations/:id", async (request, reply) => {
+    const user = await requirePayrollManager(request, reply);
+    if (!user) return;
+    const params = idParamSchema.safeParse(request.params);
+    if (!params.success) {
+      await reply.code(400).send({ error: "bad_obligation" });
+      return;
+    }
+    await query("UPDATE employee_obligations SET is_active = false, updated_at = now() WHERE id = $1", [params.data.id]);
+    return { ok: true };
+  });
+}
+
+function isPayrollManager(user: SessionUser): boolean {
+  return user.role === "owner" || user.role === "manager";
 }
 
 async function requirePayrollAccess(request: FastifyRequest, reply: FastifyReply): Promise<SessionUser | undefined> {
   return requireUser(request, reply);
+}
+
+async function requirePayrollManager(request: FastifyRequest, reply: FastifyReply): Promise<SessionUser | undefined> {
+  const user = await requireUser(request, reply);
+  if (!user) return undefined;
+  if (!isPayrollManager(user)) {
+    await reply.code(403).send({ error: "forbidden" });
+    return undefined;
+  }
+  return user;
 }
 
 async function getPayrollMonth(user: SessionUser, year: number, month: number) {
@@ -172,7 +296,58 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
   const todayIso = new Date().toISOString().slice(0, 10);
   const upcomingPayday = paydayRows.rows.find((row) => row.work_date >= todayIso)?.work_date || paydayRows.rows.at(-1)?.work_date || "";
 
+  // Личные обязательства руководителя перед сотрудником (видны, пока остаток > 0).
+  const manager = isPayrollManager(user);
+  const obligationRows = await query<ObligationRow>(
+    `
+      SELECT id::text, title, amount_total, amount_paid, note, updated_at::text
+      FROM employee_obligations
+      WHERE employee_id = $1 AND is_active = true AND amount_total > amount_paid
+      ORDER BY created_at
+    `,
+    [user.id]
+  );
+  let manageEmployees: Array<{ id: string; name: string }> = [];
+  let allObligations: Array<Record<string, unknown>> = [];
+  if (manager) {
+    const emps = await query<{ id: string; display_name: string }>(
+      `SELECT id::text, display_name FROM employees WHERE is_active = true AND archived_at IS NULL ORDER BY display_name`
+    );
+    manageEmployees = emps.rows.map((row) => ({ id: row.id, name: row.display_name }));
+    const all = await query<ManageObligationRow>(
+      `
+        SELECT o.id::text, o.employee_id::text, e.display_name AS employee_name,
+               o.title, o.amount_total, o.amount_paid, o.note, o.updated_at::text
+        FROM employee_obligations o
+        JOIN employees e ON e.id = o.employee_id
+        WHERE o.is_active = true
+        ORDER BY e.display_name, o.created_at
+      `
+    );
+    allObligations = all.rows.map((row) => ({
+      id: row.id,
+      employeeId: row.employee_id,
+      employeeName: row.employee_name,
+      title: row.title,
+      amountTotal: row.amount_total,
+      amountPaid: row.amount_paid,
+      remaining: row.amount_total - row.amount_paid,
+      note: row.note || ""
+    }));
+  }
+
   return {
+    canManage: manager,
+    obligations: obligationRows.rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      amountTotal: row.amount_total,
+      amountPaid: row.amount_paid,
+      remaining: row.amount_total - row.amount_paid,
+      note: row.note || ""
+    })),
+    manageEmployees,
+    allObligations,
     year,
     month,
     employee: {
