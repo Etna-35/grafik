@@ -814,7 +814,7 @@ function renderTrainingChapter(chapter){
     return `
       <article class="training-article">
         <div class="training-article-head"><div><h2>${escapeHtml(chapter.title)}</h2></div></div>
-        <div class="quiz-gate locked">Глава закрыта. Сначала пройдите тест предыдущей главы — тогда откроется эта.</div>
+        <div class="quiz-gate locked">Эта глава откроется, когда закрепишь предыдущую тестом.</div>
       </article>
     `;
   }
@@ -825,9 +825,6 @@ function renderTrainingChapter(chapter){
           <h2>${escapeHtml(chapter.title)}</h2>
           ${chapter.summary ? `<p>${escapeHtml(chapter.summary)}</p>` : ""}
         </div>
-        <button class="ghost brand-action" type="button" data-training-read="${escapeAttr(chapter.id)}" ${chapter.isRead ? "disabled" : ""}>
-          ${chapter.isRead ? "Прочитано" : "Отметить прочитанным"}
-        </button>
       </div>
       ${chapter.attachments?.length ? `
         <div class="training-attachments">
@@ -837,20 +834,34 @@ function renderTrainingChapter(chapter){
       <div class="training-body">
         ${trainingTextToHtml(chapter.body)}
       </div>
-      ${renderChapterQuiz(chapter)}
+      ${renderChapterFooter(chapter)}
     </article>
   `;
 }
 
-function renderChapterQuiz(chapter){
+// Подвал главы под материалом: пока не прочитал — кнопка «Отметить прочитанным».
+// После прочтения она сменяется на «Пройти тест» (или статус сдачи).
+function renderChapterFooter(chapter){
   const qz = chapter.quiz || {};
-  if(!qz.questionCount) return "";
-  if(qz.passed) return `<div class="quiz-gate passed">Тест по главе пройден${qz.lastScore!=null?` · ${qz.lastScore}%`:""}. Следующая глава открыта.</div>`;
-  if(qz.lockedUntil) return `<div class="quiz-gate fail">Результат ниже 80%. Доизучи материал и вернись к тесту ${formatLockTime(qz.lockedUntil)}.</div>`;
-  const mins = Math.max(1, Math.round((qz.durationSec || qz.questionCount*90)/60));
+  if(!chapter.isRead){
+    return `
+      <div class="chapter-footer">
+        <button class="btn brand-action" type="button" data-training-read="${escapeAttr(chapter.id)}">Отметить прочитанным</button>
+      </div>
+    `;
+  }
+  if(!qz.questionCount){
+    return `<div class="chapter-footer"><div class="quiz-gate passed">Глава пройдена.</div></div>`;
+  }
+  if(qz.passed){
+    return `<div class="chapter-footer"><div class="quiz-gate passed">Тест пройден${qz.lastScore!=null?` · ${qz.lastScore}%`:""}. Следующая глава открыта.</div></div>`;
+  }
+  if(qz.lockedUntil){
+    return `<div class="chapter-footer"><div class="quiz-gate">Освежи материал и вернись к тесту ${formatLockTime(qz.lockedUntil)}.</div></div>`;
+  }
   return `
-    <div class="quiz-gate">
-      <div class="quiz-gate-info">Чтобы открыть следующую главу — пройдите тест. Вопросов: ${qz.questionCount}, время ~${mins} мин, порог 80%. Правильность во время теста не показывается.</div>
+    <div class="chapter-footer">
+      <div class="quiz-gate-info soft">Закрепим прочитанное небольшим тестом — и двигаемся дальше.</div>
       <button class="btn brand-action" type="button" data-quiz-start="chapter:${escapeAttr(chapter.id)}">Пройти тест</button>
     </div>
   `;
@@ -973,7 +984,7 @@ function renderQuizScreen(){
           <div class="quiz-title">Тест${q.scope === "attestation" ? " · аттестация" : ""}</div>
           <div class="quiz-timer" id="quizTimer">${formatClock(Math.round(q.durationSec))}</div>
         </div>
-        <div class="hint" style="margin:0 2px 12px">Правильность ответов не показывается. Порог — 80%. Время ограничено: по истечении тест завершится автоматически.</div>
+        <div class="hint" style="margin:0 2px 12px">Закрепим прочитанное — ответь на вопросы. Время ограничено, по окончании тест завершится сам.</div>
         <div class="quiz-questions">
           ${q.questions.map((qq, i)=>`
             <div class="quiz-q">
@@ -1024,7 +1035,7 @@ function renderQuizResult(){
           <div class="quiz-verdict">${r.passed ? "Тест пройден" : "Тест не пройден"}</div>
           <p>${r.passed
             ? "Отлично! Следующая глава открыта."
-            : `Нужно не меньше ${r.passPct || 80}%. Дополнительно изучи информацию и вернись к тесту через 2 часа.`}</p>
+            : "Чуть не хватило — освежи материал и попробуй снова немного позже."}</p>
           <button class="btn brand-action" type="button" id="quizDone">${r.passed ? "Продолжить" : "Понятно"}</button>
         </div>
       </section>
@@ -3526,11 +3537,19 @@ function renderShiftCell(day, employee, canSeeMoney){
     : "";
   const valueClass = isFixedShift(employee, shift) ? "h fx" : "h";
   const isBirthday = employee.birthDate && day.date.slice(5) === employee.birthDate.slice(5);
+  let bdayAge = null;
+  if(isBirthday && employee.birthDate.length >= 4){
+    const a = Number(day.date.slice(0,4)) - Number(employee.birthDate.slice(0,4));
+    if(a > 0 && a < 100) bdayAge = a;
+  }
+  const bdayTitle = isBirthday
+    ? `День рождения · ${employee.name}${bdayAge!=null ? ` · исполнится ${bdayAge} ${pluralize(bdayAge,"год","года","лет")}` : ""}`
+    : "";
 
   return `
     <td class="${classes}${isBirthday ? " bday" : ""}" data-schedule-cell="1" data-date="${escapeAttr(day.date)}" data-employee="${escapeAttr(employee.id)}">
       <span class="${valueClass}" style="${shift ? `background:${roleColor(employee.role)}` : ""}">${label}</span>
-      ${isBirthday ? `<span class="bday-mark" title="День рождения · ${escapeAttr(employee.name)}">ДР</span>` : ""}
+      ${isBirthday ? `<span class="bday-mark" title="${escapeAttr(bdayTitle)}">ДР${bdayAge!=null ? `<i>${bdayAge}</i>` : ""}</span>` : ""}
       ${renderScoreDots(score)}
     </td>
   `;

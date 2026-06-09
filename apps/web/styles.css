@@ -485,7 +485,9 @@ button.stat{cursor:pointer;color:var(--ink);text-align:left;font:inherit}
 .praise-body{font-size:14px;line-height:1.45;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
 .praise-meta{margin-top:7px;font-size:11px;color:var(--ink-soft);font-weight:500}
 .praise-meta b{color:var(--ink);font-weight:700}
-.schedule-grid td.cell.bday .bday-mark{position:absolute;left:2px;top:2px;font-size:8px;font-weight:700;line-height:1;color:var(--brand-ink);background:var(--brand-bright);border-radius:4px;padding:1px 3px;z-index:2;pointer-events:none}
+.schedule-grid td.cell.bday{box-shadow:inset 0 0 0 2px var(--brand-bright)}
+.schedule-grid td.cell.bday .bday-mark{position:absolute;left:2px;top:2px;display:inline-flex;align-items:center;gap:2px;font-size:10px;font-weight:800;line-height:1;color:var(--brand-ink);background:var(--brand-bright);border-radius:5px;padding:2px 4px;z-index:2;pointer-events:none;box-shadow:0 1px 3px rgba(0,0,0,.45)}
+.schedule-grid td.cell.bday .bday-mark i{font-style:normal;font-size:11px}
 /* Единая верхняя подложка: цель дня + 3 плановых блока */
 .day-panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin:4px 2px 10px;box-shadow:var(--shadow)}
 .day-goal{font-size:13px;line-height:1.4;color:var(--ink-soft);font-weight:400;margin-bottom:12px}
@@ -521,6 +523,8 @@ button.day-block{cursor:pointer;font:inherit}
 .quiz-gate.passed{border-color:var(--ok-line);background:var(--ok-bg);color:var(--green);font-weight:600}
 .quiz-gate.fail{border-color:var(--danger-line);background:var(--danger-bg);color:var(--danger);font-weight:600}
 .quiz-gate.locked{border-style:dashed;border-color:var(--line-strong);background:transparent;color:var(--ink-soft);font-weight:500}
+.chapter-footer{margin-top:18px;display:flex;flex-direction:column;gap:10px;align-items:stretch}
+.chapter-footer .quiz-gate-info.soft{color:var(--ink-soft);margin:0;text-align:center}
 .quiz-bar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 2px 8px}
 .quiz-title{font-family:var(--font-display);font-weight:700;font-size:18px}
 .quiz-timer{font-family:var(--font-display);font-weight:700;font-size:20px;color:var(--brand-bright);border:1px solid var(--line);background:var(--card);border-radius:10px;padding:6px 12px;font-feature-settings:"tnum" 1}
