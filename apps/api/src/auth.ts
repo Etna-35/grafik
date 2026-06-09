@@ -89,7 +89,20 @@ export async function getServices(employeeId: string): Promise<Service[]> {
     `,
     [employeeId]
   );
-  return result.rows;
+  const rows = result.rows;
+  // Обучение доступно всем: если сервис не выдан явно — добавляем его как просматриваемый.
+  if (!rows.some((service) => service.code === "training")) {
+    const training = await query<Service>(
+      `SELECT id, code, title, url, is_active, true AS can_view, false AS can_edit
+       FROM services WHERE code = 'training' AND is_active = true LIMIT 1`
+    );
+    if (training.rows[0]) {
+      const idx = rows.findIndex((service) => ["requisition", "payroll", "admin"].includes(service.code));
+      if (idx === -1) rows.push(training.rows[0]);
+      else rows.splice(idx, 0, training.rows[0]);
+    }
+  }
+  return rows;
 }
 
 export async function authenticateRequest(request: FastifyRequest): Promise<SessionUser | undefined> {

@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { audit, getServices, requireUser, type SessionUser } from "./auth.js";
+import { audit, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
 import { getQuizCounts, getAttemptStates, buildQuizState } from "./quiz.js";
 import { awardPoints } from "./progress.js";
@@ -130,16 +130,8 @@ async function requireTrainingAccess(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<SessionUser | undefined> {
-  const user = await requireUser(request, reply);
-  if (!user) return undefined;
-  if (canManageTraining(user)) return user;
-
-  const services = await getServices(user.id);
-  if (!services.some((service) => service.code === "training" && service.can_view)) {
-    await reply.code(403).send({ error: "forbidden" });
-    return undefined;
-  }
-  return user;
+  // Обучение доступно всем авторизованным сотрудникам (решение продукта).
+  return requireUser(request, reply);
 }
 
 function canManageTraining(user: SessionUser): boolean {
@@ -147,16 +139,10 @@ function canManageTraining(user: SessionUser): boolean {
 }
 
 async function getTrainingContent(user: SessionUser) {
-  const canManage = canManageTraining(user);
-  const moduleAudienceFilter = canManage
-    ? ""
-    : "AND (m.audience_role IS NULL OR m.audience_role = $1::employee_role)";
-  const chapterAudienceFilter = canManage
-    ? ""
-    : "AND (m.audience_role IS NULL OR m.audience_role = $2::employee_role)";
-  const routeAudienceFilter = canManage
-    ? ""
-    : "AND (r.audience_role IS NULL OR r.audience_role = $1::employee_role)";
+  // Обучение открыто всем: ролевые ограничения видимости модулей сняты (решение продукта).
+  const moduleAudienceFilter = "";
+  const chapterAudienceFilter = "";
+  const routeAudienceFilter = "";
 
   const [modulesResult, chaptersResult, attachmentsResult, routeResult, routeDaysResult, routeItemsResult] =
     await Promise.all([
@@ -168,7 +154,7 @@ async function getTrainingContent(user: SessionUser) {
             ${moduleAudienceFilter}
           ORDER BY sort_order, title
         `,
-        canManage ? [] : [user.role]
+        []
       ),
       query<ChapterRow>(
         `
@@ -190,7 +176,7 @@ async function getTrainingContent(user: SessionUser) {
             ${chapterAudienceFilter}
           ORDER BY m.sort_order, c.sort_order, c.title
         `,
-        canManage ? [user.id] : [user.id, user.role]
+        [user.id]
       ),
       query<AttachmentRow>(
         `
@@ -212,7 +198,7 @@ async function getTrainingContent(user: SessionUser) {
             ${moduleAudienceFilter}
           ORDER BY a.sort_order, a.title
         `,
-        canManage ? [] : [user.role]
+        []
       ),
       query<RouteRow>(
         `
@@ -223,7 +209,7 @@ async function getTrainingContent(user: SessionUser) {
           ORDER BY sort_order, title
           LIMIT 1
         `,
-        canManage ? [] : [user.role]
+        []
       ),
       query<RouteDayRow>(
         `
@@ -234,7 +220,7 @@ async function getTrainingContent(user: SessionUser) {
             ${routeAudienceFilter}
           ORDER BY d.sort_order, d.day_number
         `,
-        canManage ? [] : [user.role]
+        []
       ),
       query<RouteItemRow>(
         `
@@ -254,7 +240,7 @@ async function getTrainingContent(user: SessionUser) {
             ${routeAudienceFilter}
           ORDER BY i.sort_order, i.title
         `,
-        canManage ? [] : [user.role]
+        []
       )
     ]);
 

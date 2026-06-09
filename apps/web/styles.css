@@ -581,6 +581,11 @@ button.day-block{cursor:pointer;font:inherit}
 
 /* Страница прогресса */
 .plan-met-btn{width:auto;margin:0 2px 12px;padding:8px 13px;font-size:12.5px}
+.bday-banner{background:var(--brand-tint);border:1px solid var(--brand-line);border-radius:14px;padding:14px 16px;margin:0 2px 12px}
+.bday-banner.self{background:var(--brand);border-color:var(--brand-bright);color:var(--brand-ink)}
+.bday-banner .bb-title{font-family:var(--font-display);font-weight:700;font-size:15px;line-height:1.25}
+.bday-banner .bb-sub{font-size:13px;margin-top:4px;opacity:.92}
+.bday-banner .bb-btn{margin-top:10px;width:auto;padding:8px 14px;font-size:13px}
 .progress-next{display:flex;align-items:center;gap:12px;border:1px dashed var(--line-strong);border-radius:14px;padding:13px 14px;margin:0 2px 10px;opacity:.75}
 .prog-lock{color:var(--ink-soft);flex:none;display:flex}
 .progress-next b{display:block;font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--ink-soft)}

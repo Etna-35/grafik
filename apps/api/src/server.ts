@@ -191,7 +191,21 @@ export function buildServer() {
 
     const progress = await getProgressSummary(user.id, result.rows[0].start_date);
 
+    // Дни рождения: своё (личное поздравление) и коллег (предложить сказать «Спасибо»).
+    const birthdays = await query<{ id: string; display_name: string; is_self: boolean }>(
+      `
+        SELECT id, display_name, (id = $1) AS is_self
+        FROM employees
+        WHERE is_active = true AND archived_at IS NULL AND birth_date IS NOT NULL
+          AND to_char(birth_date, 'MM-DD') = to_char((now() AT TIME ZONE 'Europe/Moscow')::date, 'MM-DD')
+        ORDER BY display_name
+      `,
+      [user.id]
+    );
+
     return {
+      isBirthdayToday: birthdays.rows.some((row) => row.is_self),
+      birthdaysToday: birthdays.rows.filter((row) => !row.is_self).map((row) => ({ id: row.id, name: row.display_name })),
       level: progress.level,
       progressPct: progress.progressPct,
       toNextPct: progress.toNextPct,

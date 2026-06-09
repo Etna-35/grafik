@@ -229,6 +229,7 @@ async function login(){
 
 function renderHub(){
   const today = new Intl.DateTimeFormat("ru-RU", { weekday:"short", day:"numeric", month:"long" }).format(new Date());
+  state.praisePrefillTo = null;
   app.innerHTML = `
     <div class="phone">
       <section class="screen">
@@ -239,6 +240,7 @@ function renderHub(){
         <div class="greet">
           <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}</div>
         </div>
+        ${renderBirthday()}
         ${renderDayPanel()}
         ${renderSalesGoals()}
         ${renderMerits()}
@@ -266,6 +268,12 @@ function renderHub(){
   app.querySelector("[data-action='logout']").addEventListener("click", logout);
   app.querySelector("[data-action='praise']")?.addEventListener("click", openPraise);
   app.querySelector("[data-action='progress']")?.addEventListener("click", openProgress);
+  app.querySelectorAll("[data-praise-bday]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      state.praisePrefillTo = button.dataset.praiseBday;
+      openPraise();
+    });
+  });
   app.querySelectorAll("[data-goal-inc]").forEach((button)=>{
     button.addEventListener("click", ()=>adjustSalesGoal(button.dataset.goalInc, 1));
   });
@@ -306,6 +314,30 @@ function tenureLevel(startStr){
 function heartIcon(){ return `<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 21S3.5 14.6 3.5 8.9C3.5 6 5.7 4 8.2 4c1.7 0 3 .9 3.8 2.1C12.8 4.9 14.1 4 15.8 4c2.5 0 4.7 2 4.7 4.9C20.5 14.6 12 21 12 21z"/></svg>`; }
 function meritStarIcon(){ return `<svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18"><path d="M12 2.5l2.9 6 6.6.8-4.9 4.5 1.3 6.5L12 17l-5.9 3.3 1.3-6.5L2.5 9.3l6.6-.8z"/></svg>`; }
 function shieldIcon(){ return `<svg viewBox="0 0 24 24" fill="currentColor" width="26" height="26"><path d="M12 2l8 3v6c0 5-3.4 9.2-8 11-4.6-1.8-8-6-8-11V5z"/></svg>`; }
+
+function renderBirthday(){
+  const s = state.summary || {};
+  const others = s.birthdaysToday || [];
+  const blocks = [];
+  if(s.isBirthdayToday){
+    blocks.push(`
+      <div class="bday-banner self">
+        <div class="bb-title">С днём рождения, ${escapeHtml(firstName(state.user.displayName))}!</div>
+        <div class="bb-sub">Команда Etna желает тебе отличного дня. Спасибо, что ты с нами.</div>
+      </div>
+    `);
+  }
+  for(const person of others){
+    blocks.push(`
+      <div class="bday-banner">
+        <div class="bb-title">Сегодня день рождения у ${escapeHtml(person.name)}</div>
+        <div class="bb-sub">Поздравь и скажи спасибо — это приятно.</div>
+        <button class="ghost brand-action bb-btn" type="button" data-praise-bday="${escapeAttr(person.id)}">Поздравить</button>
+      </div>
+    `);
+  }
+  return blocks.join("");
+}
 
 function renderMerits(){
   const s = state.summary || {};
@@ -498,7 +530,7 @@ function renderPraiseScreen(){
             <form class="panel" id="praiseForm">
               <label class="field">
                 <span>Кого благодарим</span>
-                <select name="toId" required>${(data.colleagues || []).map((c)=>`<option value="${escapeAttr(c.id)}">${escapeHtml(c.name)}</option>`).join("")}</select>
+                <select name="toId" required>${(data.colleagues || []).map((c)=>`<option value="${escapeAttr(c.id)}" ${state.praisePrefillTo === c.id ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}</select>
               </label>
               <label class="field" style="margin-top:10px">
                 <span>За что</span>
