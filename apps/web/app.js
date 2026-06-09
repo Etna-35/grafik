@@ -772,6 +772,16 @@ function renderTrainingEmployeeProgress(employee){
 
 function renderTrainingRoute(route, chapters){
   if(!route) return "";
+  if(route.completed){
+    return `
+      <section class="training-route">
+        <div class="route-done-bar">
+          <span>${escapeHtml(route.title)} пройден</span>
+          <button type="button" class="linklike" data-route-reset="${escapeAttr(route.id)}">вернуть</button>
+        </div>
+      </section>
+    `;
+  }
   const readIds = new Set(chapters.filter((chapter)=>chapter.isRead).map((chapter)=>chapter.id));
   return `
     <section class="training-route">
@@ -795,6 +805,7 @@ function renderTrainingRoute(route, chapters){
           </div>
         `).join("")}
       </div>
+      <button type="button" class="ghost brand-action route-done-btn" data-route-done="${escapeAttr(route.id)}">Путь пройден</button>
     </section>
   `;
 }
@@ -981,6 +992,29 @@ function bindTrainingPage(){
       startQuiz(scope, scopeId);
     });
   });
+  const routeDone = app.querySelector("[data-route-done]");
+  routeDone?.addEventListener("click", ()=>setRouteCompleted(routeDone.dataset.routeDone, true));
+  const routeReset = app.querySelector("[data-route-reset]");
+  routeReset?.addEventListener("click", ()=>setRouteCompleted(routeReset.dataset.routeReset, false));
+}
+
+async function setRouteCompleted(routeId, done){
+  if(!routeId || state.trainingSaving) return;
+  state.trainingSaving = true;
+  render();
+  try{
+    if(done){
+      await apiPost(`/api/training/routes/${encodeURIComponent(routeId)}/complete`, {});
+    }else{
+      await apiDelete(`/api/training/routes/${encodeURIComponent(routeId)}/complete`);
+    }
+    state.training = await apiGet("/api/training/init");
+  }catch(error){
+    state.trainingError = "Не удалось сохранить";
+  }finally{
+    state.trainingSaving = false;
+    render();
+  }
 }
 
 let quizTimer = null;

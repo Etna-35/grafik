@@ -124,6 +124,37 @@ export function registerTrainingRoutes(app: FastifyInstance): void {
     await awardPoints(user.id, "chapter_read", "Прочитал главу", "training_chapter", params.data.id);
     return { ok: true };
   });
+
+  app.post("/api/training/routes/:id/complete", async (request, reply) => {
+    const user = await requireTrainingAccess(request, reply);
+    if (!user) return;
+    const params = chapterParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      await reply.code(400).send({ error: "bad_route" });
+      return;
+    }
+    await query(
+      `INSERT INTO training_route_completions (employee_id, route_id) VALUES ($1, $2)
+       ON CONFLICT (employee_id, route_id) DO NOTHING`,
+      [user.id, params.data.id]
+    );
+    return { ok: true };
+  });
+
+  app.delete("/api/training/routes/:id/complete", async (request, reply) => {
+    const user = await requireTrainingAccess(request, reply);
+    if (!user) return;
+    const params = chapterParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      await reply.code(400).send({ error: "bad_route" });
+      return;
+    }
+    await query(
+      "DELETE FROM training_route_completions WHERE employee_id = $1 AND route_id = $2",
+      [user.id, params.data.id]
+    );
+    return { ok: true };
+  });
 }
 
 async function requireTrainingAccess(
@@ -276,8 +307,16 @@ async function getTrainingContent(user: SessionUser) {
     }
   }
 
+  let routeCompleted = false;
+  if (routeResult.rows[0]) {
+    const done = await query<{ c: string }>(
+      "SELECT COUNT(*)::text AS c FROM training_route_completions WHERE employee_id = $1 AND route_id = $2",
+      [user.id, routeResult.rows[0].id]
+    );
+    routeCompleted = Number(done.rows[0]?.c || 0) > 0;
+  }
   const route = routeResult.rows[0]
-    ? serializeRoute(routeResult.rows[0], routeDaysResult.rows, routeItemsResult.rows)
+    ? serializeRoute(routeResult.rows[0], routeDaysResult.rows, routeItemsResult.rows, routeCompleted)
     : null;
   const readCount = chapters.filter((chapter) => chapter.isRead).length;
 
@@ -387,13 +426,14 @@ function serializeAttachment(row: AttachmentRow) {
   };
 }
 
-function serializeRoute(route: RouteRow, days: RouteDayRow[], items: RouteItemRow[]) {
+function serializeRoute(route: RouteRow, days: RouteDayRow[], items: RouteItemRow[], completed: boolean) {
   const itemsByDay = groupBy(items, "route_day_id");
   return {
     id: route.id,
     slug: route.slug,
     title: route.title,
     description: route.description,
+    completed,
     days: days
       .filter((day) => day.route_id === route.id)
       .map((day) => ({
