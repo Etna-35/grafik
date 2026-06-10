@@ -4096,6 +4096,13 @@ function renderScheduleDateEditor(service){
             ${state.schedule.employees.map((item)=>`<option value="${escapeAttr(item.id)}" ${item.id === employee.id ? "selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
           </select>
           <input id="datePayoutAmount" type="number" min="0" step="100" inputmode="numeric" placeholder="сумма, ₽">
+          <select id="datePayoutMonth" title="За какой месяц">${payoutMonthOptions(day.date.slice(0, 7))}</select>
+          ${(state.schedule.obligations || []).length ? `
+            <select id="datePayoutObligation" title="Привязать к обязательству">
+              <option value="">— без обязательства —</option>
+              ${state.schedule.obligations.map((o)=>`<option value="${escapeAttr(o.id)}">${escapeHtml((state.schedule.employees.find((e)=>e.id === o.employeeId) || {}).name || "")} · ${escapeHtml(o.title)} (ост. ${formatMoneyPlain(o.remaining)} ₽)</option>`).join("")}
+            </select>
+          ` : ""}
           <button class="ghost brand-action" data-date-action="add-payout">Добавить выплату</button>
         </div>
       </div>
@@ -4353,14 +4360,36 @@ async function clearScoreFor(context){
   }));
 }
 
+function payoutMonthOptions(selectedYM){
+  const months = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+  const baseY = state.schedule?.year || new Date().getFullYear();
+  const baseM = state.schedule?.month || new Date().getMonth() + 1;
+  const opts = [];
+  for(let i = 0; i < 9; i++){
+    const d = new Date(baseY, baseM - 1 - i, 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    opts.push(`<option value="${ym}" ${ym === selectedYM ? "selected" : ""}>${months[d.getMonth()]} ${d.getFullYear()}</option>`);
+  }
+  return opts.join("");
+}
+
 async function addPayoutFor(context, inputSelector = "#datePayoutAmount"){
   const amount = Number(app.querySelector(inputSelector)?.value);
   if(!Number.isFinite(amount) || amount <= 0) return;
-  const employeeId = app.querySelector("#datePayoutEmployee")?.value || context.employee.id;
+  const applyMonth = app.querySelector("#datePayoutMonth")?.value || undefined;
+  const obligationId = app.querySelector("#datePayoutObligation")?.value || null;
+  let employeeId = app.querySelector("#datePayoutEmployee")?.value || context.employee.id;
+  // Если выбрано обязательство — выплата идёт его сотруднику (для согласованности).
+  if(obligationId){
+    const o = (state.schedule.obligations || []).find((x)=>x.id === obligationId);
+    if(o) employeeId = o.employeeId;
+  }
   await saveAndReload(()=>apiPost("/api/schedule/payouts", {
     workDate: context.day.date,
     employeeId,
-    amount: Math.round(amount)
+    amount: Math.round(amount),
+    applyMonth,
+    obligationId
   }));
 }
 

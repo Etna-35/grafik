@@ -53,6 +53,8 @@ type PayoutRow = {
   work_date: string;
   amount: number;
   created_at: string;
+  apply_month: string | null;
+  obligation_title: string | null;
 };
 
 type PaydayRow = {
@@ -184,6 +186,12 @@ function isPayrollManager(user: SessionUser): boolean {
   return user.role === "owner" || user.role === "manager";
 }
 
+const RU_MONTHS = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+function ruMonth(dateStr: string): string {
+  const [y, m] = dateStr.split("-");
+  return `${RU_MONTHS[Number(m) - 1] || m} ${y}`;
+}
+
 async function requirePayrollAccess(request: FastifyRequest, reply: FastifyReply): Promise<SessionUser | undefined> {
   return requireUser(request, reply);
 }
@@ -214,12 +222,14 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
     ),
     query<PayoutRow>(
       `
-        SELECT id::text, work_date::text, amount, created_at::text
-        FROM payroll_payouts
-        WHERE employee_id = $2
-          AND work_date >= $1::date
-          AND work_date < ($1::date + interval '1 month')
-        ORDER BY work_date DESC, created_at DESC
+        SELECT p.id::text, p.work_date::text, p.amount, p.created_at::text,
+               p.apply_month::text, o.title AS obligation_title
+        FROM payroll_payouts p
+        LEFT JOIN employee_obligations o ON o.id = p.obligation_id
+        WHERE p.employee_id = $2
+          AND COALESCE(p.apply_month, date_trunc('month', p.work_date)::date) >= $1::date
+          AND COALESCE(p.apply_month, date_trunc('month', p.work_date)::date) < ($1::date + interval '1 month')
+        ORDER BY p.work_date DESC, p.created_at DESC
       `,
       [start, user.id]
     ),
@@ -384,7 +394,12 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       id: row.id,
       workDate: row.work_date,
       amount: row.amount,
-      createdAt: row.created_at
+      createdAt: row.created_at,
+      note: row.obligation_title
+        ? `обязательство: ${row.obligation_title}`
+        : row.apply_month
+          ? `за ${ruMonth(row.apply_month)}`
+          : ""
     })),
     hookah: hookahRows.rows.map((row) => ({
       id: row.id,

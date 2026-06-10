@@ -47,7 +47,9 @@ const dayEditSchema = z.object({
 });
 
 const payoutCreateSchema = employeeDateSchema.extend({
-  amount: z.number().int().positive().max(1000000)
+  amount: z.number().int().positive().max(1000000),
+  applyMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
+  obligationId: z.string().uuid().nullable().optional()
 });
 
 const payoutParamsSchema = z.object({
@@ -204,14 +206,27 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     }
 
     await ensureScheduleDay(parsed.data.workDate);
+    const applyMonth = parsed.data.applyMonth ? `${parsed.data.applyMonth}-01` : null;
+    const obligationId = parsed.data.obligationId || null;
     const result = await query<{ id: string }>(
       `
-        INSERT INTO payroll_payouts (work_date, employee_id, amount, created_by)
-        VALUES ($1::date, $2, $3, $4)
+        INSERT INTO payroll_payouts (work_date, employee_id, amount, created_by, apply_month, obligation_id)
+        VALUES ($1::date, $2, $3, $4, $5::date, $6)
         RETURNING id
       `,
-      [parsed.data.workDate, parsed.data.employeeId, parsed.data.amount, user.id]
+      [parsed.data.workDate, parsed.data.employeeId, parsed.data.amount, user.id, applyMonth, obligationId]
     );
+    // Если выплата гасит личное обязательство — уменьшаем его остаток (как в payroll obligations/pay).
+    if (obligationId) {
+      await query(
+        `UPDATE employee_obligations
+         SET amount_paid = LEAST(amount_total, amount_paid + $2),
+             is_active = (LEAST(amount_total, amount_paid + $2) < amount_total),
+             updated_at = now()
+         WHERE id = $1 AND employee_id = $3`,
+        [obligationId, parsed.data.amount, parsed.data.employeeId]
+      );
+    }
     await audit(request, "payroll_payout_create", user.id, "payroll_payout", result.rows[0].id, parsed.data);
     return { ok: true, id: result.rows[0].id };
   });
@@ -226,7 +241,20 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
       return;
     }
 
-    await query("DELETE FROM payroll_payouts WHERE id = $1", [parsed.data.id]);
+    // Если выплата гасила обязательство — возвращаем остаток обратно.
+    const removed = await query<{ amount: number; obligation_id: string | null }>(
+      "DELETE FROM payroll_payouts WHERE id = $1 RETURNING amount, obligation_id::text",
+      [parsed.data.id]
+    );
+    const row = removed.rows[0];
+    if (row?.obligation_id) {
+      await query(
+        `UPDATE employee_obligations
+         SET amount_paid = GREATEST(0, amount_paid - $2), is_active = true, updated_at = now()
+         WHERE id = $1`,
+        [row.obligation_id, row.amount]
+      );
+    }
     await audit(request, "payroll_payout_delete", user.id, "payroll_payout", parsed.data.id);
     return { ok: true };
   });
@@ -446,10 +474,23 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     ? Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.paid, 0)
     : 0;
 
+  // Активные личные обязательства (для привязки выплаты к обязательству в окне дня).
+  const obligations = canSeeAllMoney
+    ? (
+        await query<{ id: string; employee_id: string; title: string; remaining: number }>(
+          `SELECT id::text, employee_id::text, title, (amount_total - amount_paid) AS remaining
+           FROM employee_obligations
+           WHERE is_active = true AND amount_total > amount_paid
+           ORDER BY created_at`
+        )
+      ).rows.map((o) => ({ id: o.id, employeeId: o.employee_id, title: o.title, remaining: Number(o.remaining) }))
+    : [];
+
   return {
     year,
     month,
     canSeeMoney: canSeeAllMoney,
+    obligations,
     employees: employeeRows.rows.map((employee) => {
       const totals = employeeTotals.get(employee.id) || { accrued: 0, paid: 0, shifts: 0 };
       const payModel = employee.pay_model || (employee.schedule_role === "dish" || employee.role === "dishwasher" ? "fixed" : "hourly");

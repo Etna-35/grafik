@@ -373,9 +373,9 @@ button.stat{cursor:pointer;color:var(--ink);text-align:left;font:inherit}
 .payout-editor{border-top:1px solid var(--line);padding-top:10px}
 .payout-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:7px 8px;margin-top:7px;font-size:13px;font-weight:600}
 .payout-item button{margin-left:auto}
-.payout-add{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr) auto;gap:8px;margin-top:8px;align-items:center}
-.payout-add input{border:1px solid var(--line-strong);background:var(--card);border-radius:10px;padding:10px 11px;color:var(--ink);font:inherit;font-size:14px;font-weight:500;min-width:0}
-@media (max-width:560px){.payout-add{grid-template-columns:1fr 1fr}.payout-add button{grid-column:1/-1}}
+.payout-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
+.payout-add>select,.payout-add>input{flex:1 1 140px;border:1px solid var(--line-strong);background:var(--card);border-radius:10px;padding:10px 11px;color:var(--ink);font:inherit;font-size:14px;font-weight:500;min-width:0}
+.payout-add>button{flex:1 1 100%}
 .muted-line{font-size:12px;color:var(--ink-soft);margin-top:7px}
 .requisition-phone{max-width:none}
 .requisition-screen{max-width:980px;margin:0 auto}
