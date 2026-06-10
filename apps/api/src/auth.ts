@@ -90,16 +90,19 @@ export async function getServices(employeeId: string): Promise<Service[]> {
     [employeeId]
   );
   const rows = result.rows;
-  // Обучение доступно всем: если сервис не выдан явно — добавляем его как просматриваемый.
-  if (!rows.some((service) => service.code === "training")) {
-    const training = await query<Service>(
+  // Эти разделы доступны всем должностям: если сервис не выдан явно — добавляем его как просматриваемый.
+  // training — база знаний; requisition — заявка (в т.ч. хозтовары всем).
+  for (const code of ["training", "requisition"]) {
+    if (rows.some((service) => service.code === code)) continue;
+    const svc = await query<Service>(
       `SELECT id, code, title, url, is_active, true AS can_view, false AS can_edit
-       FROM services WHERE code = 'training' AND is_active = true LIMIT 1`
+       FROM services WHERE code = $1 AND is_active = true LIMIT 1`,
+      [code]
     );
-    if (training.rows[0]) {
-      const idx = rows.findIndex((service) => ["requisition", "payroll", "admin"].includes(service.code));
-      if (idx === -1) rows.push(training.rows[0]);
-      else rows.splice(idx, 0, training.rows[0]);
+    if (svc.rows[0]) {
+      const idx = rows.findIndex((service) => ["payroll", "admin"].includes(service.code));
+      if (idx === -1) rows.push(svc.rows[0]);
+      else rows.splice(idx, 0, svc.rows[0]);
     }
   }
 

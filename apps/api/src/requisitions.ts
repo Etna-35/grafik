@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
-import { audit, getServices, requireUser, type SessionUser } from "./auth.js";
+import { audit, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
 import { sendMessage, teamChatId, tgEscape } from "./telegram.js";
 import { awardPoints } from "./progress.js";
@@ -237,16 +237,8 @@ async function requireRequisitionAccess(
   request: FastifyRequest,
   reply: FastifyReply
 ): Promise<SessionUser | undefined> {
-  const user = await requireUser(request, reply);
-  if (!user) return undefined;
-  if (canManageRequisitions(user)) return user;
-
-  const services = await getServices(user.id);
-  if (!services.some((service) => service.code === "requisition" && service.can_view)) {
-    await reply.code(403).send({ error: "forbidden" });
-    return undefined;
-  }
-  return user;
+  // Заявка (в т.ч. хозтовары) доступна всем авторизованным сотрудникам.
+  return requireUser(request, reply);
 }
 
 async function requireRequisitionManager(
@@ -324,6 +316,8 @@ async function getVisibleCatalog(user: SessionUser): Promise<{ categories: Categ
 
 function canSeeCategory(user: SessionUser, category: Pick<CategoryRow, "name" | "kind">): boolean {
   if (canManageRequisitions(user)) return true;
+  // Хозяйственные товары (household) доступны всем должностям для заказа.
+  if (category.kind === "household") return true;
 
   const name = normalizeCategoryName(category.name);
   if (user.role === "bar") {
@@ -333,7 +327,8 @@ function canSeeCategory(user: SessionUser, category: Pick<CategoryRow, "name" | 
     return !name.includes("алкоголь") && !name.includes("напит");
   }
 
-  return !name.includes("алкоголь") && !name.includes("напит");
+  // Официанты/мойка и пр. — только хозтовары (обработаны выше), продукты не заказывают.
+  return false;
 }
 
 function normalizeCategoryName(name: string): string {

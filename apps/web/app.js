@@ -1649,12 +1649,14 @@ function renderRequisitionContent(){
 function renderRequisitionCatalog(){
   const categories = requisitionCategoriesForKind(state.requisitionKind);
   const allCount = requisitionItemsForKind(state.requisitionKind).length;
+  const hasProduct = requisitionCategoriesForKind("product").length > 0;
+  const hasHousehold = requisitionCategoriesForKind("household").length > 0;
 
   return `
     <div class="req-toolbar">
       <div class="req-segment">
-        <button class="${state.requisitionKind === "product" ? "on" : ""}" data-req-kind="product">Продукты</button>
-        <button class="${state.requisitionKind === "household" ? "on" : ""}" data-req-kind="household">Хозтовары</button>
+        ${hasProduct ? `<button class="${state.requisitionKind === "product" ? "on" : ""}" data-req-kind="product">Продукты</button>` : ""}
+        ${hasHousehold ? `<button class="${state.requisitionKind === "household" ? "on" : ""}" data-req-kind="household">Хозтовары</button>` : ""}
       </div>
       <label class="req-search">
         <input type="search" value="${escapeAttr(state.requisitionSearch)}" placeholder="Поиск по каталогу" data-req-search autocomplete="off">
@@ -1777,6 +1779,8 @@ function renderRequisitionCart(){
 
 function renderFreeRequisitionPanel(){
   const categories = requisitionCategoriesForKind(state.requisitionKind);
+  const hasProduct = requisitionCategoriesForKind("product").length > 0;
+  const hasHousehold = requisitionCategoriesForKind("household").length > 0;
   return `
     <form class="panel req-free" id="requisitionFreeForm">
       <div class="row-title">Другое</div>
@@ -1785,8 +1789,8 @@ function renderFreeRequisitionPanel(){
         <label class="field">
           <span>Тип</span>
           <select name="freeKind">
-            <option value="product" ${state.requisitionKind === "product" ? "selected" : ""}>Продукты</option>
-            <option value="household" ${state.requisitionKind === "household" ? "selected" : ""}>Хозтовары</option>
+            ${hasProduct ? `<option value="product" ${state.requisitionKind === "product" ? "selected" : ""}>Продукты</option>` : ""}
+            ${hasHousehold ? `<option value="household" ${state.requisitionKind === "household" ? "selected" : ""}>Хозтовары</option>` : ""}
           </select>
         </label>
         <label class="field">
