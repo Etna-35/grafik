@@ -656,6 +656,11 @@ button.day-block{cursor:pointer;font:inherit}
 .training-progress{text-align:right}
 .training-progress b{display:block;font-family:var(--font-display);font-size:30px;line-height:1;font-weight:700;color:var(--brand-bright)}
 .training-progress span{display:block;color:var(--ink-soft);font-size:12px;font-weight:600;margin-top:5px}
+.training-challenge{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:0 2px 12px;padding:12px 15px;border:1px solid var(--brand-line);background:var(--brand-tint);border-radius:8px}
+.training-challenge .tc-text b{display:block;font-family:var(--font-display);font-weight:700;font-size:14px;color:var(--ink)}
+.training-challenge .tc-text span{display:block;font-size:12px;color:var(--ink-soft);margin-top:2px;line-height:1.35}
+.training-challenge .btn{width:auto;padding:9px 18px;flex:0 0 auto}
+.training-challenge .btn:disabled{opacity:.5;cursor:default}
 .training-manager{border:1px solid var(--line);background:var(--card);padding:14px;margin:0 2px 12px}
 .training-manager-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:10px}
 .training-manager .sec{margin:0 0 4px}

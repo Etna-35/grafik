@@ -6,15 +6,30 @@ import { awardPoints } from "./progress.js";
 
 export const QUIZ_PASS_PCT = 80;
 export const QUIZ_PER_QUESTION_SEC = 90;
-export const QUIZ_LOCK_HOURS = 2;
+export const QUIZ_LOCK_MINUTES = 10;
 // На попытку выдаётся случайная подвыборка из пула (чтобы тесты не были слишком длинными).
 export const QUIZ_CHAPTER_LIMIT = 8;
 export const QUIZ_ATTESTATION_LIMIT = 15;
+// Добровольный «тест-челлендж»: рандом из всей базы, лимит в сутки, бонус.
+export const CHALLENGE_LIMIT = 15;
+export const CHALLENGE_PER_DAY = 2;
+const CHALLENGE_SCOPE_ID = "00000000-0000-0000-0000-000000000000";
 
 export function quizScopeLimit(scope: "chapter" | "attestation"): number {
   return scope === "attestation" ? QUIZ_ATTESTATION_LIMIT : QUIZ_CHAPTER_LIMIT;
 }
-const LOCK_MS = QUIZ_LOCK_HOURS * 3600 * 1000;
+const LOCK_MS = QUIZ_LOCK_MINUTES * 60 * 1000;
+
+/** Сколько добровольных тестов сотрудник ещё может пройти сегодня. */
+export async function getChallengeLeftToday(employeeId: string): Promise<number> {
+  const r = await query<{ c: string }>(
+    `SELECT COUNT(*)::text AS c FROM quiz_attempts
+     WHERE employee_id = $1 AND scope_type = 'challenge' AND finished_at IS NOT NULL
+       AND (finished_at AT TIME ZONE 'Europe/Moscow')::date = (now() AT TIME ZONE 'Europe/Moscow')::date`,
+    [employeeId]
+  );
+  return Math.max(0, CHALLENGE_PER_DAY - Number(r.rows[0]?.c || 0));
+}
 
 const scopeSchema = z.enum(["chapter", "attestation"]);
 const paramsSchema = z.object({
@@ -193,6 +208,54 @@ export function registerQuizRoutes(app: FastifyInstance): void {
     };
   });
 
+  // Добровольный «тест-челлендж»: рандом из всей базы вопросов, лимит в сутки, +20% за сдачу.
+  app.post("/api/training/challenge/start", async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    if ((await getChallengeLeftToday(user.id)) <= 0) {
+      await reply.code(429).send({ error: "challenge_limit" });
+      return;
+    }
+    await query(
+      "DELETE FROM quiz_attempts WHERE employee_id = $1 AND scope_type = 'challenge' AND finished_at IS NULL",
+      [user.id]
+    );
+    const all = await query<{ id: string; prompt: string }>(
+      "SELECT id::text, prompt FROM quiz_questions WHERE is_active = true"
+    );
+    if (!all.rows.length) {
+      await reply.code(400).send({ error: "no_questions" });
+      return;
+    }
+    const selected = shuffle(all.rows).slice(0, CHALLENGE_LIMIT);
+    const attempt = await query<{ id: string }>(
+      "INSERT INTO quiz_attempts (employee_id, scope_type, scope_id, total) VALUES ($1, 'challenge', $2, $3) RETURNING id",
+      [user.id, CHALLENGE_SCOPE_ID, selected.length]
+    );
+    const orows = await query<{ question_id: string; id: string; label: string }>(
+      `SELECT question_id::text, id::text, label FROM quiz_options
+       WHERE question_id = ANY($1::uuid[]) ORDER BY sort_order, id`,
+      [selected.map((q) => q.id)]
+    );
+    const optsByQ = new Map<string, { id: string; label: string }[]>();
+    for (const o of orows.rows) {
+      const arr = optsByQ.get(o.question_id) || [];
+      arr.push({ id: o.id, label: o.label });
+      optsByQ.set(o.question_id, arr);
+    }
+    const questions = selected.map((q) => ({
+      id: q.id,
+      prompt: q.prompt,
+      options: shuffle(optsByQ.get(q.id) || [])
+    }));
+    return {
+      attemptId: attempt.rows[0].id,
+      durationSec: selected.length * QUIZ_PER_QUESTION_SEC,
+      passPct: QUIZ_PASS_PCT,
+      questions
+    };
+  });
+
   app.post("/api/training/quiz/attempts/:attemptId/submit", async (request: FastifyRequest, reply: FastifyReply) => {
     const user = await requireUser(request, reply);
     if (!user) return;
@@ -216,15 +279,16 @@ export function registerQuizRoutes(app: FastifyInstance): void {
       return;
     }
 
-    const scope = attempt.scope_type as "chapter" | "attestation";
+    const scope = attempt.scope_type;
+    const isChallenge = scope === "challenge";
     const correctRows = await query<{ question_id: string; id: string }>(
       `
         SELECT o.question_id::text, o.id::text
         FROM quiz_options o
         JOIN quiz_questions q ON q.id = o.question_id
-        WHERE ${questionWhere(scope)} AND o.is_correct = true
+        WHERE ${isChallenge ? "q.is_active = true" : questionWhere(scope as "chapter" | "attestation")} AND o.is_correct = true
       `,
-      [attempt.scope_id]
+      isChallenge ? [] : [attempt.scope_id]
     );
     const correctByQ = new Map<string, Set<string>>();
     for (const r of correctRows.rows) {
@@ -250,7 +314,9 @@ export function registerQuizRoutes(app: FastifyInstance): void {
     );
     await audit(request, "quiz_submit", user.id, "quiz_attempt", attempt.id, { scope, pct, passed });
     if (passed) {
-      if (scope === "attestation") {
+      if (isChallenge) {
+        await awardPoints(user.id, "challenge_test", "Добровольная проверка знаний");
+      } else if (scope === "attestation") {
         await awardPoints(user.id, "attestation_passed", "Сдал аттестацию", "quiz_attestation", attempt.scope_id);
       } else {
         await awardPoints(user.id, "quiz_passed", "Сдал тест по главе", "quiz_chapter", attempt.scope_id);

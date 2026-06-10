@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
-import { getQuizCounts, getAttemptStates, buildQuizState, QUIZ_CHAPTER_LIMIT, QUIZ_ATTESTATION_LIMIT } from "./quiz.js";
+import { getQuizCounts, getAttemptStates, buildQuizState, getChallengeLeftToday, CHALLENGE_PER_DAY, QUIZ_CHAPTER_LIMIT, QUIZ_ATTESTATION_LIMIT } from "./quiz.js";
 import { awardPoints } from "./progress.js";
 
 const chapterParamsSchema = z.object({
@@ -72,6 +72,7 @@ type DashboardRow = {
   role: string;
   read_count: string;
   last_read_at: string | null;
+  tests_passed: string;
 };
 
 export function registerTrainingRoutes(app: FastifyInstance): void {
@@ -80,13 +81,16 @@ export function registerTrainingRoutes(app: FastifyInstance): void {
     if (!user) return;
 
     const canManage = canManageTraining(user);
-    const [content, dashboard] = await Promise.all([
+    const [content, dashboard, challengeLeft] = await Promise.all([
       getTrainingContent(user),
-      canManage ? getTrainingDashboard() : Promise.resolve(null)
+      canManage ? getTrainingDashboard() : Promise.resolve(null),
+      getChallengeLeftToday(user.id)
     ]);
 
     return {
       canManage,
+      challengeLeft,
+      challengePerDay: CHALLENGE_PER_DAY,
       ...content,
       dashboard
     };
@@ -346,49 +350,34 @@ async function getTrainingContent(user: SessionUser) {
 
 async function getTrainingDashboard() {
   const totalChaptersResult = await query<{ total: string }>(
-    `
-      SELECT COUNT(*)::text AS total
-      FROM training_chapters c
-      JOIN training_modules m ON m.id = c.module_id
-      WHERE c.is_active = true
-        AND m.is_active = true
-        AND (m.audience_role IS NULL OR m.audience_role = 'waiter')
-    `
+    `SELECT COUNT(*)::text AS total FROM training_chapters c
+     JOIN training_modules m ON m.id = c.module_id
+     WHERE c.is_active = true AND m.is_active = true`
   );
   const totalChapters = Number(totalChaptersResult.rows[0]?.total || 0);
+  // Показываем всех сотрудников (любой роли), у кого есть прогресс — сдан хотя бы один тест.
   const result = await query<DashboardRow>(
     `
-      WITH training_employees AS (
-        SELECT e.id, e.display_name, e.role::text
-        FROM employees e
-        JOIN employee_service_access esa ON esa.employee_id = e.id
-        JOIN services s ON s.id = esa.service_id
-        WHERE e.is_active = true
-          AND e.role = 'waiter'
-          AND s.code = 'training'
-          AND esa.can_view = true
+      WITH passed AS (
+        SELECT employee_id, COUNT(*) AS tests_passed
+        FROM quiz_attempts
+        WHERE passed = true
+        GROUP BY employee_id
       )
       SELECT
         e.id::text AS employee_id,
         e.display_name,
-        e.role,
-        COUNT(m.id)::text AS read_count,
-        MAX(CASE WHEN m.id IS NOT NULL THEN rm.read_at END)::text AS last_read_at
-      FROM training_employees e
+        e.role::text,
+        COUNT(rm.chapter_id)::text AS read_count,
+        MAX(rm.read_at)::text AS last_read_at,
+        p.tests_passed::text AS tests_passed
+      FROM employees e
+      JOIN passed p ON p.employee_id = e.id
       LEFT JOIN training_read_marks rm ON rm.employee_id = e.id
       LEFT JOIN training_chapters c ON c.id = rm.chapter_id AND c.is_active = true
-      LEFT JOIN training_modules m ON m.id = c.module_id
-        AND m.is_active = true
-        AND (m.audience_role IS NULL OR m.audience_role = 'waiter')
-      GROUP BY e.id, e.display_name, e.role
-      ORDER BY
-        CASE e.role
-          WHEN 'owner' THEN 1
-          WHEN 'manager' THEN 2
-          WHEN 'waiter' THEN 3
-          ELSE 9
-        END,
-        e.display_name
+      WHERE e.is_active = true AND e.archived_at IS NULL
+      GROUP BY e.id, e.display_name, e.role, p.tests_passed
+      ORDER BY p.tests_passed DESC, COUNT(rm.chapter_id) DESC, e.display_name
     `
   );
 
@@ -397,6 +386,7 @@ async function getTrainingDashboard() {
     displayName: row.display_name,
     role: row.role,
     readChapters: Number(row.read_count),
+    testsPassed: Number(row.tests_passed),
     totalChapters,
     percent: totalChapters ? Math.round((Number(row.read_count) / totalChapters) * 100) : 0,
     lastReadAt: row.last_read_at

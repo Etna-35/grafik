@@ -18,6 +18,7 @@ export const PROGRESS_POINTS = {
   chapter_read: 5,
   quiz_passed: 15,
   attestation_passed: 40,
+  challenge_test: 20,
   sales_goal: 20
 } as const;
 
@@ -34,6 +35,7 @@ const KIND_LABELS: Record<string, string> = {
   chapter_read: "Прочитал главу",
   quiz_passed: "Сдал тест",
   attestation_passed: "Сдал аттестацию",
+  challenge_test: "Проверка знаний",
   sales_goal: "Достиг цели по продажам",
   tenure: "Стаж работы"
 };

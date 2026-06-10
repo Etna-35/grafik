@@ -726,6 +726,8 @@ function renderTrainingContent(training){
       </div>
     </div>
 
+    ${renderTrainingChallenge(training)}
+
     ${training.canManage ? renderTrainingManager(training) : ""}
 
     <div class="training-layout">
@@ -744,6 +746,20 @@ function renderTrainingContent(training){
   `;
 }
 
+function renderTrainingChallenge(training){
+  const left = training.challengeLeft ?? 0;
+  const per = training.challengePerDay ?? 2;
+  return `
+    <div class="training-challenge">
+      <div class="tc-text">
+        <b>Проверить знания</b>
+        <span>Случайные вопросы из всех разделов · +20% за тест · ${left > 0 ? `осталось ${left} из ${per} сегодня` : "на сегодня лимит исчерпан"}</span>
+      </div>
+      <button class="btn brand-action" type="button" data-challenge-start ${left > 0 ? "" : "disabled"}>Пройти</button>
+    </div>
+  `;
+}
+
 function renderTrainingManager(training){
   const dashboard = training.dashboard || {};
   const employees = dashboard.employees || [];
@@ -752,7 +768,7 @@ function renderTrainingManager(training){
       <div class="training-manager-head">
         <div>
           <h2 class="sec">Руководителю</h2>
-          <div class="row-sub">Прогресс чтения базы знаний по сотрудникам с доступом к разделу</div>
+          <div class="row-sub">Сотрудники, начавшие обучение и сдавшие хотя бы один тест</div>
         </div>
         <a class="ghost mini" href="https://admin.no-money-no-honey.ru/">Редактировать в NocoDB</a>
       </div>
@@ -774,7 +790,7 @@ function renderTrainingEmployeeProgress(employee){
     <div class="training-person">
       <div class="training-person-main">
         <b>${escapeHtml(employee.displayName)}</b>
-        <span>${escapeHtml(roleLabel(employee.role))}${employee.lastReadAt ? ` · ${escapeHtml(formatDateHuman(employee.lastReadAt.slice(0, 10)))}` : ""}</span>
+        <span>${escapeHtml(roleLabel(employee.role))} · сдано тестов ${employee.testsPassed || 0}${employee.lastReadAt ? ` · ${escapeHtml(formatDateHuman(employee.lastReadAt.slice(0, 10)))}` : ""}</span>
       </div>
       <div class="training-person-progress">
         <i><span style="width:${Math.max(0, Math.min(100, employee.percent || 0))}%"></span></i>
@@ -1010,6 +1026,7 @@ function bindTrainingPage(){
   routeDone?.addEventListener("click", ()=>setRouteCompleted(routeDone.dataset.routeDone, true));
   const routeReset = app.querySelector("[data-route-reset]");
   routeReset?.addEventListener("click", ()=>setRouteCompleted(routeReset.dataset.routeReset, false));
+  app.querySelector("[data-challenge-start]")?.addEventListener("click", startChallenge);
 }
 
 async function setRouteCompleted(routeId, done){
@@ -1035,20 +1052,34 @@ let quizTimer = null;
 function stopQuizTimer(){ if(quizTimer){ clearInterval(quizTimer); quizTimer = null; } }
 function formatClock(s){ const m = Math.floor(s/60); return `${m}:${String(s%60).padStart(2,"0")}`; }
 
+function beginQuiz(data, scope, scopeId){
+  state.quiz = { scope, scopeId, attemptId: data.attemptId, questions: data.questions, answers: {}, durationSec: data.durationSec, endsAt: Date.now() + data.durationSec*1000, result: null, submitting: false };
+  renderQuizScreen();
+  stopQuizTimer();
+  quizTimer = setInterval(()=>{
+    const left = Math.max(0, Math.round((state.quiz.endsAt - Date.now())/1000));
+    const el = document.getElementById("quizTimer");
+    if(el){ el.textContent = formatClock(left); if(left <= 30) el.classList.add("low"); }
+    if(left <= 0){ stopQuizTimer(); submitQuiz(true); }
+  }, 1000);
+}
+
 async function startQuiz(scope, scopeId){
   try{
     const data = await apiPost(`/api/training/quiz/${scope}/${encodeURIComponent(scopeId)}/start`, {});
-    state.quiz = { scope, scopeId, attemptId: data.attemptId, questions: data.questions, answers: {}, durationSec: data.durationSec, endsAt: Date.now() + data.durationSec*1000, result: null, submitting: false };
-    renderQuizScreen();
-    stopQuizTimer();
-    quizTimer = setInterval(()=>{
-      const left = Math.max(0, Math.round((state.quiz.endsAt - Date.now())/1000));
-      const el = document.getElementById("quizTimer");
-      if(el){ el.textContent = formatClock(left); if(left <= 30) el.classList.add("low"); }
-      if(left <= 0){ stopQuizTimer(); submitQuiz(true); }
-    }, 1000);
+    beginQuiz(data, scope, scopeId);
   }catch(error){
     state.trainingError = error.code === "locked" ? "Тест временно заблокирован" : "Не удалось начать тест";
+    render();
+  }
+}
+
+async function startChallenge(){
+  try{
+    const data = await apiPost("/api/training/challenge/start", {});
+    beginQuiz(data, "challenge", "challenge");
+  }catch(error){
+    state.trainingError = error.status === 429 ? "На сегодня лимит проверок исчерпан" : "Не удалось начать тест";
     render();
   }
 }
@@ -1061,7 +1092,7 @@ function renderQuizScreen(){
     <div class="phone wide">
       <section class="screen service-page">
         <div class="quiz-bar">
-          <div class="quiz-title">Тест${q.scope === "attestation" ? " · аттестация" : ""}</div>
+          <div class="quiz-title">Тест${q.scope === "attestation" ? " · аттестация" : q.scope === "challenge" ? " · проверка знаний" : ""}</div>
           <div class="quiz-timer" id="quizTimer">${formatClock(Math.round(q.durationSec))}</div>
         </div>
         <div class="hint" style="margin:0 2px 12px">Закрепим прочитанное — ответь на вопросы. Время ограничено, по окончании тест завершится сам.</div>
