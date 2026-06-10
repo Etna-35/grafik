@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
-import { sendMessage, teamChatId, tgEscape } from "./telegram.js";
+import { sendMessage, teamChatId, tgEscape, tgPairs } from "./telegram.js";
 import { awardPoints } from "./progress.js";
 
 const requisitionParamsSchema = z.object({
@@ -256,6 +256,22 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
       "UPDATE requisition_lines SET purchased = $3 WHERE id = $2 AND requisition_id = $1",
       [params.data.id, params.data.lineId, parsed.data.purchased]
     );
+    // Все позиции закуплены → статус «Закуплена»; снятие галочки с закрытой → обратно «Принята».
+    const agg = await query<{ total: string; bought: string; status: string }>(
+      `SELECT COUNT(*)::text AS total, COUNT(*) FILTER (WHERE purchased)::text AS bought,
+              (SELECT status FROM requisitions WHERE id = $1) AS status
+       FROM requisition_lines WHERE requisition_id = $1`,
+      [params.data.id]
+    );
+    const row = agg.rows[0];
+    const total = Number(row?.total || 0);
+    const bought = Number(row?.bought || 0);
+    let newStatus: string | null = null;
+    if (total > 0 && bought === total && row.status !== "purchased") newStatus = "purchased";
+    else if (bought < total && row.status === "purchased") newStatus = "accepted";
+    if (newStatus) {
+      await query("UPDATE requisitions SET status = $2::requisition_status, updated_at = now() WHERE id = $1", [params.data.id, newStatus]);
+    }
     const record = await getRequisitionById(params.data.id, user);
     if (!record) {
       await reply.code(404).send({ error: "not_found" });
@@ -493,15 +509,38 @@ async function getRequisitionById(id: string, user: SessionUser) {
 
 async function notifyRequisition(req: NonNullable<Awaited<ReturnType<typeof getRequisitionById>>>): Promise<void> {
   if (!teamChatId()) return;
-  const lines = req.lines.map((line) => `• ${tgEscape(line.name)} — ${line.qty} ${tgEscape(line.unit)}${line.urgent ? " ⚠️" : ""}`);
-  const parts = [
-    `🧾 <b>Новая заявка продуктов</b>`,
-    `От: ${tgEscape(req.authorName || "—")}${req.urgent ? " · ⚠️ срочно" : ""}`,
-    "",
-    ...lines
+  const hasHousehold = req.lines.some((line) => line.kind === "household");
+  const hasProduct = req.lines.some((line) => line.kind === "product");
+  const kindLabel = hasHousehold && hasProduct ? "продукты + хозтовары" : hasHousehold ? "хозтовары" : "продукты";
+  const qtyText = (line: { qty: number; unit: string }) => `${formatQtyPlain(line.qty)} ${line.unit}`;
+
+  const parts: string[] = [
+    `🧾 <b>Новая заявка · ${kindLabel}</b>`,
+    `От: ${tgEscape(req.authorName || "—")}`
   ];
+
+  const urgent = req.lines.filter((line) => line.urgent);
+  if (urgent.length) {
+    parts.push("", "⚠️ <b>СРОЧНО</b>", tgPairs(urgent.map((line) => [line.name, qtyText(line)])));
+  }
+
+  const byCategory = new Map<string, typeof req.lines>();
+  for (const line of req.lines.filter((line) => !line.urgent)) {
+    const key = line.categoryName || "Прочее";
+    const list = byCategory.get(key) || [];
+    list.push(line);
+    byCategory.set(key, list);
+  }
+  for (const [category, items] of byCategory) {
+    parts.push("", `📦 <b>${tgEscape(category)}</b>`, tgPairs(items.map((line) => [line.name, qtyText(line)])));
+  }
+
   if (req.comment) parts.push("", `💬 ${tgEscape(req.comment)}`);
   await sendMessage(teamChatId(), parts.join("\n"));
+}
+
+function formatQtyPlain(qty: number): string {
+  return Number.isInteger(qty) ? String(qty) : String(Math.round(qty * 100) / 100);
 }
 
 async function getLinesForRequisitions(ids: string[]): Promise<Map<string, RequisitionLineRow[]>> {

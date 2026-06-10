@@ -102,3 +102,13 @@ export function tgTable(rows: Array<[string, number]>, totalRow?: [string, numbe
   }
   return `<pre>${tgEscape(out)}</pre>`;
 }
+
+// Моноширинный блок «название … значение» для произвольных строк (заявки и т.п.).
+// Колонки выравниваются по самой длинной строке группы — ровно независимо от длины названий.
+export function tgPairs(rows: Array<[string, string]>): string {
+  if (!rows.length) return "";
+  const maxLabel = Math.max(...rows.map(([label]) => label.length));
+  const maxValue = Math.max(...rows.map(([, value]) => value.length));
+  const out = rows.map(([label, value]) => `${label.padEnd(maxLabel + 2)}${value.padStart(maxValue)}`).join("\n");
+  return `<pre>${tgEscape(out)}</pre>`;
+}

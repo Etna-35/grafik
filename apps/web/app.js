@@ -96,6 +96,7 @@ let state = {
   requisitionComment: "",
   requisitionUrgent: false,
   requisitionExpanded: {},
+  requisitionShowRemaining: false,
   shiftClosingInit: null,
   shiftClosingDate: null,
   shiftClosingRecord: null,
@@ -1774,11 +1775,24 @@ function renderRequisitionCart(){
       </button>
     </form>
 
-    <h2 class="sec">История заявок</h2>
+    <div class="req-history-head">
+      <h2 class="sec">История заявок</h2>
+      ${historyData.canManage ? `<button class="req-filter-toggle ${state.requisitionShowRemaining ? "on" : ""}" type="button" data-req-remaining>Осталось купить</button>` : ""}
+    </div>
     <div class="req-history">
-      ${historyData.requisitions.length ? historyData.requisitions.map((record)=>renderRequisitionRecord(record, historyData.canManage)).join("") : `<div class="panel muted-line">Заявок пока нет</div>`}
+      ${renderRequisitionHistory(historyData)}
     </div>
   `;
+}
+
+function renderRequisitionHistory(historyData){
+  const onlyRemaining = historyData.canManage && state.requisitionShowRemaining;
+  let records = historyData.requisitions || [];
+  if(onlyRemaining) records = records.filter((record)=>(record.lines || []).some((line)=>!line.purchased));
+  if(!records.length){
+    return `<div class="panel muted-line">${onlyRemaining ? "Всё закуплено — список пуст" : "Заявок пока нет"}</div>`;
+  }
+  return records.map((record)=>renderRequisitionRecord(record, historyData.canManage, onlyRemaining)).join("");
 }
 
 function renderFreeRequisitionPanel(){
@@ -1840,7 +1854,7 @@ function renderRequisitionCartLine(item){
   `;
 }
 
-function renderRequisitionRecord(record, canManage){
+function renderRequisitionRecord(record, canManage, onlyRemaining){
   return `
     <div class="req-record">
       <div class="req-record-head">
@@ -1859,15 +1873,16 @@ function renderRequisitionRecord(record, canManage){
       <div class="req-record-meta">
         ${record.totalLines} ${pluralize(record.totalLines, "позиция", "позиции", "позиций")} · продукты ${record.productLines} · хоз ${record.householdLines}
       </div>
-      ${renderRequisitionRecordLines(record, canManage)}
+      ${renderRequisitionRecordLines(record, canManage, onlyRemaining)}
       ${record.comment ? `<div class="req-record-comment">${escapeHtml(record.comment)}</div>` : ""}
     </div>
   `;
 }
 
-function renderRequisitionRecordLines(record, canManage){
-  const lines = record.lines || [];
-  const expanded = !!state.requisitionExpanded[record.id];
+function renderRequisitionRecordLines(record, canManage, onlyRemaining){
+  let lines = record.lines || [];
+  if(onlyRemaining) lines = lines.filter((line)=>!line.purchased);
+  const expanded = onlyRemaining || !!state.requisitionExpanded[record.id];
   const shown = expanded ? lines : lines.slice(0, 8);
   const line = (l)=> canManage
     ? `<label class="req-line-check ${l.purchased ? "done" : ""}">
@@ -1878,7 +1893,7 @@ function renderRequisitionRecordLines(record, canManage){
   return `
     <div class="req-record-lines ${canManage ? "checklist" : ""}">
       ${shown.map(line).join("")}
-      ${lines.length > 8 ? `<button class="req-expand" type="button" data-req-expand="${escapeAttr(record.id)}">${expanded ? "Свернуть" : `Показать все (ещё ${lines.length - 8})`}</button>` : ""}
+      ${!onlyRemaining && lines.length > 8 ? `<button class="req-expand" type="button" data-req-expand="${escapeAttr(record.id)}">${expanded ? "Свернуть" : `Показать все (ещё ${lines.length - 8})`}</button>` : ""}
     </div>
   `;
 }
@@ -1949,6 +1964,13 @@ function bindRequisitionPage(){
   app.querySelectorAll("[data-req-expand]").forEach((button)=>{
     button.addEventListener("click", ()=>toggleRequisitionExpanded(button.dataset.reqExpand));
   });
+  const remaining = app.querySelector("[data-req-remaining]");
+  if(remaining){
+    remaining.addEventListener("click", ()=>{
+      state.requisitionShowRemaining = !state.requisitionShowRemaining;
+      render();
+    });
+  }
   app.querySelectorAll("[data-req-line]").forEach((checkbox)=>{
     checkbox.addEventListener("change", ()=>{
       const [rid, lid] = checkbox.dataset.reqLine.split("::");

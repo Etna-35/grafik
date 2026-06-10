@@ -483,6 +483,10 @@ button.stat{cursor:pointer;color:var(--ink);text-align:left;font:inherit}
 .req-line-check.done span{color:var(--green);text-decoration:line-through}
 .req-record-lines span.bought{color:var(--green);border-color:var(--ok-line);background:var(--ok-bg)}
 .req-record-lines span.bought b{color:var(--green)}
+.req-history-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 2px}
+.req-history-head h2{margin:0}
+.req-filter-toggle{border:1px solid var(--line-strong);background:transparent;color:var(--ink-soft);border-radius:999px;padding:5px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+.req-filter-toggle.on{border-color:var(--brand);background:var(--brand-tint);color:var(--brand-bright)}
 .req-record-lines span.urgent{border-color:var(--gold);color:var(--gold)}
 .handover-create textarea{width:100%;border:1px solid var(--line-strong);background:var(--card-2);border-radius:10px;padding:10px 11px;color:var(--ink);font:inherit;font-size:14px;font-weight:400;resize:vertical;min-height:54px}
 .handover-create-row{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
