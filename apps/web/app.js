@@ -95,6 +95,7 @@ let state = {
   requisitionCart: {},
   requisitionComment: "",
   requisitionUrgent: false,
+  requisitionExpanded: {},
   shiftClosingInit: null,
   shiftClosingDate: null,
   shiftClosingRecord: null,
@@ -1715,10 +1716,13 @@ function renderRequisitionItem(item){
         <small>${escapeHtml(item.unit)}</small>
       </span>
       ${entry ? `
-        <span class="req-stepper">
-          <button type="button" data-req-dec="${escapeAttr(item.id)}">-</button>
-          <b>${formatQty(entry.qty)} ${escapeHtml(entry.unit)}</b>
-          <button type="button" data-req-inc="${escapeAttr(item.id)}">+</button>
+        <span class="req-item-controls">
+          <span class="req-stepper">
+            <button type="button" data-req-dec="${escapeAttr(item.id)}">-</button>
+            <b>${formatQty(entry.qty)} ${escapeHtml(entry.unit)}</b>
+            <button type="button" data-req-inc="${escapeAttr(item.id)}">+</button>
+          </span>
+          <button class="req-urgent-toggle ${entry.urgent ? "on" : ""}" type="button" data-req-urgent="${escapeAttr(item.id)}">${entry.urgent ? "Срочно ✓" : "Срочно"}</button>
         </span>
       ` : `
         <button class="req-add" type="button" data-req-add="${escapeAttr(item.id)}">+</button>
@@ -1828,18 +1832,10 @@ function renderRequisitionCartGroup(title, items){
 
 function renderRequisitionCartLine(item){
   return `
-    <div class="req-cart-line">
-      <span class="req-item-main">
-        <b>${escapeHtml(item.name)}</b>
-        <small>${escapeHtml(item.unit)}</small>
-        <button class="req-urgent-toggle ${item.urgent ? "on" : ""}" type="button" data-req-urgent="${escapeAttr(item.key)}">${item.urgent ? "Срочно ✓" : "Срочно"}</button>
-      </span>
-      <span class="req-stepper">
-        <button type="button" data-req-dec="${escapeAttr(item.key)}">-</button>
-        <b>${formatQty(item.qty)} ${escapeHtml(item.unit)}</b>
-        <button type="button" data-req-inc="${escapeAttr(item.key)}">+</button>
-      </span>
-      <button class="ghost mini" type="button" data-req-remove="${escapeAttr(item.key)}">Убрать</button>
+    <div class="req-cart-line minimal">
+      <span class="req-cart-name ${item.urgent ? "urgent" : ""}">${item.urgent ? "● " : ""}${escapeHtml(item.name)}</span>
+      <b class="req-cart-qty">${formatQty(item.qty)} ${escapeHtml(item.unit)}</b>
+      <button class="req-cart-x" type="button" data-req-remove="${escapeAttr(item.key)}" aria-label="Убрать">✕</button>
     </div>
   `;
 }
@@ -1863,13 +1859,26 @@ function renderRequisitionRecord(record, canManage){
       <div class="req-record-meta">
         ${record.totalLines} ${pluralize(record.totalLines, "позиция", "позиции", "позиций")} · продукты ${record.productLines} · хоз ${record.householdLines}
       </div>
-      <div class="req-record-lines">
-        ${(record.lines || []).slice(0, 8).map((line)=>`
-          <span class="${line.urgent ? "urgent" : ""}">${line.urgent ? "● " : ""}${escapeHtml(line.name)} <b>${formatQty(line.qty)} ${escapeHtml(line.unit)}</b></span>
-        `).join("")}
-        ${(record.lines || []).length > 8 ? `<span>ещё ${(record.lines || []).length - 8}</span>` : ""}
-      </div>
+      ${renderRequisitionRecordLines(record, canManage)}
       ${record.comment ? `<div class="req-record-comment">${escapeHtml(record.comment)}</div>` : ""}
+    </div>
+  `;
+}
+
+function renderRequisitionRecordLines(record, canManage){
+  const lines = record.lines || [];
+  const expanded = !!state.requisitionExpanded[record.id];
+  const shown = expanded ? lines : lines.slice(0, 8);
+  const line = (l)=> canManage
+    ? `<label class="req-line-check ${l.purchased ? "done" : ""}">
+         <input type="checkbox" data-req-line="${escapeAttr(record.id)}::${escapeAttr(l.id)}" ${l.purchased ? "checked" : ""}>
+         <span class="${l.urgent ? "urgent" : ""}">${l.urgent ? "● " : ""}${escapeHtml(l.name)} <b>${formatQty(l.qty)} ${escapeHtml(l.unit)}</b></span>
+       </label>`
+    : `<span class="${l.urgent ? "urgent" : ""} ${l.purchased ? "bought" : ""}">${l.purchased ? "✓ " : (l.urgent ? "● " : "")}${escapeHtml(l.name)} <b>${formatQty(l.qty)} ${escapeHtml(l.unit)}</b></span>`;
+  return `
+    <div class="req-record-lines ${canManage ? "checklist" : ""}">
+      ${shown.map(line).join("")}
+      ${lines.length > 8 ? `<button class="req-expand" type="button" data-req-expand="${escapeAttr(record.id)}">${expanded ? "Свернуть" : `Показать все (ещё ${lines.length - 8})`}</button>` : ""}
     </div>
   `;
 }
@@ -1937,6 +1946,33 @@ function bindRequisitionPage(){
   app.querySelectorAll("[data-req-status]").forEach((select)=>{
     select.addEventListener("change", ()=>changeRequisitionStatus(select.dataset.reqStatus, select.value));
   });
+  app.querySelectorAll("[data-req-expand]").forEach((button)=>{
+    button.addEventListener("click", ()=>toggleRequisitionExpanded(button.dataset.reqExpand));
+  });
+  app.querySelectorAll("[data-req-line]").forEach((checkbox)=>{
+    checkbox.addEventListener("change", ()=>{
+      const [rid, lid] = checkbox.dataset.reqLine.split("::");
+      toggleRequisitionLinePurchased(rid, lid, checkbox.checked);
+    });
+  });
+}
+
+function toggleRequisitionExpanded(id){
+  state.requisitionExpanded = { ...state.requisitionExpanded, [id]: !state.requisitionExpanded[id] };
+  render();
+}
+
+async function toggleRequisitionLinePurchased(recordId, lineId, purchased){
+  try{
+    const updated = await apiPatch(`/api/requisitions/${encodeURIComponent(recordId)}/lines/${encodeURIComponent(lineId)}`, { purchased });
+    const list = state.requisitionHistory?.requisitions || [];
+    const idx = list.findIndex((record)=>record.id === recordId);
+    if(idx !== -1) list[idx] = updated;
+    render();
+  }catch(error){
+    state.requisitionError = "Не удалось сохранить отметку";
+    render();
+  }
 }
 
 function bindRequisitionCatalogControls(){
@@ -1948,6 +1984,9 @@ function bindRequisitionCatalogControls(){
   });
   app.querySelectorAll("[data-req-dec]").forEach((button)=>{
     button.addEventListener("click", ()=>changeRequisitionEntry(button.dataset.reqDec, -1));
+  });
+  app.querySelectorAll("[data-req-urgent]").forEach((button)=>{
+    button.addEventListener("click", ()=>toggleRequisitionUrgent(button.dataset.reqUrgent));
   });
 
   const openCart = app.querySelector("[data-req-open-cart]");

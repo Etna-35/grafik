@@ -32,6 +32,15 @@ const requisitionPatchSchema = z.object({
   status: requisitionStatusSchema
 });
 
+const requisitionLineParamsSchema = z.object({
+  id: z.string().uuid(),
+  lineId: z.string().uuid()
+});
+
+const requisitionLinePatchSchema = z.object({
+  purchased: z.boolean()
+});
+
 type Kind = "product" | "household";
 
 type CategoryRow = {
@@ -77,6 +86,7 @@ type RequisitionLineRow = {
   kind: Kind;
   category_name: string;
   urgent: boolean;
+  purchased: boolean;
 };
 
 type NormalizedLine = {
@@ -224,6 +234,28 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
     );
     await audit(request, "requisition_status_update", user.id, "requisition", params.data.id, parsed.data);
 
+    const record = await getRequisitionById(params.data.id, user);
+    if (!record) {
+      await reply.code(404).send({ error: "not_found" });
+      return;
+    }
+    return record;
+  });
+
+  // Галочка «закуплено» по позиции заявки (руководитель).
+  app.patch("/api/requisitions/:id/lines/:lineId", async (request, reply) => {
+    const user = await requireRequisitionManager(request, reply);
+    if (!user) return;
+    const params = requisitionLineParamsSchema.safeParse(request.params);
+    const parsed = requisitionLinePatchSchema.safeParse(request.body);
+    if (!params.success || !parsed.success) {
+      await reply.code(400).send({ error: "bad_requisition" });
+      return;
+    }
+    await query(
+      "UPDATE requisition_lines SET purchased = $3 WHERE id = $2 AND requisition_id = $1",
+      [params.data.id, params.data.lineId, parsed.data.purchased]
+    );
     const record = await getRequisitionById(params.data.id, user);
     if (!record) {
       await reply.code(404).send({ error: "not_found" });
@@ -488,7 +520,8 @@ async function getLinesForRequisitions(ids: string[]): Promise<Map<string, Requi
         l.unit,
         l.kind::text AS kind,
         l.category_name,
-        l.urgent
+        l.urgent,
+        l.purchased
       FROM requisition_lines l
       LEFT JOIN requisition_catalog_items i ON i.id = l.catalog_item_id
       WHERE l.requisition_id = ANY($1::uuid[])
@@ -561,7 +594,8 @@ function serializeLine(line: RequisitionLineRow) {
     unit: line.unit || "шт",
     kind: line.kind,
     categoryName: line.category_name || "",
-    urgent: Boolean(line.urgent)
+    urgent: Boolean(line.urgent),
+    purchased: Boolean(line.purchased)
   };
 }
 

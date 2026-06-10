@@ -465,6 +465,24 @@ button.stat{cursor:pointer;color:var(--ink);text-align:left;font:inherit}
 .task-reward{color:var(--gold);font-weight:700}
 .req-urgent-toggle{display:inline-block;margin-top:6px;border:1px solid var(--line-strong);background:transparent;color:var(--ink-soft);border-radius:999px;padding:3px 11px;font-size:11px;font-weight:600;cursor:pointer}
 .req-urgent-toggle.on{border-color:var(--gold);background:var(--gold-bg);color:var(--gold)}
+.req-item-controls{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}
+.req-item-controls .req-urgent-toggle{margin-top:0}
+.req-cart-line.minimal{grid-template-columns:1fr auto auto;gap:10px;align-items:center;padding:8px 11px}
+.req-cart-name{font-size:13px;line-height:1.25;overflow-wrap:anywhere}
+.req-cart-name.urgent{color:var(--gold);font-weight:600}
+.req-cart-qty{font-size:12px;color:var(--ink);white-space:nowrap}
+.req-cart-x{border:0;background:transparent;color:var(--ink-soft);font-size:14px;cursor:pointer;padding:2px 5px;line-height:1}
+.req-cart-x:hover{color:var(--danger)}
+.req-expand{border:0;background:transparent;color:var(--brand);font:inherit;font-size:11px;font-weight:700;cursor:pointer;padding:5px 4px;text-decoration:underline;width:100%;text-align:left}
+.req-record-lines.checklist{flex-direction:column;gap:6px}
+.req-record-lines.checklist span{border:0;background:transparent;padding:0;color:inherit;font-size:12px}
+.req-line-check{display:flex;align-items:center;gap:9px;background:var(--card-2);border:1px solid var(--line);padding:7px 9px;border-radius:8px;cursor:pointer}
+.req-line-check input{width:17px;height:17px;accent-color:var(--green);flex:0 0 auto;cursor:pointer}
+.req-line-check span{overflow-wrap:anywhere;color:var(--ink-soft)}
+.req-line-check.done{border-color:var(--ok-line);background:var(--ok-bg)}
+.req-line-check.done span{color:var(--green);text-decoration:line-through}
+.req-record-lines span.bought{color:var(--green);border-color:var(--ok-line);background:var(--ok-bg)}
+.req-record-lines span.bought b{color:var(--green)}
 .req-record-lines span.urgent{border-color:var(--gold);color:var(--gold)}
 .handover-create textarea{width:100%;border:1px solid var(--line-strong);background:var(--card-2);border-radius:10px;padding:10px 11px;color:var(--ink);font:inherit;font-size:14px;font-weight:400;resize:vertical;min-height:54px}
 .handover-create-row{display:flex;align-items:center;gap:10px;margin-top:10px;flex-wrap:wrap}
@@ -765,7 +783,7 @@ button.day-block{cursor:pointer;font:inherit}
   .req-summary{grid-template-columns:1fr}
   .req-free-grid{grid-template-columns:1fr}
   .req-item{grid-template-columns:auto 1fr}
-  .req-item .req-stepper,.req-item .req-add{grid-column:2;justify-self:start}
+  .req-item .req-stepper,.req-item .req-add,.req-item .req-item-controls{grid-column:2;justify-self:start}
   .training-metrics{grid-template-columns:1fr}
   .training-team{grid-template-columns:1fr}
   .training-person{grid-template-columns:1fr}
