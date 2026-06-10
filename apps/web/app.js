@@ -2341,8 +2341,9 @@ function renderPayrollContent(payroll){
 
     <div class="payroll-hero">
       <div>
-        <div class="mslabel">Остаток к выплате</div>
+        <div class="mslabel">Твой доход за текущий месяц</div>
         <div class="payroll-balance">${formatMoneyPlain(summary.remaining || 0)} ₽</div>
+        ${summary.pastDebt > 0 ? `<div class="payroll-debt">Долг за прошлые месяцы: ${formatMoneyPlain(summary.pastDebt)} ₽</div>` : ""}
       </div>
       <div class="payroll-next">
         <span>Ближайшая дата</span>
@@ -2350,13 +2351,15 @@ function renderPayrollContent(payroll){
       </div>
     </div>
 
-    <div class="payroll-metrics">
-      <div class="pay-metric"><span>Начислено</span><b>${formatMoneyPlain(summary.accrued || 0)} ₽</b></div>
-      <div class="pay-metric"><span>Выдано</span><b>${formatMoneyPlain(summary.paid || 0)} ₽</b></div>
-      ${showHookah ? `<div class="pay-metric"><span>Кальяны</span><b>${formatMoneyPlain(summary.hookahAccrued || 0)} ₽</b></div>` : ""}
-      ${summary.taskRewardCount || summary.goalRewardCount ? `<div class="pay-metric"><span>Премии</span><b>${formatMoneyPlain((summary.taskRewardAccrued || 0) + (summary.goalRewardAccrued || 0))} ₽</b></div>` : ""}
-      <div class="pay-metric"><span>Смены</span><b>${summary.shifts || 0}</b></div>
-      <div class="pay-metric"><span>Часы</span><b>${formatHours(summary.hours || 0)}</b></div>
+    <div class="payroll-metrics two">
+      <div class="pay-metric pair">
+        <div><span>Начислено</span><b>${formatMoneyPlain(summary.accrued || 0)} ₽</b></div>
+        <div><span>Выдано</span><b>${formatMoneyPlain(summary.paid || 0)} ₽</b></div>
+      </div>
+      <div class="pay-metric pair">
+        <div><span>Смены</span><b>${summary.shifts || 0}</b></div>
+        <div><span>Часы</span><b>${formatHours(summary.hours || 0)}</b></div>
+      </div>
     </div>
 
     ${renderObligations(payroll)}
@@ -2406,31 +2409,20 @@ function renderPayrollContent(payroll){
       </div>
     ` : ""}
 
-    <h2 class="sec">История выплат ЗП</h2>
-    <div class="payroll-list">
-      ${(payroll.payouts || []).length ? payroll.payouts.map((payout)=>`
-        <div class="payroll-row">
-          <span>
-            <b>${formatMoneyPlain(payout.amount)} ₽</b>
-            <small>${escapeHtml(formatDateHuman(payout.workDate))}</small>
-          </span>
-          <i>выдано</i>
-        </div>
-      `).join("") : `<div class="panel muted-line">В этом месяце выплат пока нет</div>`}
-    </div>
-
-    <h2 class="sec">Начисления по сменам</h2>
-    <div class="payroll-list">
-      ${(payroll.shifts || []).length ? payroll.shifts.map((shift)=>`
-        <div class="payroll-row">
-          <span>
-            <b>${formatMoneyPlain(shift.payAmount)} ₽</b>
-            <small>${escapeHtml(formatDateHuman(shift.workDate))}${shift.hours ? ` · ${formatHours(shift.hours)} ч` : ""}</small>
-          </span>
-          <i>${shift.payModel === "fixed" ? "фикс" : "смена"}</i>
-        </div>
-      `).join("") : `<div class="panel muted-line">В этом месяце смен пока нет</div>`}
-    </div>
+    <details class="payroll-history"${(payroll.payouts || []).length ? "" : " data-empty"}>
+      <summary><span>История выплат</span><b>${(payroll.payouts || []).length}</b></summary>
+      <div class="payroll-list">
+        ${(payroll.payouts || []).length ? payroll.payouts.map((payout)=>`
+          <div class="payroll-row">
+            <span>
+              <b>${formatMoneyPlain(payout.amount)} ₽</b>
+              <small>${escapeHtml(formatDateHuman(payout.workDate))}${payout.note ? ` · ${escapeHtml(payout.note)}` : ""}</small>
+            </span>
+            <i>выдано</i>
+          </div>
+        `).join("") : `<div class="panel muted-line">В этом месяце выплат пока нет</div>`}
+      </div>
+    </details>
 
     ${payroll.canManage ? renderObligationsManager(payroll) : ""}
   `;

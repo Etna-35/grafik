@@ -716,9 +716,20 @@ button.day-block{cursor:pointer;font:inherit}
 .payroll-next span{display:block;margin-bottom:4px}
 .payroll-next b{display:block;color:var(--ink);font-size:13px}
 .payroll-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:0 2px 12px}
+.payroll-metrics.two{grid-template-columns:1fr 1fr}
 .pay-metric{border:1px solid var(--line);background:var(--card);padding:11px 12px}
 .pay-metric span{display:block;font-size:11px;color:var(--ink-soft);font-weight:600}
 .pay-metric b{display:block;font-size:17px;line-height:1.1;margin-top:5px}
+.pay-metric.pair{display:flex;justify-content:space-between;gap:10px}
+.pay-metric.pair>div{flex:1}
+.pay-metric.pair b{font-size:16px;white-space:nowrap}
+.payroll-debt{margin-top:8px;font-size:12px;font-weight:700;color:var(--gold);background:var(--gold-bg);border:1px solid var(--gold);border-radius:8px;padding:5px 9px;display:inline-block}
+.payroll-history{margin:0 2px 12px;border:1px solid var(--line);background:var(--card);border-radius:8px;overflow:hidden}
+.payroll-history>summary{display:flex;justify-content:space-between;align-items:center;cursor:pointer;padding:12px 14px;font-family:var(--font-display);font-weight:700;font-size:14px;list-style:none}
+.payroll-history>summary::-webkit-details-marker{display:none}
+.payroll-history>summary b{color:var(--brand-bright)}
+.payroll-history[open]>summary{border-bottom:1px solid var(--line)}
+.payroll-history .payroll-list{padding:10px 12px}
 .payroll-list{display:grid;gap:7px;margin:0 2px}
 .payroll-row{display:flex;justify-content:space-between;align-items:center;gap:14px;border:1px solid var(--line);background:var(--card);padding:10px 12px}
 .payroll-row b{display:block;font-size:15px}
