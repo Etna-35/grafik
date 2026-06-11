@@ -476,11 +476,15 @@ button.stat{cursor:pointer;color:var(--ink);text-align:left;font:inherit}
 .req-expand{border:0;background:transparent;color:var(--brand);font:inherit;font-size:11px;font-weight:700;cursor:pointer;padding:5px 4px;text-decoration:underline;width:100%;text-align:left}
 .req-record-lines.checklist{flex-direction:column;gap:6px}
 .req-record-lines.checklist span{border:0;background:transparent;padding:0;color:inherit;font-size:12px}
-.req-line-check{display:flex;align-items:center;gap:9px;background:var(--card-2);border:1px solid var(--line);padding:7px 9px;border-radius:8px;cursor:pointer}
-.req-line-check input{width:17px;height:17px;accent-color:var(--green);flex:0 0 auto;cursor:pointer}
-.req-line-check span{overflow-wrap:anywhere;color:var(--ink-soft)}
+.req-line-check{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;background:var(--card-2);border:1px solid var(--line);padding:7px 9px;border-radius:8px}
+.req-line-check .rlc-main{display:flex;align-items:center;gap:9px;cursor:pointer;flex:1 1 auto;min-width:0}
+.req-line-check input[type=checkbox]{width:17px;height:17px;accent-color:var(--green);flex:0 0 auto;cursor:pointer}
+.req-line-check .rlc-main span{overflow-wrap:anywhere;color:var(--ink-soft)}
 .req-line-check.done{border-color:var(--ok-line);background:var(--ok-bg)}
-.req-line-check.done span{color:var(--green);text-decoration:line-through}
+.req-line-check.done .rlc-main span{color:var(--green);text-decoration:line-through}
+.rlc-bought{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--ink-soft);white-space:nowrap}
+.rlc-bought input{width:64px;border:1px solid var(--line-strong);background:var(--card);border-radius:7px;padding:5px 7px;color:var(--ink);font:inherit;font-size:13px;font-weight:600}
+.rlc-diff{font-style:normal;color:var(--gold);font-size:11px;font-weight:600}
 .req-record-lines span.bought{color:var(--green);border-color:var(--ok-line);background:var(--ok-bg)}
 .req-record-lines span.bought b{color:var(--green)}
 .req-history-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin:0 2px}

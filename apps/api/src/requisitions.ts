@@ -38,7 +38,8 @@ const requisitionLineParamsSchema = z.object({
 });
 
 const requisitionLinePatchSchema = z.object({
-  purchased: z.boolean()
+  purchased: z.boolean().optional(),
+  purchasedQty: z.number().positive().max(99999).optional()
 });
 
 type Kind = "product" | "household";
@@ -87,6 +88,7 @@ type RequisitionLineRow = {
   category_name: string;
   urgent: boolean;
   purchased: boolean;
+  purchased_qty: string | null;
 };
 
 type NormalizedLine = {
@@ -253,8 +255,11 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
       return;
     }
     await query(
-      "UPDATE requisition_lines SET purchased = $3 WHERE id = $2 AND requisition_id = $1",
-      [params.data.id, params.data.lineId, parsed.data.purchased]
+      `UPDATE requisition_lines
+       SET purchased = COALESCE($3, purchased),
+           purchased_qty = COALESCE($4, purchased_qty)
+       WHERE id = $2 AND requisition_id = $1`,
+      [params.data.id, params.data.lineId, parsed.data.purchased ?? null, parsed.data.purchasedQty ?? null]
     );
     // Все позиции закуплены → статус «Закуплена»; снятие галочки с закрытой → обратно «Принята».
     const agg = await query<{ total: string; bought: string; status: string }>(
@@ -560,7 +565,8 @@ async function getLinesForRequisitions(ids: string[]): Promise<Map<string, Requi
         l.kind::text AS kind,
         l.category_name,
         l.urgent,
-        l.purchased
+        l.purchased,
+        l.purchased_qty
       FROM requisition_lines l
       LEFT JOIN requisition_catalog_items i ON i.id = l.catalog_item_id
       WHERE l.requisition_id = ANY($1::uuid[])
@@ -634,7 +640,8 @@ function serializeLine(line: RequisitionLineRow) {
     kind: line.kind,
     categoryName: line.category_name || "",
     urgent: Boolean(line.urgent),
-    purchased: Boolean(line.purchased)
+    purchased: Boolean(line.purchased),
+    purchasedQty: line.purchased_qty == null ? null : Number(line.purchased_qty)
   };
 }
 

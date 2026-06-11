@@ -1668,12 +1668,18 @@ function renderRequisitionPage(service){
 
 function renderRequisitionContent(){
   const total = requisitionCartItems().length;
+  const ordering = state.requisitionTab === "catalog" || state.requisitionTab === "cart";
+  const view = state.requisitionTab === "history"
+    ? renderRequisitionHistoryTab()
+    : state.requisitionTab === "cart"
+      ? renderRequisitionCart()
+      : renderRequisitionCatalog();
   return `
     <div class="req-tabs">
-      <button class="${state.requisitionTab === "catalog" ? "on" : ""}" data-req-tab="catalog">Каталог</button>
-      <button class="${state.requisitionTab === "cart" ? "on" : ""}" data-req-tab="cart">Моя заявка ${total ? `<b>${total}</b>` : ""}</button>
+      <button class="${ordering ? "on" : ""}" data-req-tab="catalog">Заявка ${total ? `<b>${total}</b>` : ""}</button>
+      <button class="${state.requisitionTab === "history" ? "on" : ""}" data-req-tab="history">Мои заявки</button>
     </div>
-    ${state.requisitionTab === "catalog" ? renderRequisitionCatalog() : renderRequisitionCart()}
+    ${view}
     ${state.requisitionNotice ? `<div class="req-notice">${escapeHtml(state.requisitionNotice)}</div>` : ""}
     ${state.requisitionError ? `<div class="error req-error">${escapeHtml(state.requisitionError)}</div>` : ""}
   `;
@@ -1805,9 +1811,14 @@ function renderRequisitionCart(){
         ${state.requisitionSaving ? "Отправляю" : "Отправить заявку"}
       </button>
     </form>
+  `;
+}
 
+function renderRequisitionHistoryTab(){
+  const historyData = state.requisitionHistory || { requisitions:[], canManage:false };
+  return `
     <div class="req-history-head">
-      <h2 class="sec">История заявок</h2>
+      <h2 class="sec">Мои заявки</h2>
       ${historyData.canManage ? `<button class="req-filter-toggle ${state.requisitionShowRemaining ? "on" : ""}" type="button" data-req-remaining>Осталось купить</button>` : ""}
     </div>
     <div class="req-history">
@@ -1915,12 +1926,16 @@ function renderRequisitionRecordLines(record, canManage, onlyRemaining){
   if(onlyRemaining) lines = lines.filter((line)=>!line.purchased);
   const expanded = onlyRemaining || !!state.requisitionExpanded[record.id];
   const shown = expanded ? lines : lines.slice(0, 8);
+  const boughtNote = (l)=> (l.purchasedQty != null && l.purchasedQty !== l.qty) ? ` <i class="rlc-diff">надо ${formatQty(l.qty)}</i>` : "";
   const line = (l)=> canManage
-    ? `<label class="req-line-check ${l.purchased ? "done" : ""}">
-         <input type="checkbox" data-req-line="${escapeAttr(record.id)}::${escapeAttr(l.id)}" ${l.purchased ? "checked" : ""}>
-         <span class="${l.urgent ? "urgent" : ""}">${l.urgent ? "● " : ""}${escapeHtml(l.name)} <b>${formatQty(l.qty)} ${escapeHtml(l.unit)}</b></span>
-       </label>`
-    : `<span class="${l.urgent ? "urgent" : ""} ${l.purchased ? "bought" : ""}">${l.purchased ? "✓ " : (l.urgent ? "● " : "")}${escapeHtml(l.name)} <b>${formatQty(l.qty)} ${escapeHtml(l.unit)}</b></span>`;
+    ? `<div class="req-line-check ${l.purchased ? "done" : ""}">
+         <label class="rlc-main">
+           <input type="checkbox" data-req-line="${escapeAttr(record.id)}::${escapeAttr(l.id)}" ${l.purchased ? "checked" : ""}>
+           <span class="${l.urgent ? "urgent" : ""}">${l.urgent ? "● " : ""}${escapeHtml(l.name)} <b>${formatQty(l.qty)} ${escapeHtml(l.unit)}</b></span>
+         </label>
+         ${l.purchased ? `<span class="rlc-bought">куплено <input type="number" min="0" step="0.1" inputmode="decimal" value="${l.purchasedQty != null ? l.purchasedQty : l.qty}" data-req-bought="${escapeAttr(record.id)}::${escapeAttr(l.id)}"> ${escapeHtml(l.unit)}</span>` : ""}
+       </div>`
+    : `<span class="${l.urgent ? "urgent" : ""} ${l.purchased ? "bought" : ""}">${l.purchased ? "✓ " : (l.urgent ? "● " : "")}${escapeHtml(l.name)} <b>${formatQty(l.purchasedQty != null ? l.purchasedQty : l.qty)} ${escapeHtml(l.unit)}</b>${boughtNote(l)}</span>`;
   return `
     <div class="req-record-lines ${canManage ? "checklist" : ""}">
       ${shown.map(line).join("")}
@@ -2008,6 +2023,26 @@ function bindRequisitionPage(){
       toggleRequisitionLinePurchased(rid, lid, checkbox.checked);
     });
   });
+  app.querySelectorAll("[data-req-bought]").forEach((input)=>{
+    input.addEventListener("change", ()=>{
+      const [rid, lid] = input.dataset.reqBought.split("::");
+      const qty = Number(input.value);
+      if(qty > 0) saveRequisitionLineBought(rid, lid, qty);
+    });
+  });
+}
+
+async function saveRequisitionLineBought(recordId, lineId, purchasedQty){
+  try{
+    const updated = await apiPatch(`/api/requisitions/${encodeURIComponent(recordId)}/lines/${encodeURIComponent(lineId)}`, { purchasedQty });
+    const list = state.requisitionHistory?.requisitions || [];
+    const idx = list.findIndex((record)=>record.id === recordId);
+    if(idx !== -1) list[idx] = updated;
+    render();
+  }catch(error){
+    state.requisitionError = "Не удалось сохранить количество";
+    render();
+  }
 }
 
 function toggleRequisitionExpanded(id){
@@ -2234,6 +2269,7 @@ async function sendRequisition(form){
     state.requisitionCart = {};
     state.requisitionComment = "";
     state.requisitionNotice = "Заявка отправлена";
+    state.requisitionTab = "history";
     await refreshRequisitionData();
   }catch(error){
     state.requisitionError = error.code === "forbidden_catalog_item" || error.code === "forbidden_category"
