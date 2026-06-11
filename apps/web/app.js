@@ -927,7 +927,7 @@ function renderChapterFooter(chapter){
   if(!chapter.isRead){
     return `
       <div class="chapter-footer">
-        <button class="btn brand-action" type="button" data-training-read="${escapeAttr(chapter.id)}">Отметить прочитанным</button>
+        <button class="btn" type="button" data-training-read="${escapeAttr(chapter.id)}">Отметить прочитанным</button>
       </div>
     `;
   }
@@ -1016,6 +1016,8 @@ function bindTrainingPage(){
     button.addEventListener("click", ()=>{
       state.selectedTrainingChapterId = button.dataset.trainingChapter;
       render();
+      // После выбора главы прокручиваем к началу текста для чтения.
+      app.querySelector(".training-article")?.scrollIntoView({ behavior:"smooth", block:"start" });
     });
   });
   const readButton = app.querySelector("[data-training-read]");
@@ -3354,7 +3356,8 @@ function renderShiftClosingForm(){
   const existing = state.shiftClosingRecord;
   const serverShiftDate = init.serverShiftDate || init.workDate;
   const canGoNext = init.workDate < serverShiftDate;
-  const openingDiff = Number(preview.openingCashDiff || 0);
+  // Разницу показываем только после ввода фактического остатка (иначе пустое поле даёт ложное расхождение).
+  const openingDiff = form.openingCashActual == null ? 0 : Number(preview.openingCashDiff || 0);
 
   return `
     <form id="shiftClosingForm" class="shift-close-form">
@@ -3452,7 +3455,7 @@ function renderShiftClosingForm(){
       <h2 class="sec">Касса на закрытии</h2>
       ${moneyField("closingCashActual", "Фактический остаток (пересчитай кассу)", form.closingCashActual)}
       ${autoRow("Расчётный остаток", preview.closingCashExpected)}
-      ${resultRow("Разница", preview.closingCashDiff, preview.closingCashDiff === 0 ? "ok" : "warn", preview.closingCashDiff === 0 ? "" : (preview.closingCashDiff < 0 ? "недосдача" : "излишек"))}
+      ${form.closingCashActual == null ? "" : resultRow("Разница", preview.closingCashDiff, preview.closingCashDiff === 0 ? "ok" : "warn", preview.closingCashDiff === 0 ? "" : (preview.closingCashDiff < 0 ? "недосдача" : "излишек"))}
 
       <h2 class="sec">Фото чеков</h2>
       <div class="photo-grid">
@@ -3482,7 +3485,7 @@ function moneyField(name, label, value){
   return `
     <label class="field">
       <span>${escapeHtml(label)}</span>
-      <input class="inp" name="${name}" data-shift-money="${name}" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="${value ? Number(value) : ""}">
+      <input class="inp" name="${name}" data-shift-money="${name}" type="number" inputmode="numeric" min="0" step="1" placeholder="0" value="${value == null ? "" : Number(value)}">
     </label>
   `;
 }
@@ -3546,7 +3549,7 @@ function bindShiftClosingForm(){
 
   app.querySelectorAll("[data-shift-money]").forEach((input)=>{
     input.addEventListener("input", ()=>{
-      state.shiftClosingForm[input.name] = integerOrNull(input.value) || 0;
+      state.shiftClosingForm[input.name] = integerOrNull(input.value);
     });
     input.addEventListener("change", ()=>{
       collectShiftClosingForm();
@@ -3660,20 +3663,23 @@ async function loadShiftClosing(date){
 
 function shiftClosingFormFrom(init, record){
   const values = record?.values || {};
+  // Денежные поля стартуют пустыми (null), чтобы сотрудник заполнил каждое вручную — даже если там 0.
+  // При редактировании ранее сохранённого отчёта показываем фактические значения (в т.ч. 0).
+  const money = (key)=> record ? (values[key] ?? 0) : null;
   return {
     workDate: record?.workDate || init.workDate,
-    openingCashActual: values.openingCashActual ?? init.openingCashExpected ?? 0,
-    terminal1: values.terminal1 || 0,
-    terminal2: values.terminal2 || 0,
-    netmonet: values.netmonet || 0,
-    yandexFood: values.yandexFood || 0,
-    cashRevenue: values.cashRevenue || 0,
-    washCost: values.washCost || 0,
+    openingCashActual: money("openingCashActual"),
+    terminal1: money("terminal1"),
+    terminal2: money("terminal2"),
+    netmonet: money("netmonet"),
+    yandexFood: money("yandexFood"),
+    cashRevenue: money("cashRevenue"),
+    washCost: money("washCost"),
     hookah: (record?.hookah || []).map((line)=>({ employeeId: line.employeeId, count: line.count || 0 })),
     transfers: (record?.transfers || []).map((line)=>({ employeeId: line.employeeId, amount: line.amount || 0 })),
-    taxiAmount: values.taxiAmount || 0,
-    collectionAmount: values.collectionAmount || 0,
-    closingCashActual: values.closingCashActual || 0,
+    taxiAmount: money("taxiAmount"),
+    collectionAmount: money("collectionAmount"),
+    closingCashActual: money("closingCashActual"),
     extraExpenses: (record?.extraExpenses || []).map((expense)=>({
       amount: expense.amount || 0,
       comment: expense.comment || ""
@@ -3688,7 +3694,7 @@ function collectShiftClosingForm(){
 
   const next = { ...state.shiftClosingForm };
   ["openingCashActual","terminal1","terminal2","netmonet","yandexFood","cashRevenue","washCost","taxiAmount","collectionAmount","closingCashActual"].forEach((field)=>{
-    next[field] = integerOrNull(form.elements[field]?.value) || 0;
+    next[field] = integerOrNull(form.elements[field]?.value);
   });
   next.comment = form.elements.comment?.value || "";
   next.extraExpenses = Array.from(app.querySelectorAll("[data-expense-row]")).map((row)=>({

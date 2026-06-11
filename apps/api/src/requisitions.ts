@@ -111,9 +111,10 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
     if (!user) return;
 
     const catalog = await getVisibleCatalog(user);
+    const showPrice = canManageRequisitions(user);
     return {
       categories: catalog.categories.map(serializeCategory),
-      items: catalog.items.map(serializeItem)
+      items: catalog.items.map((item) => serializeItem(item, showPrice))
     };
   });
 
@@ -532,7 +533,7 @@ async function getRequisitions(user: SessionUser) {
     [canManage, user.id]
   );
 
-  return serializeRequisitions(result.rows, await getLinesForRequisitions(result.rows.map((row) => row.id)));
+  return serializeRequisitions(result.rows, await getLinesForRequisitions(result.rows.map((row) => row.id)), canManage);
 }
 
 async function getRequisitionById(id: string, user: SessionUser) {
@@ -558,7 +559,7 @@ async function getRequisitionById(id: string, user: SessionUser) {
   );
   const row = result.rows[0];
   if (!row) return undefined;
-  return serializeRequisitions([row], await getLinesForRequisitions([row.id]))[0];
+  return serializeRequisitions([row], await getLinesForRequisitions([row.id]), canManage)[0];
 }
 
 async function notifyRequisition(req: NonNullable<Awaited<ReturnType<typeof getRequisitionById>>>): Promise<void> {
@@ -644,7 +645,7 @@ function serializeCategory(category: CategoryRow) {
   };
 }
 
-function serializeItem(item: ItemRow) {
+function serializeItem(item: ItemRow, showPrice: boolean) {
   return {
     id: item.id,
     sourceId: item.source_id,
@@ -655,14 +656,15 @@ function serializeItem(item: ItemRow) {
     unit: item.unit,
     kind: item.kind,
     sortOrder: Number(item.sort_order || 0),
-    price: item.price == null ? null : Number(item.price),
+    // Цены видит только руководитель; сотрудникам не отдаём.
+    price: !showPrice || item.price == null ? null : Number(item.price),
     packLabel: item.pack_label || ""
   };
 }
 
-function serializeRequisitions(rows: RequisitionRow[], linesByRequisition: Map<string, RequisitionLineRow[]>) {
+function serializeRequisitions(rows: RequisitionRow[], linesByRequisition: Map<string, RequisitionLineRow[]>, showPrice: boolean) {
   return rows.map((row) => {
-    const lines = (linesByRequisition.get(row.id) || []).map(serializeLine);
+    const lines = (linesByRequisition.get(row.id) || []).map((line) => serializeLine(line, showPrice));
     return {
       id: row.id,
       authorId: row.author_id || "",
@@ -682,7 +684,7 @@ function serializeRequisitions(rows: RequisitionRow[], linesByRequisition: Map<s
   });
 }
 
-function serializeLine(line: RequisitionLineRow) {
+function serializeLine(line: RequisitionLineRow, showPrice: boolean) {
   return {
     id: line.id,
     catalogItemId: line.catalog_item_id || "",
@@ -695,8 +697,9 @@ function serializeLine(line: RequisitionLineRow) {
     urgent: Boolean(line.urgent),
     purchased: Boolean(line.purchased),
     purchasedQty: line.purchased_qty == null ? null : Number(line.purchased_qty),
-    price: line.price == null ? null : Number(line.price),
-    cost: line.price == null ? 0 : Math.round(Number(line.price) * Number(line.qty || 0))
+    // Цены/стоимость видит только руководитель.
+    price: !showPrice || line.price == null ? null : Number(line.price),
+    cost: !showPrice || line.price == null ? 0 : Math.round(Number(line.price) * Number(line.qty || 0))
   };
 }
 
