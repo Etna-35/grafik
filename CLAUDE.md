@@ -79,7 +79,7 @@
 - Роль-скоуп проверяется в backend (сотрудник видит только своё). Postgres наружу не публикуется.
 - Секреты — только в `/opt/etna/deploy/.env` (в git ничего чувствительного). Managed-БД не используем.
 
-## 6. Миграции (001→027)
+## 6. Миграции (001→032)
 001 initial · 002 schedule import fields · 003 internal admin service · 004 shift closing · 005 payroll access ·
 006 tasks access · 007 requisitions · 008 hookah payroll idx · 009 training (modules/chapters/attachments/routes/
 read_marks/assignments) · 010 task description · 011 employee archived_at · 012 requisition_lines.urgent ·
@@ -89,7 +89,12 @@ employee_id nullable + audience_role · 021 quiz (quiz_questions/options/attempt
 022 shift_closing_hookah (несколько кальянщиков в смене; колонки shift_closings.hookah_* = денорм. итог) ·
 023 shift_closing_transfers · 024 employee_obligations (личные обязательства «я помню сколько должен») ·
 025 training_route_completions («Путь новичка» пройден) · 026 household_catalog (хозкаталог: 11 кат/74 поз) ·
-027 requisition_lines.purchased (галочки «закуплено» + авто-статус «Закуплена»).
+027 requisition_lines.purchased (галочки «закуплено» + авто-статус «Закуплена») ·
+028 payroll_payouts.apply_month/obligation_id (выплата за указанный месяц + привязка к обязательству) ·
+029 requisition_lines.purchased_qty (фактический закуп «купил 3 из 5») ·
+030 requisition_catalog_items.price/pack_label (цены/фасовка каталога) ·
+031 finance (finance_fixed постоянные платежи + finance_expenses разовые) ·
+032 payroll_history (ручная ЗП прошлых месяцев: смены/часы/начислено).
 
 ## 7. Что построено (всё на проде)
 - **Главная/ЛК:** приветствие + «цель дня» (план выручки = ФОТ_дня/0.23, ×0.8 будни / ×1.5 ПТ-СБ; наличный план =
@@ -137,6 +142,22 @@ employee_id nullable + audience_role · 021 quiz (quiz_questions/options/attempt
 - **Кальяны** разово перенесены: отчёт Дани → Дане, Элины → официанту Наташе (`shift_closing_hookah`).
 - **Фикс:** `clearSessionData()` на входе/выходе (иначе следующий вошедший видел чужие данные).
 
+### Блоки 1–4 + Финансы (2026-06-11), всё на проде — см. `docs/roadmap-blocks.md`
+- **Блок 1 (обучение):** дашборд показывает всех с прогрессом (≥1 сданный тест); пересдача 10 мин;
+  **тест-челлендж** (рандом из всей базы, 2/сутки, +20%, `scope='challenge'`, sentinel scope_id).
+- **Блок 2 (выплаты):** выплата за выбранный месяц (`apply_month`) + привязка к обязательству
+  (`obligation_id`, гасит остаток); история выплат сворачиваемая с подписью; перекомпоновка ЛК
+  («Твой доход за месяц», «Долг за прошлые месяцы»=`pastDebt`); убраны «начисления по сменам»;
+  **ЗП прошлых месяцев** в `payroll_history` (март–май залиты, accrued=часы×ставка).
+- **Блок 4 (заявки):** вкладки «Заявка»/«Мои заявки»; **продуктовая матрица с ценами** (321 поз,
+  `importProductCatalog.ts` ← `docs/catalog-products-filled.csv`); **стоимость заявки в ₽** + **контроль
+  фудкоста** (`/api/requisitions/cost-summary`: food/bar/household vs нормы × прогноз выручки, флаг
+  перезакупа); **фактический закуп** (`purchased_qty`, «купил 3 из 5»). Хозматрица с ценами — позже.
+- **Блок 3 (финансы, `finance.ts`):** страница «Финансы» = прогноз выручки (`predictRevenue`: факт+средние
+  по дням недели) + **таблица P&L** (статьи с нормами % от выручки, EBITDA) + **быстрый ввод расхода**
+  (`finance_expenses`, сумма+тап-категории) + **постоянные платежи** (`finance_fixed`). ФОТ из графика.
+  Закрытия смен — в свёртке внизу. Эндпоинты GET `/api/finance`, POST/DELETE expenses, PUT fixed.
+
 ## 8. Подводные камни (НЕ сломать)
 - **seed при каждом рестарте: обновляет PIN владельца на `OWNER_PIN` из `.env`** и находит владельца ПО РОЛИ
   (не по имени — имена не уникальны). Если владелец сменил PIN в приложении — деплой сбросит. TODO: однократная инициализация.
@@ -144,7 +165,14 @@ employee_id nullable + audience_role · 021 quiz (quiz_questions/options/attempt
 - **Текст на золоте — тёмный `--brand-ink`**, не белый.
 - **Превью кэширует CSS** (см. §4.2).
 - **Статика запечена в образ** → после правок `apps/web`/assets нужен `scp` + `docker compose build api`.
-- **Импортёры — вручную** (`importMenu`/`importTraining`/`importQuiz`/`importOldClosings`), не на старте.
+- **Импортёры — вручную** (`importMenu`/`importTraining`/`importQuiz`/`importOldClosings`/`importProductCatalog`), не на старте.
+- **Продуктовый каталог = «замена»:** `importProductCatalog` деактивирует старые product-категории/позиции и грузит
+  из `productCatalog.ts` (source_id = md5(категория|имя), идемпотентно). Household НЕ трогает. Цены/фасовка — `price`/`pack_label`.
+- **Финансы только owner/manager** (по роли, не по сервису). Плитка «Финансы» синтетическая (как training), у руководителя
+  плитка «Закрытие смены» убрана. ФОТ в P&L — из `schedule_shifts.pay_amount`. Прогноз выручки — `predictRevenue` в `finance.ts`.
+- **Выплата привязана к месяцу** через `apply_month` (COALESCE с месяцем `work_date`). `pastDebt`/история прошлых месяцев —
+  из `payroll_history` (ручные данные, без календаря). Контроль фудкоста группирует по `category_name ~ алкоголь|напит` → bar.
+- **Кальяны** разово перенесены: отчёт Дани → Дане, Элины → официанту Наташе (`shift_closing_hookah`).
 - **IP сервера сменился** на `85.198.68.243` (~2026-06-09). Алиас `etna-vps` обновлён. Старый `212.67.14.25` мёртв.
 - **Обучение и заявки (хозтовары) открыты ВСЕМ** через синтетическую инъекцию в `getServices` + `canSeeCategory`/
   `requireTrainingAccess`=requireUser. Официант/мойка в заявках — только household (продукты не заказывают).
