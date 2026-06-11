@@ -65,11 +65,10 @@ function resolveMonth(month?: string): { year: number; month: number } {
   return { year: y, month: m };
 }
 
-async function getFinance(year: number, month: number) {
+// Прогноз выручки месяца: факт прошедших дней + средние по дням недели на оставшиеся.
+export async function predictRevenue(year: number, month: number): Promise<{ predicted: number; actualSoFar: number; daysPassed: number; daysInMonth: number; isForecast: boolean }> {
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const today = mskToday();
-
-  // Фактическая выручка по дням месяца.
   const dayRows = await query<{ work_date: string; revenue_total: number }>(
     `SELECT work_date::text, revenue_total FROM shift_closings
      WHERE work_date >= $1::date AND work_date < ($1::date + interval '1 month')`,
@@ -78,7 +77,6 @@ async function getFinance(year: number, month: number) {
   const actualByDate = new Map<string, number>();
   for (const r of dayRows.rows) actualByDate.set(r.work_date, Number(r.revenue_total || 0));
 
-  // Средняя выручка по дням недели (история до сегодня).
   const wdRows = await query<{ dow: number; avg: number }>(
     `SELECT EXTRACT(DOW FROM work_date)::int AS dow, AVG(revenue_total)::float AS avg
      FROM shift_closings WHERE work_date < $1::date AND revenue_total > 0 GROUP BY 1`,
@@ -87,7 +85,6 @@ async function getFinance(year: number, month: number) {
   const weekdayAvg = new Map<number, number>();
   for (const r of wdRows.rows) weekdayAvg.set(r.dow, Number(r.avg || 0));
 
-  // Прогноз выручки месяца: факт прошедших дней + средние по дням недели на оставшиеся.
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   let actualSoFar = 0;
   let predicted = 0;
@@ -104,7 +101,26 @@ async function getFinance(year: number, month: number) {
       predicted += Math.round(weekdayAvg.get(dow) || 0);
     }
   }
-  const revenue = Math.round(predicted);
+  return {
+    predicted: Math.round(predicted),
+    actualSoFar: Math.round(actualSoFar),
+    daysPassed,
+    daysInMonth,
+    isForecast: `${year}-${String(month).padStart(2, "0")}` === today.slice(0, 7)
+  };
+}
+
+// Нормы фудкоста по группам закупок (% от выручки) — для контроля заявок.
+export const PURCHASE_NORMS: Record<string, { label: string; norm: number }> = {
+  food: { label: "Продукты (еда)", norm: 28 },
+  bar: { label: "Бар (напитки/алкоголь)", norm: 15 },
+  household: { label: "Хозтовары", norm: 1.8 }
+};
+
+async function getFinance(year: number, month: number) {
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+  const rev = await predictRevenue(year, month);
+  const revenue = rev.predicted;
 
   // ФОТ из графика (план по сменам месяца).
   const fotRow = await query<{ fot: string }>(
@@ -153,10 +169,10 @@ async function getFinance(year: number, month: number) {
     month,
     revenue: {
       predicted: revenue,
-      actualSoFar: Math.round(actualSoFar),
-      daysPassed,
-      daysInMonth,
-      isForecast: `${year}-${String(month).padStart(2, "0")}` === today.slice(0, 7)
+      actualSoFar: rev.actualSoFar,
+      daysPassed: rev.daysPassed,
+      daysInMonth: rev.daysInMonth,
+      isForecast: rev.isForecast
     },
     articles,
     fixed: ARTICLES.filter((a) => a.source === "expense").map((a) => ({

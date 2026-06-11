@@ -4,6 +4,7 @@ import { audit, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
 import { sendMessage, teamChatId, tgEscape, tgPairs } from "./telegram.js";
 import { awardPoints } from "./progress.js";
+import { predictRevenue, PURCHASE_NORMS } from "./finance.js";
 
 const requisitionParamsSchema = z.object({
   id: z.string().uuid()
@@ -91,6 +92,7 @@ type RequisitionLineRow = {
   urgent: boolean;
   purchased: boolean;
   purchased_qty: string | null;
+  price: string | null;
 };
 
 type NormalizedLine = {
@@ -244,6 +246,49 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
       return;
     }
     return record;
+  });
+
+  // Контроль закупа: сумма заявок месяца по группам vs нормы фудкоста от прогноза выручки.
+  app.get("/api/requisitions/cost-summary", async (request, reply) => {
+    const user = await requireRequisitionManager(request, reply);
+    if (!user) return;
+    const q = request.query as { month?: string };
+    const now = new Date();
+    let year = now.getUTCFullYear();
+    let month = now.getUTCMonth() + 1;
+    if (q.month && /^\d{4}-\d{2}$/.test(q.month)) {
+      [year, month] = q.month.split("-").map(Number);
+    }
+    const start = `${year}-${String(month).padStart(2, "0")}-01`;
+    const rev = await predictRevenue(year, month);
+    const rows = await query<{ grp: string; spent: string }>(
+      `SELECT CASE WHEN l.kind = 'household' THEN 'household'
+                   WHEN lower(l.category_name) ~ 'алкогол|напит' THEN 'bar'
+                   ELSE 'food' END AS grp,
+              COALESCE(SUM(COALESCE(i.price, 0) * COALESCE(l.purchased_qty, l.qty)), 0)::text AS spent
+       FROM requisition_lines l
+       JOIN requisitions r ON r.id = l.requisition_id
+       LEFT JOIN requisition_catalog_items i ON i.id = l.catalog_item_id
+       WHERE r.created_at >= $1::date AND r.created_at < ($1::date + interval '1 month')
+         AND r.status <> 'rejected'
+       GROUP BY grp`,
+      [start]
+    );
+    const spentBy = new Map(rows.rows.map((r) => [r.grp, Number(r.spent)]));
+    const groups = Object.entries(PURCHASE_NORMS).map(([key, cfg]) => {
+      const spent = Math.round(spentBy.get(key) || 0);
+      const budget = Math.round((rev.predicted * cfg.norm) / 100);
+      return {
+        key,
+        label: cfg.label,
+        norm: cfg.norm,
+        spent,
+        budget,
+        pct: rev.predicted > 0 ? Math.round((spent / rev.predicted) * 1000) / 10 : 0,
+        over: spent > budget
+      };
+    });
+    return { year, month, revenue: rev.predicted, isForecast: rev.isForecast, groups };
   });
 
   // Галочка «закуплено» по позиции заявки (руководитель).
@@ -570,7 +615,8 @@ async function getLinesForRequisitions(ids: string[]): Promise<Map<string, Requi
         l.category_name,
         l.urgent,
         l.purchased,
-        l.purchased_qty
+        l.purchased_qty,
+        i.price
       FROM requisition_lines l
       LEFT JOIN requisition_catalog_items i ON i.id = l.catalog_item_id
       WHERE l.requisition_id = ANY($1::uuid[])
@@ -630,6 +676,7 @@ function serializeRequisitions(rows: RequisitionRow[], linesByRequisition: Map<s
       totalLines: lines.length,
       productLines: lines.filter((line) => line.kind === "product").length,
       householdLines: lines.filter((line) => line.kind === "household").length,
+      totalCost: lines.reduce((sum, line) => sum + (line.cost || 0), 0),
       lines
     };
   });
@@ -647,7 +694,9 @@ function serializeLine(line: RequisitionLineRow) {
     categoryName: line.category_name || "",
     urgent: Boolean(line.urgent),
     purchased: Boolean(line.purchased),
-    purchasedQty: line.purchased_qty == null ? null : Number(line.purchased_qty)
+    purchasedQty: line.purchased_qty == null ? null : Number(line.purchased_qty),
+    price: line.price == null ? null : Number(line.price),
+    cost: line.price == null ? 0 : Math.round(Number(line.price) * Number(line.qty || 0))
   };
 }
 

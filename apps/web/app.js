@@ -97,6 +97,8 @@ let state = {
   requisitionUrgent: false,
   requisitionExpanded: {},
   requisitionShowRemaining: false,
+  requisitionCostSummary: null,
+  requisitionCostLoading: false,
   finance: null,
   financeLoading: false,
   financeError: "",
@@ -1823,6 +1825,7 @@ function renderRequisitionCart(){
 function renderRequisitionHistoryTab(){
   const historyData = state.requisitionHistory || { requisitions:[], canManage:false };
   return `
+    ${historyData.canManage ? renderRequisitionCostSummary() : ""}
     <div class="req-history-head">
       <h2 class="sec">Мои заявки</h2>
       ${historyData.canManage ? `<button class="req-filter-toggle ${state.requisitionShowRemaining ? "on" : ""}" type="button" data-req-remaining>Осталось купить</button>` : ""}
@@ -1831,6 +1834,45 @@ function renderRequisitionHistoryTab(){
       ${renderRequisitionHistory(historyData)}
     </div>
   `;
+}
+
+function renderRequisitionCostSummary(){
+  if(state.requisitionCostSummary === null && !state.requisitionCostLoading){ loadRequisitionCostSummary(); }
+  const cs = state.requisitionCostSummary;
+  if(!cs) return `<div class="panel muted-line">Считаю закуп месяца…</div>`;
+  return `
+    <div class="cost-summary">
+      <div class="cost-summary-head">
+        <span>Контроль закупа · ${escapeHtml(formatScheduleMonth(cs.year, cs.month))}</span>
+        <b>выручка ${cs.isForecast ? "(прогноз) " : ""}${formatMoneyPlain(cs.revenue)} ₽</b>
+      </div>
+      ${(cs.groups || []).map((g)=>{
+        const pctOfBudget = g.budget > 0 ? Math.min(100, Math.round(g.spent / g.budget * 100)) : 0;
+        return `
+          <div class="cost-row ${g.over ? "over" : ""}">
+            <div class="cost-row-top">
+              <span>${escapeHtml(g.label)} · норма ${g.norm}%</span>
+              <b>${formatMoneyPlain(g.spent)} / ${formatMoneyPlain(g.budget)} ₽</b>
+            </div>
+            <div class="cost-bar"><i style="width:${pctOfBudget}%"></i></div>
+            <div class="cost-row-sub">${g.pct}% от выручки${g.over ? ` · ⚠️ перезакуп +${formatMoneyPlain(g.spent - g.budget)} ₽` : ` · в норме`}</div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+async function loadRequisitionCostSummary(){
+  state.requisitionCostLoading = true;
+  try{
+    state.requisitionCostSummary = await apiGet("/api/requisitions/cost-summary");
+  }catch(error){
+    state.requisitionCostSummary = { groups: [], revenue: 0, year: 0, month: 0 };
+  }finally{
+    state.requisitionCostLoading = false;
+    render();
+  }
 }
 
 function renderRequisitionHistory(historyData){
@@ -1919,7 +1961,7 @@ function renderRequisitionRecord(record, canManage, onlyRemaining){
         ` : `<i class="req-status ${escapeAttr(record.status)}">${escapeHtml(record.statusLabel)}</i>`}
       </div>
       <div class="req-record-meta">
-        ${record.totalLines} ${pluralize(record.totalLines, "позиция", "позиции", "позиций")} · продукты ${record.productLines} · хоз ${record.householdLines}
+        ${record.totalLines} ${pluralize(record.totalLines, "позиция", "позиции", "позиций")} · продукты ${record.productLines} · хоз ${record.householdLines}${record.totalCost ? ` · ≈ ${formatMoneyPlain(record.totalCost)} ₽` : ""}
       </div>
       ${renderRequisitionRecordLines(record, canManage, onlyRemaining)}
       ${record.comment ? `<div class="req-record-comment">${escapeHtml(record.comment)}</div>` : ""}
@@ -2044,6 +2086,7 @@ async function saveRequisitionLineBought(recordId, lineId, purchasedQty){
     const list = state.requisitionHistory?.requisitions || [];
     const idx = list.findIndex((record)=>record.id === recordId);
     if(idx !== -1) list[idx] = updated;
+    state.requisitionCostSummary = null;
     render();
   }catch(error){
     state.requisitionError = "Не удалось сохранить количество";
@@ -2062,6 +2105,7 @@ async function toggleRequisitionLinePurchased(recordId, lineId, purchased){
     const list = state.requisitionHistory?.requisitions || [];
     const idx = list.findIndex((record)=>record.id === recordId);
     if(idx !== -1) list[idx] = updated;
+    state.requisitionCostSummary = null;
     render();
   }catch(error){
     state.requisitionError = "Не удалось сохранить отметку";
@@ -2136,6 +2180,7 @@ async function refreshRequisitionData(){
   ]);
   state.requisitionCatalog = catalog;
   state.requisitionHistory = historyData;
+  state.requisitionCostSummary = null;
   ensureRequisitionKindHasCategories();
 }
 
