@@ -296,13 +296,36 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
     )
   ]);
 
-  const salaryAccruedTotal = shiftRows.rows.reduce((sum, row) => sum + Number(row.pay_amount || 0), 0);
+  // Прошлые месяцы (нет календаря): смены/часы/начислено из ручной истории.
+  const history = await query<{ shifts: number; hours: string; accrued: number }>(
+    "SELECT shifts, hours, accrued FROM payroll_history WHERE employee_id = $1 AND period_month = $2::date",
+    [user.id, start]
+  );
+  const hist = history.rows[0];
+  const histAccrued = Number(hist?.accrued || 0);
+  const histShifts = Number(hist?.shifts || 0);
+  const histHours = Number(hist?.hours || 0);
+
+  // Долг за прошлые месяцы: накоплено по истории минус выплаченное именно за те месяцы.
+  const debtRow = await query<{ debt: string }>(
+    `SELECT COALESCE(SUM(GREATEST(0, h.accrued - COALESCE(p.paid, 0))), 0)::text AS debt
+     FROM payroll_history h
+     LEFT JOIN (
+       SELECT COALESCE(apply_month, date_trunc('month', work_date)::date) AS m, SUM(amount) AS paid
+       FROM payroll_payouts WHERE employee_id = $1 GROUP BY 1
+     ) p ON p.m = h.period_month
+     WHERE h.employee_id = $1`,
+    [user.id]
+  );
+  const pastDebt = Number(debtRow.rows[0]?.debt || 0);
+
+  const salaryAccruedTotal = shiftRows.rows.reduce((sum, row) => sum + Number(row.pay_amount || 0), 0) + histAccrued;
   const salaryPaidTotal = payoutRows.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
   const hookahAccruedTotal = hookahRows.rows.reduce((sum, row) => sum + Number(row.hookah_payout || 0), 0);
   const hookahCountTotal = hookahRows.rows.reduce((sum, row) => sum + Number(row.hookah_count || 0), 0);
   const taskRewardTotal = taskRewardRows.rows.reduce((sum, row) => sum + Number(row.reward_amount || 0), 0);
   const goalRewardTotal = goalRewardRows.rows.reduce((sum, row) => sum + Number(row.reward_amount || 0), 0);
-  const hoursTotal = shiftRows.rows.reduce((sum, row) => sum + Number(row.planned_hours || 0), 0);
+  const hoursTotal = shiftRows.rows.reduce((sum, row) => sum + Number(row.planned_hours || 0), 0) + histHours;
   const todayIso = new Date().toISOString().slice(0, 10);
   const upcomingPayday = paydayRows.rows.find((row) => row.work_date >= todayIso)?.work_date || paydayRows.rows.at(-1)?.work_date || "";
 
@@ -366,8 +389,9 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       role: user.role
     },
     summary: {
-      shifts: shiftRows.rows.length,
+      shifts: shiftRows.rows.length + histShifts,
       hours: Math.round(hoursTotal * 100) / 100,
+      pastDebt,
       accrued: salaryAccruedTotal + hookahAccruedTotal + taskRewardTotal + goalRewardTotal,
       paid: salaryPaidTotal + hookahAccruedTotal,
       remaining: Math.max(0, salaryAccruedTotal + taskRewardTotal + goalRewardTotal - salaryPaidTotal),
