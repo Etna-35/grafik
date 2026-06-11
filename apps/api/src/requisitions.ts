@@ -63,6 +63,8 @@ type ItemRow = {
   unit: string;
   kind: Kind;
   sort_order: number;
+  price: string | null;
+  pack_label: string | null;
 };
 
 type RequisitionRow = {
@@ -340,7 +342,9 @@ async function getVisibleCatalog(user: SessionUser): Promise<{ categories: Categ
           i.name,
           i.unit,
           i.kind::text AS kind,
-          i.sort_order
+          i.sort_order,
+          i.price,
+          i.pack_label
         FROM requisition_catalog_items i
         JOIN requisition_categories c ON c.id = i.category_id
         WHERE i.active = true
@@ -604,7 +608,9 @@ function serializeItem(item: ItemRow) {
     name: item.name,
     unit: item.unit,
     kind: item.kind,
-    sortOrder: Number(item.sort_order || 0)
+    sortOrder: Number(item.sort_order || 0),
+    price: item.price == null ? null : Number(item.price),
+    packLabel: item.pack_label || ""
   };
 }
 

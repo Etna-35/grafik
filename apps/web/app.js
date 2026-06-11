@@ -1751,7 +1751,7 @@ function renderRequisitionItem(item){
       <span class="req-marker" style="background:${escapeAttr(item.categoryColor)}"></span>
       <span class="req-item-main">
         <b>${escapeHtml(item.name)}</b>
-        <small>${escapeHtml(item.unit)}</small>
+        <small>${escapeHtml(item.unit)}${item.packLabel ? ` · ${escapeHtml(item.packLabel)}` : ""}${item.price ? ` · ${formatMoneyPlain(item.price)} ₽` : ""}</small>
       </span>
       ${entry ? `
         <span class="req-item-controls">
