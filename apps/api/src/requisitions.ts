@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
-import { sendMessage, teamChatId, tgEscape, tgPairs, unitShort } from "./telegram.js";
+import { sendMessage, editMessageText, teamChatId, tgEscape, unitShort } from "./telegram.js";
 import { awardPoints, countRecentAwards } from "./progress.js";
 import { predictRevenue, PURCHASE_NORMS } from "./finance.js";
 
@@ -215,7 +215,8 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
         await awardPoints(user.id, "requisition_sent", "Отправил заявку", "requisition", requisitionId);
       }
       const created2 = await getRequisitionById(requisitionId, user);
-      if (created2) void notifyRequisition(created2).catch(() => {});
+      const batchDate = await batchDateForRequisition(requisitionId);
+      if (batchDate) void syncDailyRequisitionBatch(batchDate).catch(() => {});
       return created2;
     } catch (error) {
       await pool.query("ROLLBACK");
@@ -244,6 +245,10 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
       [params.data.id, parsed.data.status]
     );
     await audit(request, "requisition_status_update", user.id, "requisition", params.data.id, parsed.data);
+
+    // Отклонение/смена статуса меняет состав дневной заявки — обновляем общее сообщение.
+    const batchDate = await batchDateForRequisition(params.data.id);
+    if (batchDate) void syncDailyRequisitionBatch(batchDate).catch(() => {});
 
     const record = await getRequisitionById(params.data.id, user);
     if (!record) {
@@ -335,6 +340,109 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
       return;
     }
     return record;
+  });
+
+  // Правка собственной заявки автором: заменить позиции/комментарий (пока заявка new/accepted).
+  app.put("/api/requisitions/:id/lines", async (request, reply) => {
+    const user = await requireRequisitionAccess(request, reply);
+    if (!user) return;
+    const params = requisitionParamsSchema.safeParse(request.params);
+    const parsed = requisitionCreateSchema.safeParse(request.body);
+    if (!params.success || !parsed.success) {
+      await reply.code(400).send({ error: "bad_requisition" });
+      return;
+    }
+    const owner = await query<{ author_id: string | null; status: string }>(
+      "SELECT author_id::text, status::text FROM requisitions WHERE id = $1",
+      [params.data.id]
+    );
+    const row = owner.rows[0];
+    if (!row) {
+      await reply.code(404).send({ error: "not_found" });
+      return;
+    }
+    const canManage = canManageRequisitions(user);
+    if (!canManage && row.author_id !== user.id) {
+      await reply.code(403).send({ error: "forbidden" });
+      return;
+    }
+    if (row.status !== "new" && row.status !== "accepted") {
+      await reply.code(409).send({ error: "requisition_locked" });
+      return;
+    }
+    const normalized = await normalizeLinesForUser(user, parsed.data.lines);
+    if (!normalized.ok) {
+      await reply.code(403).send({ error: normalized.error });
+      return;
+    }
+
+    await pool.query("BEGIN");
+    try {
+      await pool.query("DELETE FROM requisition_lines WHERE requisition_id = $1", [params.data.id]);
+      for (const line of normalized.lines) {
+        await pool.query(
+          `INSERT INTO requisition_lines
+             (requisition_id, catalog_item_id, free_name, qty, unit, kind, category_name, urgent)
+           VALUES ($1, $2, $3, $4, $5, $6::requisition_kind, $7, $8)`,
+          [params.data.id, line.catalogItemId, line.freeName, line.qty, line.unit, line.kind, line.categoryName, line.urgent]
+        );
+      }
+      const anyUrgent = parsed.data.urgent || normalized.lines.some((line) => line.urgent);
+      await pool.query(
+        "UPDATE requisitions SET comment = $2, urgent = $3, updated_at = now() WHERE id = $1",
+        [params.data.id, parsed.data.comment, anyUrgent]
+      );
+      await pool.query("COMMIT");
+    } catch (error) {
+      await pool.query("ROLLBACK");
+      throw error;
+    }
+    await audit(request, "requisition_edit", user.id, "requisition", params.data.id, { lines: normalized.lines.length });
+    const batchDate = await batchDateForRequisition(params.data.id);
+    if (batchDate) void syncDailyRequisitionBatch(batchDate).catch(() => {});
+    return getRequisitionById(params.data.id, user);
+  });
+
+  // Удаление собственной заявки автором (пока new/accepted); руководитель — без ограничений по статусу.
+  app.delete("/api/requisitions/:id", async (request, reply) => {
+    const user = await requireRequisitionAccess(request, reply);
+    if (!user) return;
+    const params = requisitionParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      await reply.code(400).send({ error: "bad_requisition" });
+      return;
+    }
+    const owner = await query<{ author_id: string | null; status: string }>(
+      "SELECT author_id::text, status::text FROM requisitions WHERE id = $1",
+      [params.data.id]
+    );
+    const row = owner.rows[0];
+    if (!row) {
+      await reply.code(404).send({ error: "not_found" });
+      return;
+    }
+    const canManage = canManageRequisitions(user);
+    if (!canManage && row.author_id !== user.id) {
+      await reply.code(403).send({ error: "forbidden" });
+      return;
+    }
+    if (!canManage && row.status !== "new" && row.status !== "accepted") {
+      await reply.code(409).send({ error: "requisition_locked" });
+      return;
+    }
+    const batchDate = await batchDateForRequisition(params.data.id);
+    await pool.query("BEGIN");
+    try {
+      await pool.query("DELETE FROM requisition_lines WHERE requisition_id = $1", [params.data.id]);
+      await pool.query("DELETE FROM requisitions WHERE id = $1", [params.data.id]);
+      await pool.query("COMMIT");
+    } catch (error) {
+      await pool.query("ROLLBACK");
+      throw error;
+    }
+    await audit(request, "requisition_delete", user.id, "requisition", params.data.id, {});
+    if (batchDate) void syncDailyRequisitionBatch(batchDate).catch(() => {});
+    return { ok: true };
   });
 }
 
@@ -566,36 +674,130 @@ async function getRequisitionById(id: string, user: SessionUser) {
   return serializeRequisitions([row], await getLinesForRequisitions([row.id]), canManage)[0];
 }
 
-async function notifyRequisition(req: NonNullable<Awaited<ReturnType<typeof getRequisitionById>>>): Promise<void> {
-  if (!teamChatId()) return;
-  const hasHousehold = req.lines.some((line) => line.kind === "household");
-  const hasProduct = req.lines.some((line) => line.kind === "product");
-  const kindLabel = hasHousehold && hasProduct ? "продукты + хозтовары" : hasHousehold ? "хозтовары" : "продукты";
-  const qtyText = (line: { qty: number; unit: string }) => `${formatQtyPlain(line.qty)} ${unitShort(line.unit)}`;
+// ── Единое общее сообщение заявок за день (П10) ───────────────────────────────
+// Все заявки одного дня (МСК) сводятся в одно сообщение, которое бот РЕДАКТИРУЕТ по мере
+// добавления/правок. Новые позиции — ➕ жирным, удалённые — ➖ зачёркнутыми (один цикл).
+// Группировка — день оформления (created_at в МСК). Содержимое под сворачиваемой цитатой (П6).
 
-  const parts: string[] = [
-    `🧾 <b>Новая заявка · ${kindLabel}</b>`,
-    `От: ${tgEscape(req.authorName || "—")}`
+type BatchLine = { key: string; kind: Kind; category: string; name: string; unit: string; qty: number; urgent: boolean };
+
+async function batchDateForRequisition(id: string): Promise<string | null> {
+  const r = await query<{ d: string }>(
+    "SELECT (created_at AT TIME ZONE 'Europe/Moscow')::date::text AS d FROM requisitions WHERE id = $1",
+    [id]
+  );
+  return r.rows[0]?.d ?? null;
+}
+
+// Сводим все непрорезанные позиции дня по (вид|категория|имя|единица), суммируя количество.
+async function aggregateBatch(batchDate: string): Promise<BatchLine[]> {
+  const res = await query<{ kind: Kind; category_name: string; name: string; unit: string; qty: string; urgent: boolean }>(
+    `SELECT l.kind::text AS kind, l.category_name,
+            COALESCE(i.name, l.free_name) AS name, l.unit, l.qty::text AS qty, l.urgent
+     FROM requisition_lines l
+     JOIN requisitions r ON r.id = l.requisition_id
+     LEFT JOIN requisition_catalog_items i ON i.id = l.catalog_item_id
+     WHERE (r.created_at AT TIME ZONE 'Europe/Moscow')::date = $1::date
+       AND r.status <> 'rejected'`,
+    [batchDate]
+  );
+  const map = new Map<string, BatchLine>();
+  for (const row of res.rows) {
+    const name = (row.name || "").trim() || "—";
+    const category = row.category_name || "Прочее";
+    const unit = row.unit || "шт";
+    const key = `${row.kind}|${category.toLowerCase()}|${name.toLowerCase()}|${unit.toLowerCase()}`;
+    const qty = Number(row.qty || 0);
+    const existing = map.get(key);
+    if (existing) {
+      existing.qty += qty;
+      existing.urgent = existing.urgent || row.urgent;
+    } else {
+      map.set(key, { key, kind: row.kind, category, name, unit, qty, urgent: row.urgent });
+    }
+  }
+  return [...map.values()];
+}
+
+function formatBatchDate(batchDate: string): string {
+  const d = new Date(`${batchDate}T00:00:00+03:00`);
+  const wd = new Intl.DateTimeFormat("ru-RU", { weekday: "short", timeZone: "Europe/Moscow" }).format(d);
+  const dm = new Intl.DateTimeFormat("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "Europe/Moscow" }).format(d);
+  return `${dm} (${wd})`;
+}
+
+function renderBatchMessage(batchDate: string, current: BatchLine[], removed: BatchLine[], prevKeys: Set<string>): string {
+  type Tagged = BatchLine & { state: "added" | "kept" | "removed" };
+  const tagged: Tagged[] = [
+    ...current.map((l): Tagged => ({ ...l, state: prevKeys.has(l.key) ? "kept" : "added" })),
+    ...removed.map((l): Tagged => ({ ...l, state: "removed" }))
   ];
+  const lineText = (l: Tagged): string => {
+    const body = `${tgEscape(l.name)} — ${formatQtyPlain(l.qty)} ${tgEscape(unitShort(l.unit))}`;
+    if (l.state === "added") return `➕ <b>${body}</b>`;
+    if (l.state === "removed") return `➖ <s>${body}</s>`;
+    return body;
+  };
 
-  const urgent = req.lines.filter((line) => line.urgent);
-  if (urgent.length) {
-    parts.push("", "⚠️ <b>СРОЧНО</b>", tgPairs(urgent.map((line) => [line.name, qtyText(line)])));
+  const blocks: string[] = [];
+  const urgent = tagged.filter((l) => l.urgent && l.state !== "removed");
+  if (urgent.length) blocks.push(`⚠️ СРОЧНО\n${urgent.map(lineText).join("\n")}`);
+
+  const byCat = new Map<string, Tagged[]>();
+  for (const l of tagged) {
+    if (l.urgent && l.state !== "removed") continue; // уже в «СРОЧНО»
+    const cat = l.category || "Прочее";
+    const list = byCat.get(cat) ?? [];
+    list.push(l);
+    byCat.set(cat, list);
+  }
+  for (const [cat, items] of byCat) {
+    blocks.push(`${tgEscape(cat)}\n${items.map(lineText).join("\n")}`);
   }
 
-  const byCategory = new Map<string, typeof req.lines>();
-  for (const line of req.lines.filter((line) => !line.urgent)) {
-    const key = line.categoryName || "Прочее";
-    const list = byCategory.get(key) || [];
-    list.push(line);
-    byCategory.set(key, list);
+  const head = `🧾 <b>Заявка на ${formatBatchDate(batchDate)}</b>`;
+  let inner = blocks.join("\n\n");
+  // Защита от лимита Telegram (4096 символов с тегами).
+  if (head.length + inner.length + 40 > 4096) {
+    inner = `${inner.slice(0, 3900)}\n…`;
   }
-  for (const [category, items] of byCategory) {
-    parts.push("", `📦 <b>${tgEscape(category)}</b>`, tgPairs(items.map((line) => [line.name, qtyText(line)])));
-  }
+  return `${head}\n<blockquote expandable>${inner}</blockquote>`;
+}
 
-  if (req.comment) parts.push("", `💬 ${tgEscape(req.comment)}`);
-  await sendMessage(teamChatId(), parts.join("\n"));
+export async function syncDailyRequisitionBatch(batchDate: string): Promise<void> {
+  if (!teamChatId()) return;
+  const current = await aggregateBatch(batchDate);
+  const existing = await query<{ chat_id: string; message_id: string; snapshot: BatchLine[] }>(
+    "SELECT chat_id, message_id, snapshot FROM requisition_tg_messages WHERE batch_date = $1",
+    [batchDate]
+  );
+  const prev = existing.rows[0];
+  const prevSnap: BatchLine[] = Array.isArray(prev?.snapshot) ? prev!.snapshot : [];
+  const prevKeys = new Set(prevSnap.map((l) => l.key));
+  const curKeys = new Set(current.map((l) => l.key));
+  const removed = prevSnap.filter((l) => !curKeys.has(l.key));
+
+  if (!current.length && !removed.length) return;
+
+  const text = renderBatchMessage(batchDate, current, removed, prevKeys);
+  let messageId = prev?.message_id || "";
+  if (messageId) {
+    const res = await editMessageText(prev!.chat_id, messageId, text);
+    if (!res.ok) messageId = ""; // сообщение могло быть удалено — отправим заново
+  }
+  if (!messageId) {
+    const res = await sendMessage(teamChatId(), text);
+    if (!res.ok || !res.messageId) return;
+    messageId = res.messageId;
+  }
+  await query(
+    `INSERT INTO requisition_tg_messages (batch_date, chat_id, message_id, snapshot, updated_at)
+     VALUES ($1, $2, $3, $4::jsonb, now())
+     ON CONFLICT (batch_date) DO UPDATE
+       SET chat_id = EXCLUDED.chat_id, message_id = EXCLUDED.message_id,
+           snapshot = EXCLUDED.snapshot, updated_at = now()`,
+    [batchDate, teamChatId(), messageId, JSON.stringify(current)]
+  );
 }
 
 function formatQtyPlain(qty: number): string {

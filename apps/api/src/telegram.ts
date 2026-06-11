@@ -70,6 +70,32 @@ export async function sendMessage(chatId: string, text: string): Promise<Telegra
   }
 }
 
+// Редактирование ранее отправленного текстового сообщения (для единой заявки дня).
+export async function editMessageText(chatId: string, messageId: string, text: string): Promise<TelegramResult> {
+  if (!env.telegramBotToken || !chatId || !messageId) {
+    return { ok: false, error: "telegram_not_configured", messageId: "" };
+  }
+  try {
+    const res = await fetch(apiUrl("editMessageText"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        message_id: Number(messageId),
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: true
+      })
+    });
+    if (!res.ok) {
+      return { ok: false, error: (await res.text()).slice(0, 400), messageId };
+    }
+    return { ok: true, error: "", messageId };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error), messageId };
+  }
+}
+
 export type OutPhoto = { buffer: Buffer; filename: string; mimeType: string };
 
 // Отправляет подпись и фото. 0 фото → обычное сообщение; 1 → sendPhoto; 2+ → альбом sendMediaGroup

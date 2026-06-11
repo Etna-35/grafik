@@ -94,6 +94,7 @@ let state = {
   requisitionSearch: "",
   requisitionCart: {},
   requisitionComment: "",
+  requisitionEditId: null,
   requisitionUrgent: false,
   requisitionExpanded: {},
   requisitionShowRemaining: false,
@@ -1824,6 +1825,13 @@ function renderRequisitionCart(){
       </div>
     </div>
 
+    ${state.requisitionEditId ? `
+      <div class="req-edit-banner">
+        Правка заявки — изменения обновят общее сообщение
+        <button class="ghost mini" type="button" data-req-edit-cancel>Отменить</button>
+      </div>
+    ` : ""}
+
     ${renderFreeRequisitionPanel()}
 
     <form id="requisitionSendForm">
@@ -1838,7 +1846,7 @@ function renderRequisitionCart(){
       </label>
 
       <button class="brand-action req-submit-link" type="submit" ${items.length && !state.requisitionSaving ? "" : "disabled"}>
-        ${state.requisitionSaving ? "Отправляю" : "Отправить заявку"}
+        ${state.requisitionSaving ? (state.requisitionEditId ? "Сохраняю" : "Отправляю") : (state.requisitionEditId ? "Сохранить изменения" : "Отправить заявку")}
       </button>
     </form>
   `;
@@ -1987,6 +1995,12 @@ function renderRequisitionRecord(record, canManage, onlyRemaining){
       </div>
       ${renderRequisitionRecordLines(record, canManage, onlyRemaining)}
       ${record.comment ? `<div class="req-record-comment">${escapeHtml(record.comment)}</div>` : ""}
+      ${(!canManage && (record.status === "new" || record.status === "accepted")) ? `
+        <div class="req-record-actions">
+          <button class="ghost mini" type="button" data-req-edit="${escapeAttr(record.id)}">Изменить</button>
+          <button class="ghost mini danger-action" type="button" data-req-delete="${escapeAttr(record.id)}">Удалить</button>
+        </div>
+      ` : ""}
     </div>
   `;
 }
@@ -2080,6 +2094,13 @@ function bindRequisitionPage(){
   app.querySelectorAll("[data-req-expand]").forEach((button)=>{
     button.addEventListener("click", ()=>toggleRequisitionExpanded(button.dataset.reqExpand));
   });
+  app.querySelectorAll("[data-req-edit]").forEach((button)=>{
+    button.addEventListener("click", ()=>startEditRequisition(button.dataset.reqEdit));
+  });
+  app.querySelectorAll("[data-req-delete]").forEach((button)=>{
+    button.addEventListener("click", ()=>deleteRequisition(button.dataset.reqDelete));
+  });
+  app.querySelector("[data-req-edit-cancel]")?.addEventListener("click", cancelEditRequisition);
   const remaining = app.querySelector("[data-req-remaining]");
   if(remaining){
     remaining.addEventListener("click", ()=>{
@@ -2320,34 +2341,104 @@ function addFreeRequisitionItem(form){
 async function sendRequisition(form){
   const items = requisitionCartItems();
   if(state.requisitionSaving || !items.length) return;
+  const editId = state.requisitionEditId;
   state.requisitionSaving = true;
   state.requisitionError = "";
   state.requisitionNotice = "";
   state.requisitionComment = form.elements.comment.value.trim();
   render();
+  const payload = {
+    comment: state.requisitionComment,
+    urgent: false,
+    lines: items.map((item)=>({
+      catalogItemId: item.catalogItemId,
+      freeName: item.freeName,
+      qty: item.qty,
+      unit: item.unit,
+      kind: item.kind,
+      categoryName: item.categoryName,
+      urgent: Boolean(item.urgent)
+    }))
+  };
   try{
-    await apiPost("/api/requisitions", {
-      comment: state.requisitionComment,
-      urgent: false,
-      lines: items.map((item)=>({
-        catalogItemId: item.catalogItemId,
-        freeName: item.freeName,
-        qty: item.qty,
-        unit: item.unit,
-        kind: item.kind,
-        categoryName: item.categoryName,
-        urgent: Boolean(item.urgent)
-      }))
-    });
+    if(editId){
+      await apiPut(`/api/requisitions/${encodeURIComponent(editId)}/lines`, payload);
+    }else{
+      await apiPost("/api/requisitions", payload);
+    }
     state.requisitionCart = {};
     state.requisitionComment = "";
-    state.requisitionNotice = "Заявка отправлена";
+    state.requisitionEditId = null;
+    state.requisitionNotice = editId ? "Заявка обновлена" : "Заявка отправлена";
     state.requisitionTab = "history";
     await refreshRequisitionData();
   }catch(error){
     state.requisitionError = error.code === "forbidden_catalog_item" || error.code === "forbidden_category"
       ? "Эта категория недоступна для твоей роли"
-      : "Не удалось отправить заявку";
+      : error.code === "requisition_locked"
+        ? "Заявка уже закуплена — изменить нельзя"
+        : editId ? "Не удалось сохранить изменения" : "Не удалось отправить заявку";
+  }finally{
+    state.requisitionSaving = false;
+    render();
+  }
+}
+
+// Загрузить позиции заявки в корзину для правки (key = catalogItemId | уникальный free-ключ).
+function startEditRequisition(id){
+  const data = state.requisitionHistory || { requisitions: [] };
+  const record = (data.requisitions || []).find((r)=>r.id === id);
+  if(!record) return;
+  const cart = {};
+  (record.lines || []).forEach((line, i)=>{
+    const key = line.catalogItemId || `free:${id}:${i}`;
+    cart[key] = {
+      key,
+      catalogItemId: line.catalogItemId || null,
+      freeName: line.catalogItemId ? "" : (line.freeName || line.name),
+      name: line.name,
+      qty: line.qty,
+      unit: line.unit,
+      kind: line.kind,
+      categoryName: line.categoryName,
+      urgent: Boolean(line.urgent)
+    };
+  });
+  state.requisitionCart = cart;
+  state.requisitionComment = record.comment || "";
+  state.requisitionEditId = id;
+  state.requisitionTab = "cart";
+  state.requisitionNotice = "";
+  state.requisitionError = "";
+  render();
+}
+
+function cancelEditRequisition(){
+  state.requisitionEditId = null;
+  state.requisitionCart = {};
+  state.requisitionComment = "";
+  state.requisitionTab = "history";
+  render();
+}
+
+async function deleteRequisition(id){
+  if(state.requisitionSaving || !id) return;
+  if(!confirm("Удалить заявку? Она исчезнет из общего сообщения.")) return;
+  state.requisitionSaving = true;
+  state.requisitionError = "";
+  state.requisitionNotice = "";
+  render();
+  try{
+    await apiDelete(`/api/requisitions/${encodeURIComponent(id)}`);
+    if(state.requisitionEditId === id){
+      state.requisitionEditId = null;
+      state.requisitionCart = {};
+      state.requisitionComment = "";
+    }
+    state.requisitionNotice = "Заявка удалена";
+    await refreshRequisitionData();
+  }catch(error){
+    state.requisitionError = error.code === "requisition_locked" ? "Заявка уже закуплена — удалить нельзя" : "Не удалось удалить";
   }finally{
     state.requisitionSaving = false;
     render();
