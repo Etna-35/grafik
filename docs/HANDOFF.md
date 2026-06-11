@@ -1,7 +1,15 @@
 # HANDOFF · Etna «no-money-no-honey» — передача в новую сессию
 
-Это стартовый документ для нового агента. Прочитать ПЕРВЫМ, затем `AGENTS.md`, `DECISIONS.md`,
-`docs/STATE.md`. Обновлено: 2026-06-07. Ветка `main`, дерево чистое, последний коммит `ee68a06`.
+Это стартовый документ для нового агента. Прочитать ПЕРВЫМ, затем **`CLAUDE.md`** (авто-загружается, самый
+актуальный: §6 миграции →032, §7 «Новое» со всеми фичами, §8 подводные камни) и **`docs/roadmap-blocks.md`**
+(полный статус Блоков 1–4 + Финансы). Этот HANDOFF даёт каркас; детали и свежие фичи — в CLAUDE.md.
+Обновлено: 2026-06-11. Ветка `main`, дерево чистое.
+
+> ⚠️ Состояние на 2026-06-11: реализованы и на проде Блоки 1–4 + финансовый фундамент (P&L, прогноз выручки,
+> расходы, постоянные платежи), продуктовая матрица с ценами (321 поз.), стоимость заявки + контроль фудкоста,
+> ЗП прошлых месяцев, тест-челлендж, выплаты за выбранный месяц и привязка к обязательствам, Telegram-уведомления.
+> Осталось из плана: только **хозматрица с ценами** (владелец заполнит `docs/catalog-household.csv`).
+> Разделы §5/§9 ниже — исторические; актуальный статус смотри в `docs/roadmap-blocks.md` и CLAUDE.md §7.
 
 ---
 
@@ -14,7 +22,8 @@
     `/zayavka` заявка, `/payroll` выплаты, `/admin` админка.
   - `https://api.no-money-no-honey.ru/api/health` — healthcheck. `https://admin.no-money-no-honey.ru/` — NocoDB.
 - **Репозиторий:** `github.com/Etna-35/grafik` (origin, ветка `main`). Репозиторий публичный (см. риск в §8).
-- **Сервер:** Beget VPS, IP `212.67.14.25`, SSH-алиас **`etna-vps`** (ключ уже на машине пользователя).
+- **Сервер:** Beget VPS, IP `85.198.68.243` (сменился с `212.67.14.25` ~2026-06-09; алиас обновлён),
+  SSH-алиас **`etna-vps`** (ключ уже на машине пользователя). `ssh etna-vps` идёт по IP — работает даже при лежащем DNS.
   - Код: `/opt/etna/app`. Compose+.env: `/opt/etna/deploy`. Docker Compose: postgres, redis, nocodb, caddy, api.
 
 ## 2. Стек и структура
@@ -56,12 +65,14 @@
    `ssh etna-vps "cd /opt/etna/deploy && docker compose build api && docker compose up -d api"`
 6. Миграции применяются АВТОМАТИЧЕСКИ при старте контейнера (entrypoint → `node apps/api/dist/migrate.js`),
    затем seed. Проверить лог: `docker compose logs api | grep -i 'Applied migration'`.
-7. Импортёры запускать вручную в контейнере после деплоя:
-   `ssh etna-vps "cd /opt/etna/deploy && docker compose exec -T api node apps/api/dist/importMenu.js"`
+7. Импортёры запускать вручную в контейнере после деплоя (НЕ на старте):
+   `importMenu` · `importTraining` · `importQuiz` · `importOldClosings` · **`importProductCatalog`** (продуктовый
+   каталог с ценами — ЗАМЕНА product-позиций) — напр.
+   `ssh etna-vps "cd /opt/etna/deploy && docker compose exec -T api node apps/api/dist/importProductCatalog.js"`.
 8. Проверка: `curl -s -o /dev/null -w '%{http_code}' https://api.no-money-no-honey.ru/api/health` → 200.
    БД-проверки: `docker compose exec -T postgres psql -U etna_app -d etna_app -tAc "..."`.
 
-Миграции: только вперёд, нумерация `NNN_name.sql` (последняя — `021_quiz.sql`). Идемпотентность желательна
+Миграции: только вперёд, нумерация `NNN_name.sql` (последняя — **`032_payroll_history.sql`**). Идемпотентность желательна
 (`IF NOT EXISTS`, `DROP CONSTRAINT IF EXISTS`). При правке схемы — обновлять `docs/data-model.md`.
 
 В git-коммитах подпись: `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`.
@@ -127,6 +138,10 @@
   `bindScheduleCells` (click/dblclick/contextmenu).
 
 ## 9. Бэклог / что осталось (приоритезировано)
+> АКТУАЛЬНО (2026-06-11): почти весь бэклог ниже закрыт. Из согласованного плана осталось **только хозматрица
+> с ценами** (`docs/catalog-household.csv` → `importProductCatalog`-аналог). Полный статус — `docs/roadmap-blocks.md`.
+> Ниже — исторический бэклог; пункты про Telegram/обучение-роли/выплаты уже реализованы.
+
 Источники: `docs/codex-brief-iteration-2.md` (фазы A–F все сделаны), `docs/codex-brief-quiz-engine.md` (раздел «на будущее»).
 - Обучение: вопросы для модуля официанта; доступ меню-модулей поварам/бару; редактор вопросов в админке;
   глава «Интерьер» из PDF; вынос порога/времени в настройки; серверная валидация таймаута.
@@ -137,10 +152,13 @@
 - Маски/иконки: при желании прислать пиксель-перфект PNG-награды с альфой.
 
 ## 10. Стартовое сообщение для нового агента (можно скопировать)
-> Продолжаем проект Etna (кабинет ресторана). Прочитай `docs/HANDOFF.md`, затем `AGENTS.md`, `DECISIONS.md`,
-> `docs/STATE.md` и нужные `docs/codex-brief-*.md`. Стек: Fastify+Postgres (`apps/api/src`), ванильный фронт
-> (`apps/web/app.js` + `styles.css`), тёмная тема RestForm (цвета только через CSS-переменные).
-> Деплой строго по §4 HANDOFF: правки → `npm run check`/`node --check` → коммит/пуш в main → scp в
-> `/opt/etna/app` (ssh `etna-vps`) → `docker compose build api && up -d api` (миграции применяются авто) →
-> проверка `/api/health`. Не ломать: PIN-seed, неуникальные имена, тёмный текст на золоте.
+> Продолжаем проект Etna (кабинет ресторана). Прочитай **`CLAUDE.md`** (авто-загружен, самый актуальный) и
+> **`docs/roadmap-blocks.md`** (статус всех блоков), затем при необходимости `docs/HANDOFF.md`/`AGENTS.md`/
+> `DECISIONS.md`/`docs/STATE.md`. Стек: Fastify+Postgres (`apps/api/src/*.ts`, вход `server.ts`), ванильный фронт
+> (`apps/web/app.js` ~5к строк + `styles.css`), тёмная тема RestForm (цвета только через CSS-переменные, текст
+> на золоте тёмный). Деплой строго по §4 CLAUDE.md/HANDOFF: правки → `npm run check`/`node --check apps/web/app.js`
+> → коммит/пуш в main → scp в `/opt/etna/app` (ssh `etna-vps` = IP `85.198.68.243`) →
+> `docker compose build api && up -d api` (миграции авто, импортёры вручную) → проверка `/api/health`.
+> Не ломать: PIN-seed (по роли), неуникальные имена, тёмный текст на золоте, статику в образе, clearSessionData()
+> на login/logout, sentinel scope_id челленджа, household НЕ трогать в importProductCatalog.
 > Моя задача: <впиши задачу>.
