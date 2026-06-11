@@ -266,7 +266,7 @@ function renderHub(){
         <div class="nav">
           ${state.services.map(renderServiceCard).join("")}
         </div>
-        <h2 class="section-title"></h2>
+        <div class="hub-gap"></div>
         <button class="ghost logout" data-action="logout">Выйти</button>
       </section>
     </div>
@@ -371,7 +371,7 @@ function renderMerits(){
           <div class="award-meta">
             <b>Уровень ${s.level ?? 1}</b>
             <span>Ещё ${s.toNextPct ?? 100}% до повышения</span>
-            <div class="award-bar"><i style="width:${s.progressPct ?? 0}%"></i></div>
+            <div class="award-bar meter thin ok"><i style="width:${s.progressPct ?? 0}%"></i></div>
           </div>
         </button>
         <button class="merit-tasks" data-url="/tasks">
@@ -428,7 +428,7 @@ function renderProgressScreen(){
     <div class="phone wide">
       <section class="screen service-page">
         <div class="backrow">
-          <button class="iconbtn" data-action="prog-back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="prog-back">${arrowLeftIcon()}</button>
           <h1 class="page-title">Мой прогресс</h1>
         </div>
         ${state.progressLoading
@@ -437,7 +437,7 @@ function renderProgressScreen(){
             <div class="progress-hero">
               <div class="prog-badge mask">${levelMaskImg(p.level)}</div>
               <div class="prog-title">Уровень ${p.level}</div>
-              <div class="award-bar big"><i style="width:${p.progressPct}%"></i></div>
+              <div class="award-bar big meter ok"><i style="width:${p.progressPct}%"></i></div>
               <div class="prog-sub">${p.progressPct}% · ещё ${p.toNextPct}% до повышения</div>
             </div>
             <h2 class="sec">За что начислено</h2>
@@ -482,7 +482,7 @@ function renderSalesGoalCard(g){
         <div class="goal-title">${escapeHtml(g.title)}${g.rewardAmount ? ` <span class="goal-reward">+${formatMoneyPlain(g.rewardAmount)} ₽</span>` : ""}</div>
         <div class="goal-count"><b>${g.current}</b> / ${g.target}</div>
       </div>
-      <div class="goal-bar"><i style="width:${pct}%"></i></div>
+      <div class="goal-bar meter"><i style="width:${pct}%"></i></div>
       ${done
         ? `<div class="goal-status">Цель достигнута — ждёт подтверждения руководителя</div>`
         : `<div class="goal-actions">
@@ -539,7 +539,7 @@ function renderPraiseScreen(){
     <div class="phone wide">
       <section class="screen service-page">
         <div class="backrow">
-          <button class="iconbtn" data-action="praise-back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="praise-back">${arrowLeftIcon()}</button>
           <h1 class="page-title">Спасибо коллеге</h1>
         </div>
         ${state.praiseLoading
@@ -550,12 +550,12 @@ function renderPraiseScreen(){
                 <span>Кого благодарим</span>
                 <select name="toId" required>${(data.colleagues || []).map((c)=>`<option value="${escapeAttr(c.id)}" ${state.praisePrefillTo === c.id ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("")}</select>
               </label>
-              <label class="field" style="margin-top:10px">
+              <label class="field mt-10">
                 <span>За что</span>
                 <textarea name="body" maxlength="500" rows="3" placeholder="Спасибо за…" required></textarea>
               </label>
-              ${state.praiseError ? `<div class="error" style="text-align:left">${escapeHtml(state.praiseError)}</div>` : ""}
-              <button class="ghost brand-action" type="submit" style="margin-top:12px">Отправить спасибо</button>
+              ${state.praiseError ? `<div class="error ta-left">${escapeHtml(state.praiseError)}</div>` : ""}
+              <button class="ghost brand-action mt-12" type="submit">Отправить спасибо</button>
             </form>
             <h2 class="sec">Лента благодарностей</h2>
             <div class="praise-list">
@@ -664,7 +664,7 @@ function renderServicePage(path){
     <div class="phone">
       <section class="screen service-page">
         <div class="backrow">
-          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
           <span class="status">${statusText}</span>
         </div>
@@ -702,7 +702,7 @@ function renderTrainingPage(service){
     <div class="phone wide training-phone">
       <section class="screen service-page training-screen">
         <div class="backrow">
-          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
         </div>
         ${body}
@@ -1103,7 +1103,7 @@ function renderQuizScreen(){
           <div class="quiz-title">Тест${q.scope === "attestation" ? " · аттестация" : q.scope === "challenge" ? " · проверка знаний" : ""}</div>
           <div class="quiz-timer" id="quizTimer">${formatClock(Math.round(q.durationSec))}</div>
         </div>
-        <div class="hint" style="margin:0 2px 12px">Закрепим прочитанное — ответь на вопросы. Время ограничено, по окончании тест завершится сам.</div>
+        <div class="hint hint-block">Закрепим прочитанное — ответь на вопросы. Время ограничено, по окончании тест завершится сам.</div>
         <div class="quiz-questions">
           ${q.questions.map((qq, i)=>`
             <div class="quiz-q">
@@ -1114,7 +1114,7 @@ function renderQuizScreen(){
             </div>
           `).join("")}
         </div>
-        <div class="shift-footer"><button class="btn brand-action" type="button" id="quizSubmit" style="width:100%">Завершить тест</button></div>
+        <div class="shift-footer"><button class="btn brand-action w-100" type="button" id="quizSubmit">Завершить тест</button></div>
       </section>
     </div>
   `;
@@ -1219,7 +1219,7 @@ function renderTasksPage(service){
     <div class="phone wide tasks-phone">
       <section class="screen service-page tasks-screen">
         <div class="backrow">
-          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
         </div>
         ${body}
@@ -1658,7 +1658,7 @@ function renderRequisitionPage(service){
     <div class="phone wide requisition-phone">
       <section class="screen service-page requisition-screen">
         <div class="backrow">
-          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
         </div>
         ${body}
@@ -1764,14 +1764,14 @@ function renderRequisitionItem(item){
       ${entry ? `
         <span class="req-item-controls">
           <span class="req-stepper">
-            <button type="button" data-req-dec="${escapeAttr(item.id)}">-</button>
+            <button type="button" aria-label="Меньше" data-req-dec="${escapeAttr(item.id)}">-</button>
             <b>${formatQty(entry.qty)} ${escapeHtml(entry.unit)}</b>
-            <button type="button" data-req-inc="${escapeAttr(item.id)}">+</button>
+            <button type="button" aria-label="Больше" data-req-inc="${escapeAttr(item.id)}">+</button>
           </span>
           <button class="req-urgent-toggle ${entry.urgent ? "on" : ""}" type="button" data-req-urgent="${escapeAttr(item.id)}">${entry.urgent ? "Срочно ✓" : "Срочно"}</button>
         </span>
       ` : `
-        <button class="req-add" type="button" data-req-add="${escapeAttr(item.id)}">+</button>
+        <button class="req-add" type="button" aria-label="Добавить в заявку" data-req-add="${escapeAttr(item.id)}">+</button>
       `}
     </div>
   `;
@@ -1854,8 +1854,8 @@ function renderRequisitionCostSummary(){
               <span>${escapeHtml(g.label)} · норма ${g.norm}%</span>
               <b>${formatMoneyPlain(g.spent)} / ${formatMoneyPlain(g.budget)} ₽</b>
             </div>
-            <div class="cost-bar"><i style="width:${pctOfBudget}%"></i></div>
-            <div class="cost-row-sub">${g.pct}% от выручки${g.over ? ` · ⚠️ перезакуп +${formatMoneyPlain(g.spent - g.budget)} ₽` : ` · в норме`}</div>
+            <div class="cost-bar meter thin ok"><i style="width:${pctOfBudget}%"></i></div>
+            <div class="cost-row-sub">${g.pct}% от выручки${g.over ? ` · перезакуп +${formatMoneyPlain(g.spent - g.budget)} ₽` : ` · в норме`}</div>
           </div>
         `;
       }).join("")}
@@ -2383,7 +2383,7 @@ function renderPayrollPage(service){
     <div class="phone wide payroll-phone">
       <section class="screen service-page payroll-screen">
         <div class="backrow">
-          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
         </div>
         ${body}
@@ -2530,7 +2530,7 @@ function renderObligations(payroll){
               <b class="oblig-remain">${formatMoneyPlain(o.remaining)} ₽</b>
             </div>
             ${o.note ? `<div class="oblig-note">${escapeHtml(o.note)}</div>` : ""}
-            <div class="oblig-bar"><i style="width:${pct}%"></i></div>
+            <div class="oblig-bar meter thin ok"><i style="width:${pct}%"></i></div>
             <div class="oblig-sub">Уже вернули ${formatMoneyPlain(o.amountPaid)} из ${formatMoneyPlain(o.amountTotal)} ₽</div>
           </div>
         `;
@@ -2548,15 +2548,15 @@ function renderObligationsManager(payroll){
       <label class="field"><span>Сотрудник</span>
         <select name="employeeId" required>${emps.map((e)=>`<option value="${escapeAttr(e.id)}">${escapeHtml(e.name)}</option>`).join("")}</select>
       </label>
-      <label class="field" style="margin-top:10px"><span>За что</span>
+      <label class="field mt-10"><span>За что</span>
         <input name="title" maxlength="120" placeholder="Напр. премия за май" required>
       </label>
-      <label class="field" style="margin-top:10px"><span>Сумма, ₽</span>
+      <label class="field mt-10"><span>Сумма, ₽</span>
         <input name="amountTotal" type="number" min="1" step="1" inputmode="numeric" required>
       </label>
-      <button class="ghost brand-action" type="submit" style="margin-top:12px">Добавить</button>
+      <button class="ghost brand-action mt-12" type="submit">Добавить</button>
     </form>
-    <div class="oblig-list" style="margin-top:12px">
+    <div class="oblig-list mt-12">
       ${all.length ? all.map((o)=>`
         <div class="oblig-card manage">
           <div class="oblig-top">
@@ -2659,7 +2659,7 @@ function renderAdminPage(service){
     <div class="phone wide admin-phone">
       <section class="screen service-page admin-screen">
         <div class="backrow">
-          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
         </div>
         ${body}
@@ -3064,7 +3064,7 @@ function renderShiftClosingPage(service){
     <div class="phone wide shift-close-phone">
       <section class="screen service-page shift-close-screen">
         <div class="backrow">
-          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
         </div>
         ${body}
@@ -3094,7 +3094,7 @@ function renderFinancePage(service){
     <div class="phone wide shift-close-phone">
       <section class="screen service-page shift-close-screen">
         <div class="backrow">
-          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
         </div>
         ${body}
@@ -3901,7 +3901,7 @@ function renderSchedulePage(service){
     <div class="phone wide schedule-phone">
       <section class="screen service-page schedule-screen ${editUnlocked ? "edit-unlocked" : "edit-locked"}">
         <div class="backrow">
-          <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
           ${renderScheduleLockControl(service)}
         </div>
@@ -3994,7 +3994,7 @@ function renderScheduleContent(schedule){
       <button class="btn icon" data-month-action="next">›</button>
     </div>
     ${schedule.canSeeMoney ? renderMoneySummary(schedule, totals) : ""}
-    ${state.scheduleEditUnlocked ? `<div class="hint" style="margin:0 2px 8px">Клик по ячейке — поставить/снять смену. Двойной клик — задать нестандартные часы. Клик по дате — выплаты и оценки.</div>` : ""}
+    ${state.scheduleEditUnlocked ? `<div class="hint hint-block-sm">Клик по ячейке — поставить/снять смену. Двойной клик — задать нестандартные часы. Клик по дате — выплаты и оценки.</div>` : ""}
     ${schedule.employees.length ? renderScheduleTable(schedule) : renderEmptySchedule()}
     ${schedule.canSeeMoney ? `
       <h2 class="sec">Итоги за месяц</h2>
@@ -4984,15 +4984,15 @@ function escapeAttr(value){
 
 function tintFor(code){
   return {
-    schedule:"rgba(143,36,51,.08)",
-    shift_close:"rgba(47,111,107,.08)",
-    tasks:"rgba(176,122,30,.1)",
-    training:"rgba(143,36,51,.08)",
-    requisition:"rgba(47,111,79,.1)",
-    payroll:"rgba(47,111,79,.09)",
-    admin:"rgba(42,35,32,.08)",
-    finance:"rgba(176,122,30,.1)"
-  }[code] || "rgba(143,36,51,.08)";
+    schedule:"var(--brand-tint)",
+    shift_close:"var(--teal-tint)",
+    tasks:"var(--gold-tint)",
+    training:"var(--brand-tint)",
+    requisition:"var(--green-tint)",
+    payroll:"var(--green-tint)",
+    admin:"var(--ink-tint)",
+    finance:"var(--gold-tint)"
+  }[code] || "var(--brand-tint)";
 }
 
 function calendarIcon(){
