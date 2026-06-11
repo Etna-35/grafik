@@ -56,6 +56,11 @@ const payoutParamsSchema = z.object({
   id: z.string().uuid()
 });
 
+const payoutUpdateSchema = z.object({
+  amount: z.number().int().positive().max(1000000).optional(),
+  applyMonth: z.string().regex(/^\d{4}-\d{2}$/).nullable().optional()
+});
+
 const scoreEditSchema = employeeDateSchema.extend({
   score: z.enum(["green", "yellow", "red"])
 });
@@ -259,6 +264,58 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     return { ok: true };
   });
 
+  // Правка выплаты: сумма и/или месяц начисления (apply_month). Если выплата привязана к обязательству
+  // и меняется сумма — корректируем остаток обязательства на дельту.
+  app.patch("/api/schedule/payouts/:id", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const params = payoutParamsSchema.safeParse(request.params);
+    const parsed = payoutUpdateSchema.safeParse(request.body);
+    if (!params.success || !parsed.success) {
+      await reply.code(400).send({ error: "bad_payout" });
+      return;
+    }
+
+    const current = await query<{ amount: number; obligation_id: string | null }>(
+      "SELECT amount, obligation_id::text FROM payroll_payouts WHERE id = $1",
+      [params.data.id]
+    );
+    const row = current.rows[0];
+    if (!row) {
+      await reply.code(404).send({ error: "not_found" });
+      return;
+    }
+
+    const newAmount = parsed.data.amount ?? row.amount;
+    // applyMonth: undefined — не трогаем; null — сбросить на месяц смены; строка — конкретный месяц.
+    const applyMonthProvided = parsed.data.applyMonth !== undefined;
+    const applyMonth = parsed.data.applyMonth ? `${parsed.data.applyMonth}-01` : null;
+
+    if (row.obligation_id && parsed.data.amount !== undefined && newAmount !== row.amount) {
+      const delta = newAmount - row.amount;
+      await query(
+        `UPDATE employee_obligations
+         SET amount_paid = GREATEST(0, LEAST(amount_total, amount_paid + $2)),
+             is_active = (GREATEST(0, LEAST(amount_total, amount_paid + $2)) < amount_total),
+             updated_at = now()
+         WHERE id = $1`,
+        [row.obligation_id, delta]
+      );
+    }
+
+    if (applyMonthProvided) {
+      await query(
+        "UPDATE payroll_payouts SET amount = $2, apply_month = $3::date WHERE id = $1",
+        [params.data.id, newAmount, applyMonth]
+      );
+    } else {
+      await query("UPDATE payroll_payouts SET amount = $2 WHERE id = $1", [params.data.id, newAmount]);
+    }
+    await audit(request, "payroll_payout_update", user.id, "payroll_payout", params.data.id, parsed.data);
+    return { ok: true };
+  });
+
   app.put("/api/schedule/scores", async (request, reply) => {
     const user = await requireManager(request, reply);
     if (!user) return;
@@ -390,9 +447,9 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
   );
 
   const canSeeAllMoney = user.role === "owner" || user.role === "manager";
-  const payoutRows = await query<{ id: string; work_date: string; employee_id: string; amount: number }>(
+  const payoutRows = await query<{ id: string; work_date: string; employee_id: string; amount: number; apply_month: string | null; obligation_id: string | null }>(
     `
-      SELECT id::text, work_date::text, employee_id, amount
+      SELECT id::text, work_date::text, employee_id, amount, apply_month::text, obligation_id::text
       FROM payroll_payouts
       WHERE work_date >= $1::date
         AND work_date < ($1::date + interval '1 month')
@@ -457,7 +514,9 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
           id: row.id,
           work_date: row.work_date,
           employee_id: row.employee_id,
-          amount: canSeeAllMoney ? row.amount : 0
+          amount: canSeeAllMoney ? row.amount : 0,
+          applyMonth: row.apply_month ? row.apply_month.slice(0, 7) : null,
+          obligationId: row.obligation_id || null
         })),
       scores: scoreRows.rows.filter((row) => row.work_date === date),
       shifts,

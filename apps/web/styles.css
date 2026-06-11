@@ -347,7 +347,12 @@ a{color:inherit;text-decoration:none}
 .score-pick.on{border-color:var(--ink);box-shadow:0 0 0 2px rgba(255,255,255,.12)}
 .payout-editor{border-top:1px solid var(--line);padding-top:10px}
 .payout-item{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:var(--r-sm);padding:7px 8px;margin-top:7px;font-size:13px;font-weight:600}
-.payout-item button{margin-left:auto}
+.payout-item .payout-period{font-style:normal;font-weight:600;color:var(--ink-soft);font-size:12px}
+.payout-item-actions{margin-left:auto;display:flex;gap:6px;flex:none}
+.payout-item.editing{flex-wrap:wrap}
+.payout-edit{display:flex;flex-wrap:wrap;gap:7px;align-items:center;width:100%}
+.payout-edit input{flex:1 1 100px;min-width:0;border:1px solid var(--line-strong);background:var(--card);border-radius:var(--r-sm);padding:8px 10px;color:var(--ink);font:inherit;font-size:14px;font-weight:600}
+.payout-edit select{flex:1 1 130px;min-width:0}
 .payout-add{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center}
 .payout-add>select,.payout-add>input{flex:1 1 140px;border:1px solid var(--line-strong);background:var(--card);border-radius:var(--r-sm);padding:10px 11px;color:var(--ink);font:inherit;font-size:14px;font-weight:500;min-width:0}
 .payout-add>button{flex:1 1 100%}

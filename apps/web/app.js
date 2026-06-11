@@ -57,6 +57,7 @@ let state = {
   selectedScheduleCell: null,
   selectedScheduleDate: null,
   selectedDateEmployeeId: null,
+  editingPayoutId: null,
   scheduleSaving: false,
   scheduleEditUnlocked: false,
   payroll: null,
@@ -4456,10 +4457,25 @@ function renderScheduleDateEditor(service){
         ${(day.payouts || []).length ? (day.payouts || []).map((payout)=>{
           const pid = payout.employee_id || payout.employeeId;
           const nm = (state.schedule.employees.find((e)=>e.id === pid) || {}).name || "Сотрудник";
+          const ym = payout.applyMonth || day.date.slice(0, 7);
+          if(state.editingPayoutId === payout.id){
+            return `
+            <div class="payout-item editing">
+              <div class="payout-edit">
+                <input type="number" min="0" step="100" inputmode="numeric" value="${payout.amount}" data-payout-edit-amount="${escapeAttr(payout.id)}" placeholder="сумма, ₽">
+                <select data-payout-edit-month="${escapeAttr(payout.id)}" title="За какой месяц">${payoutMonthOptions(ym)}</select>
+                <button class="ghost mini brand-action" data-payout-save="${escapeAttr(payout.id)}">Сохранить</button>
+                <button class="ghost mini" data-payout-cancel>Отмена</button>
+              </div>
+            </div>`;
+          }
           return `
           <div class="payout-item">
-            <span><b>${escapeHtml(nm)}</b> · ${formatMoneyPlain(payout.amount)} ₽</span>
-            <button class="ghost mini danger-action" data-date-delete-payout="${escapeAttr(payout.id)}">Удалить</button>
+            <span><b>${escapeHtml(nm)}</b> · ${formatMoneyPlain(payout.amount)} ₽ <i class="payout-period">за ${escapeHtml(formatYearMonth(ym))}</i></span>
+            <span class="payout-item-actions">
+              <button class="ghost mini" data-payout-edit="${escapeAttr(payout.id)}">Изменить</button>
+              <button class="ghost mini danger-action" data-date-delete-payout="${escapeAttr(payout.id)}">Удалить</button>
+            </span>
           </div>`;
         }).join("") : `<div class="muted-line">Выплат за этот день нет</div>`}
         <div class="payout-add">
@@ -4600,6 +4616,7 @@ function bindScheduleDateEditor(){
   if(close){
     close.addEventListener("click", ()=>{
       state.selectedScheduleDate = null;
+      state.editingPayoutId = null;
       render();
     });
   }
@@ -4639,6 +4656,27 @@ function bindScheduleDateEditor(){
   app.querySelectorAll("[data-date-delete-payout]").forEach((button)=>{
     button.addEventListener("click", ()=>deletePayout(button.dataset.dateDeletePayout));
   });
+  app.querySelectorAll("[data-payout-edit]").forEach((button)=>{
+    button.addEventListener("click", ()=>{ state.editingPayoutId = button.dataset.payoutEdit; render(); });
+  });
+  app.querySelector("[data-payout-cancel]")?.addEventListener("click", ()=>{ state.editingPayoutId = null; render(); });
+  app.querySelectorAll("[data-payout-save]").forEach((button)=>{
+    button.addEventListener("click", ()=>savePayoutEdit(button.dataset.payoutSave));
+  });
+}
+
+async function savePayoutEdit(id){
+  if(!id) return;
+  const amountInput = app.querySelector(`[data-payout-edit-amount="${CSS.escape(id)}"]`);
+  const monthSelect = app.querySelector(`[data-payout-edit-month="${CSS.escape(id)}"]`);
+  const amount = Number(amountInput?.value);
+  if(!Number.isFinite(amount) || amount <= 0) return;
+  const applyMonth = monthSelect?.value || undefined;
+  state.editingPayoutId = null;
+  await saveAndReload(()=>apiPatch(`/api/schedule/payouts/${encodeURIComponent(id)}`, {
+    amount: Math.round(amount),
+    applyMonth
+  }));
 }
 
 function selectedScheduleContext(){
@@ -4729,6 +4767,13 @@ async function clearScoreFor(context){
     workDate: context.day.date,
     employeeId: context.employee.id
   }));
+}
+
+function formatYearMonth(ym){
+  const months = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+  const [y, m] = String(ym || "").split("-").map(Number);
+  if(!y || !m) return "—";
+  return `${months[m - 1]} ${y}`;
 }
 
 function payoutMonthOptions(selectedYM){
