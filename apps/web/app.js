@@ -97,6 +97,12 @@ let state = {
   requisitionUrgent: false,
   requisitionExpanded: {},
   requisitionShowRemaining: false,
+  finance: null,
+  financeLoading: false,
+  financeError: "",
+  financeMonth: null,
+  financeNotice: "",
+  financeFixedOpen: false,
   shiftClosingInit: null,
   shiftClosingDate: null,
   shiftClosingRecord: null,
@@ -3029,10 +3035,16 @@ function renderShiftClosingPage(service){
   bindShiftClosingForm();
 }
 
+const FIN_SHORT = { food:"Продукты", bar:"Напитки", household:"Хозка", rent:"Аренда", utilities:"Коммуналка", marketing:"Маркетинг", accounting:"Бухгалтерия", software:"Связь/ПО", repair:"Ремонт", other:"Прочее" };
+
 function renderFinancePage(service){
-  if(!state.shiftDashboard && !state.shiftDashboardLoading){
-    loadShiftDashboard();
-  }
+  if(!state.finance && !state.financeLoading && !state.financeError){ loadFinance(); }
+  if(!state.shiftDashboard && !state.shiftDashboardLoading){ loadShiftDashboard(); }
+  const body = state.financeLoading && !state.finance
+    ? `<div class="panel"><div class="loader compact">Загружаю финансы</div></div>`
+    : state.financeError && !state.finance
+      ? `<div class="panel"><div class="row-title">Не удалось загрузить финансы</div><div class="row-sub">${escapeHtml(state.financeError)}</div></div>`
+      : state.finance ? renderFinanceContent(state.finance) : "";
   app.innerHTML = `
     <div class="phone wide shift-close-phone">
       <section class="screen service-page shift-close-screen">
@@ -3040,7 +3052,8 @@ function renderFinancePage(service){
           <button class="iconbtn" data-action="back">${arrowLeftIcon()}</button>
           <h1 class="page-title">${escapeHtml(service.title)}</h1>
         </div>
-        ${renderShiftDashboard()}
+        ${body}
+        <details class="fin-closings"><summary>Закрытия смен (детально)</summary><div>${renderShiftDashboard()}</div></details>
       </section>
     </div>
   `;
@@ -3048,7 +3061,167 @@ function renderFinancePage(service){
     history.pushState(null, "", "/");
     render();
   });
+  bindFinancePage();
   bindShiftDashboard();
+}
+
+function renderFinanceContent(f){
+  const rev = f.revenue || {};
+  return `
+    <div class="monthbar">
+      <button class="btn icon" data-fin-month="prev">‹</button>
+      <div class="mname">${formatScheduleMonth(f.year, f.month)}</div>
+      <button class="btn icon" data-fin-month="next">›</button>
+    </div>
+
+    <div class="payroll-hero">
+      <div>
+        <div class="mslabel">Выручка ${rev.isForecast ? "(прогноз месяца)" : "за месяц"}</div>
+        <div class="payroll-balance">${formatMoneyPlain(rev.predicted || 0)} ₽</div>
+        ${rev.isForecast ? `<div class="fin-sub">факт на сегодня: ${formatMoneyPlain(rev.actualSoFar || 0)} ₽ · ${rev.daysPassed || 0} дн</div>` : ""}
+      </div>
+      <div class="payroll-next">
+        <span>EBITDA</span>
+        <b class="${(f.totals.ebitdaPct || 0) >= (f.totals.ebitdaNorm || 0) ? "fin-ok" : "fin-bad"}">${formatMoneyPlain(f.totals.ebitda || 0)} ₽ · ${f.totals.ebitdaPct || 0}%</b>
+      </div>
+    </div>
+
+    <div class="fin-entry">
+      <div class="row-title">Внести расход</div>
+      <input id="finAmount" type="number" min="1" step="1" inputmode="numeric" placeholder="сумма, ₽">
+      <div class="fin-cats">
+        ${(f.expenseArticles || []).map((a)=>`<button type="button" data-fin-cat="${a.key}">${escapeHtml(FIN_SHORT[a.key] || a.label)}</button>`).join("")}
+      </div>
+      ${state.financeNotice ? `<div class="fin-notice">${escapeHtml(state.financeNotice)}</div>` : ""}
+    </div>
+
+    <h2 class="sec">P&amp;L · ${rev.isForecast ? "прогноз от выручки" : "факт месяца"}</h2>
+    <div class="fin-table">
+      ${(f.articles || []).map((a)=>`
+        <div class="fin-row ${a.actualPct > a.norm ? "over" : "under"}">
+          <span class="fin-name">${escapeHtml(a.label)}</span>
+          <span class="fin-fact"><b>${formatMoneyPlain(a.actual)} ₽</b><i>${a.actualPct}%</i></span>
+          <span class="fin-norm">норма ${a.norm}%<i>${formatMoneyPlain(a.normAmount)} ₽</i></span>
+        </div>
+      `).join("")}
+      <div class="fin-row total">
+        <span class="fin-name">Итого расходов</span>
+        <span class="fin-fact"><b>${formatMoneyPlain(f.totals.totalExpenses)} ₽</b><i>${f.totals.totalPct}%</i></span>
+        <span class="fin-norm">норма ${f.totals.totalNorm}%</span>
+      </div>
+      <div class="fin-row total ebitda">
+        <span class="fin-name">EBITDA (препрофит)</span>
+        <span class="fin-fact"><b>${formatMoneyPlain(f.totals.ebitda)} ₽</b><i>${f.totals.ebitdaPct}%</i></span>
+        <span class="fin-norm">норма ${f.totals.ebitdaNorm}%</span>
+      </div>
+    </div>
+
+    <details class="fin-fixed" ${state.financeFixedOpen ? "open" : ""}>
+      <summary>Постоянные платежи в месяц</summary>
+      <form id="finFixedForm" class="panel">
+        ${(f.fixed || []).map((x)=>`
+          <label class="fin-fixed-row"><span>${escapeHtml(x.label)}</span>
+            <input type="number" min="0" step="1" inputmode="numeric" name="fix_${x.article}" value="${x.amount || ""}" placeholder="0">
+          </label>
+        `).join("")}
+        <button class="ghost brand-action" type="submit">Сохранить постоянные</button>
+      </form>
+    </details>
+
+    ${(f.recentExpenses || []).length ? `
+    <details class="fin-recent">
+      <summary>Расходы месяца (${f.recentExpenses.length})</summary>
+      <div class="payroll-list">
+        ${f.recentExpenses.map((e)=>`
+          <div class="payroll-row">
+            <span><b>${formatMoneyPlain(e.amount)} ₽</b><small>${escapeHtml(f.articleLabels[e.article] || e.article)} · ${escapeHtml(formatDateHuman(e.date))}${e.comment ? ` · ${escapeHtml(e.comment)}` : ""}</small></span>
+            <button class="ghost mini danger-action" type="button" data-fin-del="${escapeAttr(e.id)}">Удалить</button>
+          </div>
+        `).join("")}
+      </div>
+    </details>` : ""}
+  `;
+}
+
+async function loadFinance(month){
+  state.financeLoading = true;
+  state.financeError = "";
+  if(month) state.financeMonth = month;
+  render();
+  try{
+    const url = state.financeMonth ? `/api/finance?month=${encodeURIComponent(state.financeMonth)}` : "/api/finance";
+    state.finance = await apiGet(url);
+  }catch(error){
+    state.financeError = error.status === 403 ? "Раздел только для руководителя" : "Проверь соединение и попробуй ещё раз";
+  }finally{
+    state.financeLoading = false;
+    render();
+  }
+}
+
+function bindFinancePage(){
+  app.querySelectorAll("[data-fin-month]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      const dir = button.dataset.finMonth === "next" ? 1 : -1;
+      const base = new Date((state.finance?.year || new Date().getFullYear()), (state.finance?.month || 1) - 1 + dir, 1);
+      state.financeNotice = "";
+      state.finance = null;
+      loadFinance(`${base.getFullYear()}-${String(base.getMonth() + 1).padStart(2, "0")}`);
+    });
+  });
+  app.querySelectorAll("[data-fin-cat]").forEach((button)=>{
+    button.addEventListener("click", ()=>addFinanceExpense(button.dataset.finCat));
+  });
+  app.querySelectorAll("[data-fin-del]").forEach((button)=>{
+    button.addEventListener("click", ()=>deleteFinanceExpense(button.dataset.finDel));
+  });
+  const fixedForm = app.querySelector("#finFixedForm");
+  fixedForm?.addEventListener("submit", (event)=>{ event.preventDefault(); saveFinanceFixed(fixedForm); });
+  const fixedDetails = app.querySelector(".fin-fixed");
+  fixedDetails?.addEventListener("toggle", ()=>{ state.financeFixedOpen = fixedDetails.open; });
+}
+
+async function addFinanceExpense(article){
+  const input = app.querySelector("#finAmount");
+  const amount = Number(input?.value);
+  if(!(amount > 0)){ state.financeNotice = "Сначала введи сумму"; render(); return; }
+  try{
+    await apiPost("/api/finance/expenses", { article, amount: Math.round(amount) });
+    state.financeNotice = `Записано: ${FIN_SHORT[article] || article} · ${formatMoneyPlain(Math.round(amount))} ₽`;
+    state.finance = null;
+    await loadFinance();
+  }catch(error){
+    state.financeNotice = "Не удалось записать расход";
+    render();
+  }
+}
+
+async function deleteFinanceExpense(id){
+  try{
+    await apiDelete(`/api/finance/expenses/${encodeURIComponent(id)}`);
+    state.finance = null;
+    await loadFinance();
+  }catch(error){
+    state.financeNotice = "Не удалось удалить";
+    render();
+  }
+}
+
+async function saveFinanceFixed(form){
+  const items = (state.finance?.fixed || []).map((x)=>({
+    article: x.article,
+    amount: Math.round(Number(form.elements[`fix_${x.article}`]?.value) || 0)
+  }));
+  try{
+    await apiPut("/api/finance/fixed", { items });
+    state.financeNotice = "Постоянные платежи сохранены";
+    state.financeFixedOpen = true;
+    state.finance = null;
+    await loadFinance();
+  }catch(error){
+    state.financeNotice = "Не удалось сохранить";
+    render();
+  }
 }
 
 async function loadShiftDashboard(month){

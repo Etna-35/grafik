@@ -734,6 +734,37 @@ button.day-block{cursor:pointer;font:inherit}
 .payroll-history>summary b{color:var(--brand-bright)}
 .payroll-history[open]>summary{border-bottom:1px solid var(--line)}
 .payroll-history .payroll-list{padding:10px 12px}
+.fin-sub{margin-top:6px;font-size:12px;color:var(--ink-soft)}
+.fin-ok{color:var(--green)}
+.fin-bad{color:var(--danger)}
+.fin-entry{border:1px solid var(--brand-line);background:var(--brand-tint);border-radius:8px;padding:12px 14px;margin:0 2px 14px}
+.fin-entry .row-title{margin-bottom:8px}
+.fin-entry #finAmount{width:100%;border:1px solid var(--line-strong);background:var(--card);border-radius:10px;padding:11px;color:var(--ink);font:inherit;font-size:18px;font-weight:700;text-align:center}
+.fin-cats{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-top:9px}
+.fin-cats button{border:1px solid var(--line-strong);background:var(--card);color:var(--ink);border-radius:9px;padding:10px 6px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer}
+.fin-cats button:active{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+.fin-notice{margin-top:9px;font-size:12.5px;font-weight:700;color:var(--green);background:var(--ok-bg);border:1px solid var(--ok-line);border-radius:8px;padding:8px 10px}
+.fin-table{display:flex;flex-direction:column;gap:6px;margin:0 2px 12px}
+.fin-row{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:8px;align-items:center;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:9px 11px}
+.fin-name{font-size:12.5px;color:var(--ink);font-weight:600;overflow-wrap:anywhere}
+.fin-fact{text-align:right}
+.fin-fact b{display:block;font-size:14px;color:var(--ink)}
+.fin-fact i{font-style:normal;font-size:11px;color:var(--ink-soft)}
+.fin-norm{text-align:right;font-size:11px;color:var(--ink-soft);font-weight:600}
+.fin-norm i{display:block;font-style:normal;margin-top:2px}
+.fin-row.over .fin-fact b{color:var(--danger)}
+.fin-row.under .fin-fact b{color:var(--green)}
+.fin-row.total{background:var(--card-2);border-color:var(--line-strong)}
+.fin-row.total .fin-name{font-weight:700}
+.fin-row.ebitda .fin-fact b{color:var(--brand-bright);font-size:15px}
+.fin-fixed,.fin-recent,.fin-closings{margin:0 2px 12px;border:1px solid var(--line);background:var(--card);border-radius:8px;overflow:hidden}
+.fin-fixed>summary,.fin-recent>summary,.fin-closings>summary{cursor:pointer;padding:12px 14px;font-family:var(--font-display);font-weight:700;font-size:14px;list-style:none}
+.fin-fixed>summary::-webkit-details-marker,.fin-recent>summary::-webkit-details-marker,.fin-closings>summary::-webkit-details-marker{display:none}
+.fin-fixed form{margin:0;border:0;border-radius:0}
+.fin-fixed-row{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}
+.fin-fixed-row span{font-size:13px;color:var(--ink-soft)}
+.fin-fixed-row input{width:130px;border:1px solid var(--line-strong);background:var(--card-2);border-radius:8px;padding:8px 10px;color:var(--ink);font:inherit;font-weight:600;text-align:right}
+.fin-closings>div{padding:0 12px 12px}
 .payroll-list{display:grid;gap:7px;margin:0 2px}
 .payroll-row{display:flex;justify-content:space-between;align-items:center;gap:14px;border:1px solid var(--line);background:var(--card);padding:10px 12px}
 .payroll-row b{display:block;font-size:15px}
