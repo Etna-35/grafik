@@ -12,6 +12,29 @@ export function tgEscape(value: string): string {
     .replaceAll(">", "&gt;");
 }
 
+// Краткая форма единицы измерения для Telegram/UI. Сокращение снимает проблему склонения
+// («2 коробка» → «2 кор.»), экономит место в строке и убирает грамматические ошибки.
+const UNIT_SHORT: Record<string, string> = {
+  "пакет": "пак.",
+  "упаковка": "уп.",
+  "бутылка": "бут.",
+  "коробка": "кор.",
+  "банка": "бан.",
+  "пачка": "пач.",
+  "штука": "шт",
+  "штук": "шт",
+  "шт": "шт",
+  "килограмм": "кг",
+  "кг": "кг",
+  "литр": "л",
+  "л": "л"
+};
+
+export function unitShort(unit: string): string {
+  const key = String(unit ?? "").trim().toLowerCase();
+  return UNIT_SHORT[key] ?? String(unit ?? "").trim();
+}
+
 export function managerChatId(): string {
   return env.telegramManagerChatId;
 }

@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
-import { sendMessage, teamChatId, tgEscape, tgPairs } from "./telegram.js";
+import { sendMessage, teamChatId, tgEscape, tgPairs, unitShort } from "./telegram.js";
 import { awardPoints, countRecentAwards } from "./progress.js";
 import { predictRevenue, PURCHASE_NORMS } from "./finance.js";
 
@@ -571,7 +571,7 @@ async function notifyRequisition(req: NonNullable<Awaited<ReturnType<typeof getR
   const hasHousehold = req.lines.some((line) => line.kind === "household");
   const hasProduct = req.lines.some((line) => line.kind === "product");
   const kindLabel = hasHousehold && hasProduct ? "продукты + хозтовары" : hasHousehold ? "хозтовары" : "продукты";
-  const qtyText = (line: { qty: number; unit: string }) => `${formatQtyPlain(line.qty)} ${line.unit}`;
+  const qtyText = (line: { qty: number; unit: string }) => `${formatQtyPlain(line.qty)} ${unitShort(line.unit)}`;
 
   const parts: string[] = [
     `🧾 <b>Новая заявка · ${kindLabel}</b>`,

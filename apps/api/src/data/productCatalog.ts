@@ -1070,7 +1070,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p7670aec26c1",
 "category": "Алкоголь",
 "name": "Водка Белая Берёзка 40%",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1011.0
 },
@@ -1078,7 +1078,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p1281b9a36cd",
 "category": "Алкоголь",
 "name": "Джин Barrister Dry 40% 1 л",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1300.0
 },
@@ -1118,7 +1118,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pfc6c32861de",
 "category": "Алкоголь",
 "name": "Ром Higuana Silver 38% 0,7 л",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1200.0
 },
@@ -1142,7 +1142,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p9986c1f8997",
 "category": "Алкоголь",
 "name": "Амаретто",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 540.0
 },
@@ -1150,7 +1150,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p6f80e80101c",
 "category": "Алкоголь",
 "name": "Апероль",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 2213.0
 },
@@ -1158,7 +1158,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p5cb9f9c8b5b",
 "category": "Алкоголь",
 "name": "Арарат 3года",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1429.0
 },
@@ -1166,7 +1166,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pcd819c44d85",
 "category": "Алкоголь",
 "name": "Безалкогольный ликер Апероль",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 2118.0
 },
@@ -1262,7 +1262,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pae98730e9a0",
 "category": "Алкоголь",
 "name": "Виски Баллантайнс",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1500.0
 },
@@ -1270,7 +1270,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pf4e826f9645",
 "category": "Алкоголь",
 "name": "Виски Джек Дэниелс",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 2700.0
 },
@@ -1278,7 +1278,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pfc81b71bda6",
 "category": "Алкоголь",
 "name": "Виски Поугс",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 2350.0
 },
@@ -1286,7 +1286,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pe7dc3f2865e",
 "category": "Алкоголь",
 "name": "Виски Синглтон 12лет",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 5740.0
 },
@@ -1294,7 +1294,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p4c356801954",
 "category": "Алкоголь",
 "name": "Виски хаус",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 2000.0
 },
@@ -1302,7 +1302,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pc72330b0ad8",
 "category": "Алкоголь",
 "name": "Водка Мамонт",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1200.0
 },
@@ -1310,7 +1310,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p5f7793e1104",
 "category": "Алкоголь",
 "name": "Водка Ортодокс",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1140.0
 },
@@ -1318,7 +1318,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p5fe209f2332",
 "category": "Алкоголь",
 "name": "Водка Финляндия",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1961.0
 },
@@ -1326,7 +1326,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p468cd77e995",
 "category": "Алкоголь",
 "name": "Водка хаус",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 800.0
 },
@@ -1334,7 +1334,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pc3d340b9aca",
 "category": "Алкоголь",
 "name": "Чача",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1468.0
 },
@@ -1342,7 +1342,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p8e6a94db028",
 "category": "Алкоголь",
 "name": "Граппа",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 2000.0
 },
@@ -1350,7 +1350,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p27ea7857cb6",
 "category": "Алкоголь",
 "name": "Джин Хопперс Ориджинал Драй",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1200.0
 },
@@ -1358,7 +1358,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pc29d8f74be5",
 "category": "Алкоголь",
 "name": "Джин Дж.Уитли Лондон",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1334.0
 },
@@ -1366,7 +1366,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pd186437e5a4",
 "category": "Алкоголь",
 "name": "Джин хаус",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1200.0
 },
@@ -1374,7 +1374,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pb7d1c98665f",
 "category": "Алкоголь",
 "name": "Егерьмейстер",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1550.0
 },
@@ -1422,7 +1422,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pfaa34412f18",
 "category": "Алкоголь",
 "name": "Коньяк хаус",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 757.0
 },
@@ -1438,7 +1438,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pcc8d151d552",
 "category": "Алкоголь",
 "name": "Ликер Амарето",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 2046.0
 },
@@ -1446,7 +1446,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p8140226794b",
 "category": "Алкоголь",
 "name": "Ликер Кампари",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 2998.0
 },
@@ -1454,7 +1454,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p0c5204f796e",
 "category": "Алкоголь",
 "name": "Ликер кофейный",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 600.0
 },
@@ -1462,7 +1462,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pc1a18cb1e73",
 "category": "Алкоголь",
 "name": "Ликер Трипл Сек",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 954.0
 },
@@ -1478,7 +1478,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p324a4eca5d7",
 "category": "Алкоголь",
 "name": "Ром Баку 4",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1500.0
 },
@@ -1486,7 +1486,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pe387bfcf291",
 "category": "Алкоголь",
 "name": "Ром Варадеро",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1415.0
 },
@@ -1494,7 +1494,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p8c5a10f93b7",
 "category": "Алкоголь",
 "name": "Ром хаус",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 1400.0
 },
@@ -1502,7 +1502,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pbe05df483b9",
 "category": "Алкоголь",
 "name": "Полугар №1",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 4235.0
 },
@@ -1510,7 +1510,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p5f4eac293fb",
 "category": "Алкоголь",
 "name": "Кашаса",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 2000.0
 },
@@ -1518,7 +1518,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p2de56e97738",
 "category": "Алкоголь",
 "name": "Мескаль",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 3429.0
 },
@@ -1526,7 +1526,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p2498b970302",
 "category": "Алкоголь",
 "name": "Текила Эсполон",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 4189.0
 },
@@ -1534,7 +1534,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p7542d46c876",
 "category": "Алкоголь",
 "name": "Текила хаус",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 2000.0
 },
@@ -1550,7 +1550,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "p811aec7b05a",
 "category": "Алкоголь",
 "name": "Коньяк Хеннесси",
-"unit": "бутылка",
+"unit": "0,5 л",
 "pack": "0,5 л",
 "price": 7614.0
 },
@@ -2214,7 +2214,7 @@ export const productSeed: ProductSeed[] = [
 "sourceId": "pfd625631223",
 "category": "Мясо / птица / рыба",
 "name": "Семга",
-"unit": "степ",
+"unit": "шт",
 "pack": "0,12 кг",
 "price": 204.0
 },

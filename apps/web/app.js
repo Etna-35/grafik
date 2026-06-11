@@ -1781,13 +1781,13 @@ function renderRequisitionItem(item){
       <span class="req-marker" style="background:${escapeAttr(item.categoryColor)}"></span>
       <span class="req-item-main">
         <b>${escapeHtml(item.name)}</b>
-        <small>${escapeHtml(item.unit)}${item.packLabel ? ` · ${escapeHtml(item.packLabel)}` : ""}${item.price ? ` · ${formatMoneyPlain(item.price)} ₽` : ""}</small>
+        <small>${escapeHtml(unitShort(item.unit))}${item.packLabel ? ` · ${escapeHtml(item.packLabel)}` : ""}${item.price ? ` · ${formatMoneyPlain(item.price)} ₽` : ""}</small>
       </span>
       ${entry ? `
         <span class="req-item-controls">
           <span class="req-stepper">
             <button type="button" aria-label="Меньше" data-req-dec="${escapeAttr(item.id)}">-</button>
-            <b>${formatQty(entry.qty)} ${escapeHtml(entry.unit)}</b>
+            <b>${formatQty(entry.qty)} ${escapeHtml(unitShort(entry.unit))}</b>
             <button type="button" aria-label="Больше" data-req-inc="${escapeAttr(item.id)}">+</button>
           </span>
           <button class="req-urgent-toggle ${entry.urgent ? "on" : ""}" type="button" data-req-urgent="${escapeAttr(item.id)}">${entry.urgent ? "Срочно ✓" : "Срочно"}</button>
@@ -1960,7 +1960,7 @@ function renderRequisitionCartLine(item){
   return `
     <div class="req-cart-line minimal">
       <span class="req-cart-name ${item.urgent ? "urgent" : ""}">${item.urgent ? "● " : ""}${escapeHtml(item.name)}</span>
-      <b class="req-cart-qty">${formatQty(item.qty)} ${escapeHtml(item.unit)}</b>
+      <b class="req-cart-qty">${formatQty(item.qty)} ${escapeHtml(unitShort(item.unit))}</b>
       <button class="req-cart-x" type="button" data-req-remove="${escapeAttr(item.key)}" aria-label="Убрать">✕</button>
     </div>
   `;
@@ -2001,11 +2001,11 @@ function renderRequisitionRecordLines(record, canManage, onlyRemaining){
     ? `<div class="req-line-check ${l.purchased ? "done" : ""}">
          <label class="rlc-main">
            <input type="checkbox" data-req-line="${escapeAttr(record.id)}::${escapeAttr(l.id)}" ${l.purchased ? "checked" : ""}>
-           <span class="${l.urgent ? "urgent" : ""}">${l.urgent ? "● " : ""}${escapeHtml(l.name)} <b>${formatQty(l.qty)} ${escapeHtml(l.unit)}</b></span>
+           <span class="${l.urgent ? "urgent" : ""}">${l.urgent ? "● " : ""}${escapeHtml(l.name)} <b>${formatQty(l.qty)} ${escapeHtml(unitShort(l.unit))}</b></span>
          </label>
-         ${l.purchased ? `<span class="rlc-bought">куплено <input type="number" min="0" step="0.1" inputmode="decimal" value="${l.purchasedQty != null ? l.purchasedQty : l.qty}" data-req-bought="${escapeAttr(record.id)}::${escapeAttr(l.id)}"> ${escapeHtml(l.unit)}</span>` : ""}
+         ${l.purchased ? `<span class="rlc-bought">куплено <input type="number" min="0" step="0.1" inputmode="decimal" value="${l.purchasedQty != null ? l.purchasedQty : l.qty}" data-req-bought="${escapeAttr(record.id)}::${escapeAttr(l.id)}"> ${escapeHtml(unitShort(l.unit))}</span>` : ""}
        </div>`
-    : `<span class="${l.urgent ? "urgent" : ""} ${l.purchased ? "bought" : ""}">${l.purchased ? "✓ " : (l.urgent ? "● " : "")}${escapeHtml(l.name)} <b>${formatQty(l.purchasedQty != null ? l.purchasedQty : l.qty)} ${escapeHtml(l.unit)}</b>${boughtNote(l)}</span>`;
+    : `<span class="${l.urgent ? "urgent" : ""} ${l.purchased ? "bought" : ""}">${l.purchased ? "✓ " : (l.urgent ? "● " : "")}${escapeHtml(l.name)} <b>${formatQty(l.purchasedQty != null ? l.purchasedQty : l.qty)} ${escapeHtml(unitShort(l.unit))}</b>${boughtNote(l)}</span>`;
   return `
     <div class="req-record-lines ${canManage ? "checklist" : ""}">
       ${shown.map(line).join("")}
@@ -4897,6 +4897,16 @@ function formatDateTimeHuman(value){
 
 function formatQty(value){
   return String(Number(value || 0)).replace(".", ",").replace(/,0$/, "");
+}
+
+// Краткая форма единицы (как на бэке): «2 коробка» → «2 кор.». Снимает склонение и экономит место.
+const UNIT_SHORT = {
+  "пакет":"пак.","упаковка":"уп.","бутылка":"бут.","коробка":"кор.","банка":"бан.","пачка":"пач.",
+  "штука":"шт","штук":"шт","шт":"шт","килограмм":"кг","кг":"кг","литр":"л","л":"л"
+};
+function unitShort(unit){
+  const key = String(unit ?? "").trim().toLowerCase();
+  return UNIT_SHORT[key] || String(unit ?? "").trim();
 }
 
 function pluralize(value, one, few, many){
