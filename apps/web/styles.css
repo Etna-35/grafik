@@ -627,6 +627,13 @@ button.day-block{cursor:pointer;font:inherit}
 .prog-title{font-family:var(--font-display);font-weight:700;font-size:20px;color:var(--ink)}
 .award-bar.big{max-width:320px;margin:14px auto 0}
 .prog-sub{font-size:12px;color:var(--ink-soft);font-weight:500;margin-top:8px}
+.progress-team{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:0 2px 14px}
+.pteam-card{display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;min-width:0}
+.pteam-mask{width:42px;height:42px;flex:none}
+.pteam-mask .mask-img{width:100%;height:100%;object-fit:contain;display:block}
+.pteam-info{min-width:0}
+.pteam-info b{display:block;font-size:14px;font-weight:600;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pteam-info span{display:block;font-size:12px;color:var(--brand-bright);font-weight:600;margin-top:2px}
 .progress-history{display:grid;gap:7px;margin:0 2px}
 .ph-item{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:11px 13px}
 .ph-pts{font-family:var(--font-display);font-weight:700;font-size:15px;color:var(--brand-bright);flex:none;min-width:46px}

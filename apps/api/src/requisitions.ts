@@ -3,7 +3,7 @@ import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
 import { sendMessage, teamChatId, tgEscape, tgPairs } from "./telegram.js";
-import { awardPoints } from "./progress.js";
+import { awardPoints, countRecentAwards } from "./progress.js";
 import { predictRevenue, PURCHASE_NORMS } from "./finance.js";
 
 const requisitionParamsSchema = z.object({
@@ -209,7 +209,11 @@ export function registerRequisitionRoutes(app: FastifyInstance): void {
         urgent: parsed.data.urgent
       });
 
-      await awardPoints(user.id, "requisition_sent", "Отправил заявку", "requisition", requisitionId);
+      // Очки за заявку — не более 2 раз за 12 часов (защита от дробления заявок ради баллов).
+      const recentRewards = await countRecentAwards(user.id, "requisition_sent", 12);
+      if (recentRewards < 2) {
+        await awardPoints(user.id, "requisition_sent", "Отправил заявку", "requisition", requisitionId);
+      }
       const created2 = await getRequisitionById(requisitionId, user);
       if (created2) void notifyRequisition(created2).catch(() => {});
       return created2;

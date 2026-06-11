@@ -440,6 +440,7 @@ function renderProgressScreen(){
               <div class="award-bar big meter ok"><i style="width:${p.progressPct}%"></i></div>
               <div class="prog-sub">${p.progressPct}% · ещё ${p.toNextPct}% до повышения</div>
             </div>
+            ${renderProgressTeam(p.team)}
             <h2 class="sec">За что начислено</h2>
             <div class="progress-history">
               ${(p.history || []).length ? p.history.map(renderProgressItem).join("") : `<div class="panel muted-line">Пока пусто — выполняй задания, получай спасибо</div>`}
@@ -452,6 +453,25 @@ function renderProgressScreen(){
     history.pushState(null, "", "/");
     render();
   });
+}
+
+// Сетка команды (только у руководителя): аватар-кукла уровня + имя + уровень.
+function renderProgressTeam(team){
+  if(!Array.isArray(team) || !team.length) return "";
+  return `
+    <h2 class="sec">Команда</h2>
+    <div class="progress-team">
+      ${team.map((m)=>`
+        <div class="pteam-card">
+          <div class="pteam-mask">${levelMaskImg(m.level)}</div>
+          <div class="pteam-info">
+            <b>${escapeHtml(firstName(m.name))}</b>
+            <span>Уровень ${m.level}</span>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderProgressItem(item){

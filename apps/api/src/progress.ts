@@ -72,6 +72,20 @@ export async function awardPoints(
   );
 }
 
+/** Сколько раз сотруднику начислялись очки данного вида за последние `hours` часов. */
+export async function countRecentAwards(
+  employeeId: string,
+  kind: keyof typeof PROGRESS_POINTS,
+  hours: number
+): Promise<number> {
+  const result = await query<{ c: string }>(
+    `SELECT COUNT(*)::text AS c FROM progress_events
+     WHERE employee_id = $1 AND kind = $2 AND created_at > now() - ($3 || ' hours')::interval`,
+    [employeeId, kind, String(hours)]
+  );
+  return Number(result.rows[0]?.c || 0);
+}
+
 /** Начислить очки всем активным сотрудникам указанной роли. */
 export async function awardPointsToRole(
   role: string,
@@ -158,7 +172,29 @@ export function registerProgressRoutes(app: FastifyInstance): void {
       });
     }
 
-    return { ...summary, history };
+    // Руководитель видит уровни команды (кроме мойщиц) — для сетки аватаров на странице прогресса.
+    let team: Array<{ id: string; name: string; role: string; level: number }> | undefined;
+    if (isManager(user)) {
+      const teamRows = await query<{ id: string; name: string; role: string; start_date: string | null }>(
+        `SELECT id::text, display_name AS name, role::text, start_date::text
+         FROM employees
+         WHERE is_active = true AND archived_at IS NULL
+           AND role <> 'dishwasher'
+           AND COALESCE(schedule_role, '') NOT IN ('dish', 'dishwasher')
+         ORDER BY display_name`
+      );
+      team = await Promise.all(
+        teamRows.rows.map(async (row) => ({
+          id: row.id,
+          name: row.name,
+          role: row.role,
+          level: (await getProgressSummary(row.id, row.start_date)).level
+        }))
+      );
+      team.sort((a, b) => b.level - a.level || a.name.localeCompare(b.name, "ru"));
+    }
+
+    return { ...summary, history, team };
   });
 
   app.post("/api/progress/plan-met", async (request: FastifyRequest, reply: FastifyReply) => {
