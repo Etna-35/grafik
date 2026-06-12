@@ -2533,6 +2533,8 @@ function renderPayrollContent(payroll){
   const summary = payroll.summary || {};
   const hookahRows = payroll.hookah || [];
   const showHookah = summary.isHookahMaster || hookahRows.length > 0;
+  const hookahTotal = hookahRows.reduce((s, r)=>s + Number(r.amount || 0), 0);
+  const hookahCount = hookahRows.reduce((s, r)=>s + Number(r.count || 0), 0);
   return `
     <div class="monthbar">
       <button class="btn icon" data-payroll-month="prev">‹</button>
@@ -2566,18 +2568,20 @@ function renderPayrollContent(payroll){
     ${renderObligations(payroll)}
 
     ${showHookah ? `
-      <h2 class="sec">Кальяны</h2>
-      <div class="payroll-list">
-        ${hookahRows.length ? hookahRows.map((row)=>`
-          <div class="payroll-row">
-            <span>
-              <b>${formatMoneyPlain(row.amount)} ₽</b>
-              <small>${escapeHtml(formatDateHuman(row.workDate))} · ${row.count} × ${formatMoneyPlain(row.rate)} ₽</small>
-            </span>
-            <i>выдано</i>
-          </div>
-        `).join("") : `<div class="panel muted-line">В этом месяце кальянов пока нет</div>`}
-      </div>
+      <details class="payroll-history hookah-history"${hookahRows.length ? " open" : ""}>
+        <summary><span>Кальяны за месяц</span><b>${formatMoneyPlain(hookahTotal)} ₽${hookahCount ? ` · ${hookahCount} шт` : ""}</b></summary>
+        <div class="payroll-list">
+          ${hookahRows.length ? hookahRows.map((row)=>`
+            <div class="payroll-row">
+              <span>
+                <b>${formatMoneyPlain(row.amount)} ₽</b>
+                <small>${escapeHtml(formatDateHuman(row.workDate))} · ${row.count} × ${formatMoneyPlain(row.rate)} ₽</small>
+              </span>
+              <i>выдано</i>
+            </div>
+          `).join("") : `<div class="panel muted-line">В этом месяце кальянов пока нет</div>`}
+        </div>
+      </details>
     ` : ""}
 
     ${(payroll.taskRewards || []).length ? `
