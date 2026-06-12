@@ -172,6 +172,21 @@ export function registerProgressRoutes(app: FastifyInstance): void {
       });
     }
 
+    // Тотемы сотрудника (до 2 шт.) — редкая именная награда по бокам от куклы.
+    const totemRows = await query<{ slot: number; title: string; description: string; image_path: string }>(
+      `SELECT slot, title, description, image_path
+       FROM totem_awards
+       WHERE employee_id = $1
+       ORDER BY slot`,
+      [user.id]
+    );
+    const totems = totemRows.rows.map((row) => ({
+      slot: row.slot,
+      title: row.title,
+      description: row.description || "",
+      image: row.image_path
+    }));
+
     // Руководитель видит уровни команды (кроме мойщиц) — для сетки аватаров на странице прогресса.
     let team: Array<{ id: string; name: string; role: string; level: number }> | undefined;
     if (isManager(user)) {
@@ -194,7 +209,7 @@ export function registerProgressRoutes(app: FastifyInstance): void {
       team.sort((a, b) => b.level - a.level || a.name.localeCompare(b.name, "ru"));
     }
 
-    return { ...summary, history, team };
+    return { ...summary, history, team, totems };
   });
 
   app.post("/api/progress/plan-met", async (request: FastifyRequest, reply: FastifyReply) => {

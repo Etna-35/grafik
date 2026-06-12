@@ -74,6 +74,7 @@ let state = {
   progress: null,
   progressLoading: false,
   progressError: "",
+  openTotemSlot: null,
   tasksLoading: false,
   tasksError: "",
   tasksSaving: false,
@@ -413,6 +414,7 @@ async function openProgress(){
   state.progressLoading = true;
   state.progress = null;
   state.progressError = "";
+  state.openTotemSlot = null;
   renderProgressScreen();
   try{
     state.progress = await apiGet("/api/progress");
@@ -437,10 +439,15 @@ function renderProgressScreen(){
           ? `<div class="panel"><div class="loader compact">Загружаю</div></div>`
           : p ? `
             <div class="progress-hero">
-              <div class="prog-badge mask">${levelMaskImg(p.level)}</div>
+              <div class="prog-hero-row">
+                ${renderTotemSlot(p.totems, 1)}
+                <div class="prog-badge mask">${levelMaskImg(p.level)}</div>
+                ${renderTotemSlot(p.totems, 2)}
+              </div>
               <div class="prog-title">Уровень ${p.level}</div>
               <div class="award-bar big meter ok"><i style="width:${p.progressPct}%"></i></div>
               <div class="prog-sub">${p.progressPct}% · ещё ${p.toNextPct}% до повышения</div>
+              ${renderTotemDetail(p.totems)}
             </div>
             ${renderProgressTeam(p.team)}
             <h2 class="sec">За что начислено</h2>
@@ -455,6 +462,39 @@ function renderProgressScreen(){
     history.pushState(null, "", "/");
     render();
   });
+  app.querySelectorAll("[data-totem-slot]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      const slot = Number(button.dataset.totemSlot);
+      state.openTotemSlot = state.openTotemSlot === slot ? null : slot;
+      renderProgressScreen();
+    });
+  });
+}
+
+// Тотем — редкая именная награда по бокам от куклы. Пустой слот = приглушённая заглушка.
+function renderTotemSlot(totems, slot){
+  const totem = (totems || []).find((t)=>Number(t.slot) === slot);
+  if(!totem){
+    return `<div class="totem-slot empty" aria-hidden="true"></div>`;
+  }
+  const active = state.openTotemSlot === slot ? " active" : "";
+  return `
+    <button class="totem-slot${active}" type="button" data-totem-slot="${slot}" aria-label="${escapeAttr(totem.title)}">
+      <img class="totem-img" src="${escapeAttr(totem.image)}" alt="${escapeAttr(totem.title)}">
+    </button>
+  `;
+}
+
+// Описание выбранного тотема — раскрывается по тапу под куклой.
+function renderTotemDetail(totems){
+  const totem = (totems || []).find((t)=>Number(t.slot) === state.openTotemSlot);
+  if(!totem) return "";
+  return `
+    <div class="totem-detail">
+      <b>${escapeHtml(totem.title)}</b>
+      ${totem.description ? `<span>${escapeHtml(totem.description)}</span>` : ""}
+    </div>
+  `;
 }
 
 // Сетка команды (только у руководителя): аватар-кукла уровня + имя + уровень.

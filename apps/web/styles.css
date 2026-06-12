@@ -634,6 +634,15 @@ button.day-block{cursor:pointer;font:inherit}
 .prog-title{font-family:var(--font-display);font-weight:700;font-size:20px;color:var(--ink)}
 .award-bar.big{max-width:320px;margin:14px auto 0}
 .prog-sub{font-size:12px;color:var(--ink-soft);font-weight:500;margin-top:8px}
+.prog-hero-row{display:flex;align-items:center;justify-content:center;gap:16px}
+.prog-hero-row .prog-badge.mask{margin:10px 0 14px}
+.totem-slot{appearance:none;width:62px;height:62px;flex:none;border-radius:var(--r-md);border:1px solid var(--brand-line);background:var(--brand-tint);color:var(--ink);display:flex;align-items:center;justify-content:center;padding:7px;cursor:pointer;transition:border-color .15s,transform .15s}
+.totem-slot.active{border-color:var(--brand);transform:translateY(-2px)}
+.totem-slot.empty{border-style:dashed;border-color:var(--line-strong);background:transparent;cursor:default}
+.totem-img{width:100%;height:100%;object-fit:contain;display:block}
+.totem-detail{margin:14px auto 0;max-width:320px;background:var(--card);border:1px solid var(--brand-line);border-radius:var(--r-md);padding:10px 14px;text-align:center}
+.totem-detail b{display:block;font-family:var(--font-display);font-size:14px;font-weight:700;color:var(--brand-bright)}
+.totem-detail span{display:block;font-size:12px;color:var(--ink-soft);margin-top:4px;line-height:1.45}
 .progress-team{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;margin:0 2px 14px}
 .pteam-card{display:flex;align-items:center;gap:11px;background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;min-width:0}
 .pteam-mask{width:42px;height:42px;flex:none}
