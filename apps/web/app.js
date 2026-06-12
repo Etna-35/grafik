@@ -2543,7 +2543,7 @@ function renderPayrollContent(payroll){
     <div class="payroll-hero">
       <div>
         <div class="mslabel">Твой доход за текущий месяц</div>
-        <div class="payroll-balance">${formatMoneyPlain(summary.remaining || 0)} ₽</div>
+        <div class="payroll-balance">${formatMoneyPlain(summary.accrued || 0)} ₽</div>
         ${summary.pastDebt > 0 ? `<div class="payroll-debt">Долг за прошлые месяцы: ${formatMoneyPlain(summary.pastDebt)} ₽</div>` : ""}
       </div>
       <div class="payroll-next">
@@ -2554,8 +2554,8 @@ function renderPayrollContent(payroll){
 
     <div class="payroll-metrics two">
       <div class="pay-metric pair">
-        <div><span>Начислено</span><b>${formatMoneyPlain(summary.accrued || 0)} ₽</b></div>
-        <div><span>Выдано</span><b>${formatMoneyPlain(summary.paid || 0)} ₽</b></div>
+        <div><span>Выплачено</span><b>${formatMoneyPlain(summary.paid || 0)} ₽</b></div>
+        <div><span>Осталось выплатить</span><b>${formatMoneyPlain(summary.remaining || 0)} ₽</b></div>
       </div>
       <div class="pay-metric pair">
         <div><span>Смены</span><b>${summary.shifts || 0}</b></div>
@@ -4339,17 +4339,18 @@ function buildScheduleTotals(schedule){
       byRole.set(employee.role, roleTotal);
     });
 
-    day.payouts.forEach((payout)=>{
-      const employeeId = payout.employee_id || payout.employeeId;
-      const total = byEmployee.get(employeeId);
-      if(total) total.paid += Number(payout.amount || 0);
-    });
-
     day.scores.forEach((score)=>{
       const employeeId = score.employee_id || score.employeeId;
       const total = byEmployee.get(employeeId);
       if(total && score.score in total.scores) total.scores[score.score] += 1;
     });
+  });
+
+  // «Выплачено» берём с бэкенда — он считает по месяцу назначения (apply_month),
+  // а не по дате выплаты в календаре. Выплата июня за май в мае учтётся, в июне — нет.
+  schedule.employees.forEach((employee)=>{
+    const total = byEmployee.get(employee.id);
+    if(total) total.paid = employee.paid == null ? null : Number(employee.paid || 0);
   });
 
   byEmployee.forEach((total)=>{
