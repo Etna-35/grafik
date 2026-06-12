@@ -4346,11 +4346,12 @@ function buildScheduleTotals(schedule){
     });
   });
 
-  // «Выплачено» берём с бэкенда — он считает по месяцу назначения (apply_month),
-  // а не по дате выплаты в календаре. Выплата июня за май в мае учтётся, в июне — нет.
+  // «Выплачено» берём с бэкенда (employee.totals.paid) — он считает по месяцу назначения
+  // (apply_month), а не по дате выплаты в календаре. Выплата июня за май в мае учтётся, в июне — нет.
   schedule.employees.forEach((employee)=>{
     const total = byEmployee.get(employee.id);
-    if(total) total.paid = employee.paid == null ? null : Number(employee.paid || 0);
+    const backendPaid = employee.totals ? employee.totals.paid : null;
+    if(total) total.paid = backendPaid == null ? null : Number(backendPaid || 0);
   });
 
   byEmployee.forEach((total)=>{
