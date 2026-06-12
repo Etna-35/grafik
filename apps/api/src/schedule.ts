@@ -512,6 +512,37 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     employeeTotals.set(row.employee_id, total);
   }
 
+  // Доп. начисления месяца для плиток графика (как в ЛК): премии за задачи, цели продаж, кальяны.
+  // Премии/цели входят и в «начислено», и в «остаток»; кальяны — только в «начислено» (выдаются сразу).
+  const [taskRewardByEmp, goalRewardByEmp, hookahByEmp] = await Promise.all([
+    query<{ employee_id: string; v: number }>(
+      `SELECT employee_id, SUM(reward_amount)::int AS v FROM tasks
+       WHERE status = 'done' AND reward_amount IS NOT NULL AND reward_amount > 0
+         AND updated_at >= $1::date AND updated_at < ($1::date + interval '1 month')
+       GROUP BY employee_id`,
+      [start]
+    ),
+    query<{ employee_id: string; v: number }>(
+      `SELECT employee_id, SUM(reward_amount)::int AS v FROM sales_goals
+       WHERE status = 'confirmed' AND reward_amount IS NOT NULL AND reward_amount > 0
+         AND confirmed_at >= $1::date AND confirmed_at < ($1::date + interval '1 month')
+       GROUP BY employee_id`,
+      [start]
+    ),
+    query<{ employee_id: string; v: number }>(
+      `SELECT h.employee_id, SUM(h.payout)::int AS v FROM shift_closing_hookah h
+       JOIN shift_closings sc ON sc.id = h.shift_closing_id
+       WHERE sc.work_date >= $1::date AND sc.work_date < ($1::date + interval '1 month') AND h.payout > 0
+       GROUP BY h.employee_id`,
+      [start]
+    )
+  ]);
+  const extrasByEmp = new Map<string, number>();
+  const hookahMap = new Map<string, number>();
+  for (const r of taskRewardByEmp.rows) extrasByEmp.set(r.employee_id, (extrasByEmp.get(r.employee_id) || 0) + Number(r.v || 0));
+  for (const r of goalRewardByEmp.rows) extrasByEmp.set(r.employee_id, (extrasByEmp.get(r.employee_id) || 0) + Number(r.v || 0));
+  for (const r of hookahByEmp.rows) hookahMap.set(r.employee_id, Number(r.v || 0));
+
   const days = buildMonthDays(year, month).map((date) => {
     const shifts = (shiftsByDate.get(date) || {}) as Record<string, { payAmount?: number }>;
     const dayFot = Object.values(shifts).reduce<number>((sum, value) => sum + Number(value.payAmount || 0), 0);
@@ -575,12 +606,18 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
         birthDate: employee.birth_date,
         hourlyRate: canSeeAllMoney ? employee.hourly_rate : null,
         payModel: canSeeAllMoney ? payModel : null,
-        totals: {
-          shifts: totals.shifts,
-          accrued: canSeeAllMoney ? totals.accrued : null,
-          paid: canSeeAllMoney ? totals.paid : null,
-          remaining: canSeeAllMoney ? Math.max(0, totals.accrued - totals.paid) : null
-        }
+        totals: (() => {
+          const extras = extrasByEmp.get(employee.id) || 0; // премии за задачи + цели
+          const hookah = hookahMap.get(employee.id) || 0;
+          return {
+            shifts: totals.shifts,
+            // «Начислено» (доход) = смены + премии/цели + кальяны (как в ЛК).
+            accrued: canSeeAllMoney ? totals.accrued + extras + hookah : null,
+            paid: canSeeAllMoney ? totals.paid : null,
+            // «Остаток к выплате» = смены + премии/цели − выплачено (кальяны выдаются сразу, в остаток не входят).
+            remaining: canSeeAllMoney ? Math.max(0, totals.accrued + extras - totals.paid) : null
+          };
+        })()
       };
     }),
     days,

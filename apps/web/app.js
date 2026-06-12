@@ -4305,7 +4305,7 @@ function renderSummaryCards(schedule, totals){
             <div><span class="big" style="color:${roleColor(employee.role)}">${total.shifts}</span><span class="unit">смен</span></div>
             ${isFixedPayEmployee(employee) ? "" : `<div><span class="big">${formatHours(total.hours)}</span><span class="unit">часов</span></div>`}
             ${showMoney ? `<div><span class="big pay" style="color:var(--brand)">${formatMoneyPlain(total.remaining)}</span><span class="unit">₽ к выплате</span></div>` : ""}
-            ${showMoney && total.paid ? `<div class="payMeta">начислено ${formatMoneyPlain(total.pay)} ₽ · выдано ${formatMoneyPlain(total.paid)} ₽</div>` : ""}
+            ${showMoney && total.paid ? `<div class="payMeta">начислено ${formatMoneyPlain(total.accrued)} ₽ · выдано ${formatMoneyPlain(total.paid)} ₽</div>` : ""}
             ${scoreStatsHtml(total.scores)}
           </div>
         </div>
@@ -4346,23 +4346,22 @@ function buildScheduleTotals(schedule){
     });
   });
 
-  // «Выплачено» берём с бэкенда (employee.totals.paid) — он считает по месяцу назначения
-  // (apply_month), а не по дате выплаты в календаре. Выплата июня за май в мае учтётся, в июне — нет.
+  // Выплачено/начислено/остаток берём с бэкенда: он считает выплаты по месяцу назначения (apply_month)
+  // и включает премии/цели/кальяны в «начислено» (как в ЛК). total.pay (ФОТ смен) оставляем для ролей/подвала.
   schedule.employees.forEach((employee)=>{
     const total = byEmployee.get(employee.id);
-    const backendPaid = employee.totals ? employee.totals.paid : null;
-    if(total) total.paid = backendPaid == null ? null : Number(backendPaid || 0);
-  });
-
-  byEmployee.forEach((total)=>{
-    total.remaining = total.pay == null || total.paid == null ? null : Math.max(0, total.pay - total.paid);
+    if(!total) return;
+    const bt = employee.totals || {};
+    total.paid = bt.paid == null ? null : Number(bt.paid || 0);
+    total.accrued = bt.accrued == null ? total.pay : Number(bt.accrued || 0);
+    total.remaining = bt.remaining == null ? null : Number(bt.remaining || 0);
   });
 
   return { byEmployee, byRole };
 }
 
 function emptyEmployeeTotal(){
-  return { shifts:0, hours:0, pay:0, paid:0, remaining:0, scores:{ green:0, yellow:0, red:0 } };
+  return { shifts:0, hours:0, pay:0, paid:0, accrued:0, remaining:0, scores:{ green:0, yellow:0, red:0 } };
 }
 
 function renderScheduleEditor(service){
