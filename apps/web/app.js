@@ -5004,7 +5004,9 @@ function formatMoney(value){
 
 function formatHours(value){
   if(value == null) return "";
-  return Number(value).toString().replace(".5", ",5");
+  // Округляем до 1 знака после запятой (убирает «хвост» от суммирования дробных часов).
+  const r = Math.round(Number(value) * 10) / 10;
+  return String(r).replace(".", ",");
 }
 
 function shortName(name){

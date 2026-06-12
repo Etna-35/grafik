@@ -493,9 +493,22 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     employeeTotals.set(row.employee_id, total);
   }
 
-  for (const row of payoutRows.rows) {
+  // «Выплачено за месяц» считаем по МЕСЯЦУ НАЗНАЧЕНИЯ (apply_month), а не по дате выплаты в календаре,
+  // чтобы плитки/итоги показывали погашение именно того месяца (выплата июня за май учитывается в мае).
+  const paidByMonth = await query<{ employee_id: string; paid: number }>(
+    `
+      SELECT employee_id, SUM(amount)::int AS paid
+      FROM payroll_payouts
+      WHERE COALESCE(apply_month, date_trunc('month', work_date)::date) >= $1::date
+        AND COALESCE(apply_month, date_trunc('month', work_date)::date) < ($1::date + interval '1 month')
+        AND ($2::boolean = true OR employee_id = $3::uuid)
+      GROUP BY employee_id
+    `,
+    [start, canSeeAllMoney, user.id]
+  );
+  for (const row of paidByMonth.rows) {
     const total = employeeTotals.get(row.employee_id) || { accrued: 0, paid: 0, shifts: 0 };
-    total.paid += row.amount;
+    total.paid += Number(row.paid || 0);
     employeeTotals.set(row.employee_id, total);
   }
 
@@ -609,7 +622,9 @@ async function upsertShift(
 
   const payModel = employee.pay_model || (employee.schedule_role === "dish" || employee.role === "dishwasher" ? "fixed" : "hourly");
   const hourlyRate = Number(employee.hourly_rate || 0);
-  const plannedHours = payModel === "fixed" ? null : Number(data.hours || employee.default_hours || 12);
+  // Часы храним с округлением до 1 знака после запятой, вверх — в пользу сотрудника.
+  const rawHours = Number(data.hours || employee.default_hours || 12);
+  const plannedHours = payModel === "fixed" ? null : Math.ceil(rawHours * 10) / 10;
   const payAmount = payModel === "fixed"
     ? Number(data.payAmount || 3000)
     : Math.round((plannedHours || 0) * hourlyRate);
