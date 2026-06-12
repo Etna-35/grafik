@@ -96,7 +96,10 @@ employee_id nullable + audience_role · 021 quiz (quiz_questions/options/attempt
 031 finance (finance_fixed постоянные платежи + finance_expenses разовые) ·
 032 payroll_history (ручная ЗП прошлых месяцев: смены/часы/начислено) ·
 033 requisition_tg_messages (единое общее ТГ-сообщение заявок за день: batch_date PK,
-message_id, snapshot для диффа ➕/➖).
+message_id, snapshot для диффа ➕/➖) ·
+034 totem_awards (тотемы — редкая именная награда, до 2/сотрудника: slot 1|2, title, description, image_path;
+UNIQUE(employee_id,slot); показ по бокам от куклы на стр. прогресса; отдаётся в `/api/progress` как `totems[]`;
+выдача ВРУЧНУЮ — строка в БД + картинка в `apps/web/assets/totems/`, без UI).
 
 ## 7. Что построено (всё на проде)
 - **Главная/ЛК:** приветствие + «цель дня» (план выручки = ФОТ_дня/0.23, ×0.8 будни / ×1.5 ПТ-СБ; наличный план =
