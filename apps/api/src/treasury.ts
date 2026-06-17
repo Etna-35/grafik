@@ -135,11 +135,12 @@ async function computeState() {
   for (const row of fotRows.rows) fotByDate.set(row.d, Number(row.fot || 0));
 
   const maxDue = payRows.rows.reduce((acc, p) => (p.due_date > acc ? p.due_date : acc), today);
-  // Кумулятивный FCF по датам (с завтрашнего дня до maxDue).
+  // Кумулятивный FCF по датам (с завтрашнего дня; +120 дней за горизонт — для подсказок «перенести»).
   const cumFcfByDate = new Map<string, number>();
+  const fcfSeries: Array<{ iso: string; cum: number }> = [];
   let cum = 0;
   const start = new Date(`${today}T00:00:00Z`);
-  const horizonDays = Math.max(0, daysBetween(today, maxDue));
+  const horizonDays = Math.max(0, daysBetween(today, maxDue)) + 120;
   for (let i = 1; i <= horizonDays; i++) {
     const d = new Date(start.getTime() + i * 86400000);
     const iso = isoOf(d);
@@ -148,6 +149,7 @@ async function computeState() {
     const fcf = Math.round(rev - fot - rev * opPct);
     cum += fcf;
     cumFcfByDate.set(iso, cum);
+    fcfSeries.push({ iso, cum });
   }
   const cumUpTo = (iso: string): number => {
     if (iso <= today) return 0;
@@ -175,7 +177,8 @@ async function computeState() {
   const payments = payRows.rows.map((p, i) => {
     const amount = Number(p.amount);
     const daysLeft = Math.max(1, daysBetween(today, p.due_date));
-    const availableByDue = reservableNow + cumUpTo(p.due_date) - consumed;
+    const consumedBefore = consumed;
+    const availableByDue = reservableNow + cumUpTo(p.due_date) - consumedBefore;
     const coverage = Math.max(0, Math.min(amount, Math.round(availableByDue)));
     consumed += coverage;
     const shortfall = Math.round(amount - coverage);
@@ -187,6 +190,33 @@ async function computeState() {
     const uncoveredNow = Math.max(0, amount - coveredNowList[i]);
     const perDay = Math.ceil(uncoveredNow / daysLeft);
     todayEarmark += perDay;
+
+    // Подсказки при нехватке: перенести (ближайшая обеспеченная дата) / сплит / урезать.
+    let suggestions: undefined | {
+      moveToDate: string | null;
+      splittable: boolean;
+      splitNow: number;
+      splitLater: number;
+      splitLaterDate: string | null;
+      reduce: Array<{ title: string; amount: number }>;
+    };
+    if (statusFlag !== "ok") {
+      const feasible = fcfSeries.find((s) => s.iso > p.due_date && reservableNow + s.cum - consumedBefore >= amount);
+      const moveToDate = feasible ? feasible.iso : null;
+      const reduce = payRows.rows
+        .filter((q, j) => j !== i && q.due_date <= p.due_date)
+        .slice(0, 3)
+        .map((q) => ({ title: q.title, amount: Number(q.amount) }));
+      suggestions = {
+        moveToDate,
+        splittable: p.splittable,
+        splitNow: coverage,
+        splitLater: shortfall,
+        splitLaterDate: moveToDate,
+        reduce
+      };
+    }
+
     return {
       id: p.id,
       title: p.title,
@@ -199,7 +229,8 @@ async function computeState() {
       shortfall,
       pctCovered,
       statusFlag,
-      perDay
+      perDay,
+      suggestions
     };
   });
 
@@ -267,6 +298,11 @@ const spendSchema = z.object({
   note: z.string().trim().max(200).optional().default("")
 });
 const idParam = z.object({ id: z.string().uuid() });
+const splitSchema = z.object({
+  nowAmount: z.number().min(0).max(1_000_000_000),
+  laterAmount: z.number().positive().max(1_000_000_000),
+  laterDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+});
 
 export function registerTreasuryRoutes(app: FastifyInstance): void {
   app.get("/api/treasury", async (request, reply) => {
@@ -331,6 +367,28 @@ export function registerTreasuryRoutes(app: FastifyInstance): void {
     if (!user) return;
     const { id } = idParam.parse(request.params);
     await query("UPDATE treasury_payments SET status = 'paid', paid_at = now() WHERE id = $1", [id]);
+    return computeState();
+  });
+
+  app.post("/api/treasury/payments/:id/split", async (request, reply) => {
+    const user = await requireOwner(request, reply);
+    if (!user) return;
+    const { id } = idParam.parse(request.params);
+    const body = splitSchema.parse(request.body);
+    const orig = await query<{ title: string; category: string; priority: number; splittable: boolean }>(
+      "SELECT title, category, priority, splittable FROM treasury_payments WHERE id = $1",
+      [id]
+    );
+    if (!orig.rows[0]) {
+      await reply.code(404).send({ error: "not_found" });
+      return;
+    }
+    await query("UPDATE treasury_payments SET amount = $1 WHERE id = $2", [body.nowAmount, id]);
+    await query(
+      `INSERT INTO treasury_payments (title, amount, due_date, category, priority, splittable, parent_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [`${orig.rows[0].title} (остаток)`, body.laterAmount, body.laterDate, orig.rows[0].category, orig.rows[0].priority, orig.rows[0].splittable, id]
+    );
     return computeState();
   });
 

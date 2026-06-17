@@ -932,8 +932,26 @@ function trPaymentCopilka(p){
         </span>
       </div>
       ${p.statusFlag !== "ok" && p.perDay > 0 ? `<div class="tr-pay-perday">откладывай ${formatMoneyPlain(p.perDay)} ₽/день</div>` : ""}
+      ${trPaymentSuggestions(p)}
     </div>
   `;
+}
+
+function trPaymentSuggestions(p){
+  const s = p.suggestions;
+  if(!s) return "";
+  const chips = [];
+  if(s.moveToDate){
+    chips.push(`<button class="tr-sug" data-tr-move="${escapeAttr(p.id)}" data-date="${s.moveToDate}">перенести → ${trShortDate(s.moveToDate)}</button>`);
+  }
+  if(s.splittable && s.splitLater > 0 && s.splitNow > 0 && s.splitLaterDate){
+    chips.push(`<button class="tr-sug" data-tr-split="${escapeAttr(p.id)}">сплит ${formatMoneyPlain(s.splitNow)} + ${formatMoneyPlain(s.splitLater)}</button>`);
+  }
+  const reduceText = (s.reduce || []).length
+    ? `<div class="tr-sug-reduce">до срока ещё уходит на: ${s.reduce.map((r)=>escapeHtml(r.title)).join(", ")} — подвинь одно, чтобы освободить резерв</div>`
+    : "";
+  if(!chips.length && !reduceText) return "";
+  return `<div class="tr-sug-wrap">${chips.join("")}${reduceText}</div>`;
 }
 
 function trAddPaymentForm(){
@@ -986,6 +1004,8 @@ function bindTreasury(){
   });
   app.querySelectorAll("[data-tr-pay]").forEach((b)=>b.addEventListener("click", ()=>treasuryPay(b.dataset.trPay)));
   app.querySelectorAll("[data-tr-del]").forEach((b)=>b.addEventListener("click", ()=>treasuryDeletePayment(b.dataset.trDel)));
+  app.querySelectorAll("[data-tr-move]").forEach((b)=>b.addEventListener("click", ()=>treasuryMovePayment(b.dataset.trMove, b.dataset.date)));
+  app.querySelectorAll("[data-tr-split]").forEach((b)=>b.addEventListener("click", ()=>treasurySplitPayment(b.dataset.trSplit)));
   app.querySelectorAll("[data-tr]").forEach((button)=>{
     button.addEventListener("click", ()=>{
       const action = button.dataset.tr;
@@ -1053,6 +1073,28 @@ function treasuryPay(id){
 function treasuryDeletePayment(id){
   if(!confirm("Удалить платёж?")) return;
   treasuryAction(apiDelete(`/api/treasury/payments/${id}`), "Платёж удалён");
+}
+
+function trFindPayment(id){
+  return (state.treasury?.payments || []).find((p)=>p.id === id);
+}
+
+function treasuryMovePayment(id, date){
+  const p = trFindPayment(id);
+  if(!p || !date) return;
+  treasuryAction(apiPut(`/api/treasury/payments/${id}`, {
+    title: p.title, amount: p.amount, dueDate: date, category: p.category, priority: p.priority, splittable: p.splittable
+  }), `Перенесён на ${trShortDate(date)}`);
+}
+
+function treasurySplitPayment(id){
+  const p = trFindPayment(id);
+  if(!p || !p.suggestions) return;
+  const s = p.suggestions;
+  if(!(s.splitNow > 0 && s.splitLater > 0 && s.splitLaterDate)) return;
+  treasuryAction(apiPost(`/api/treasury/payments/${id}/split`, {
+    nowAmount: s.splitNow, laterAmount: s.splitLater, laterDate: s.splitLaterDate
+  }), `Разбит: ${formatMoneyPlain(s.splitNow)} к сроку + ${formatMoneyPlain(s.splitLater)} позже`);
 }
 
 function renderTrainingPage(service){

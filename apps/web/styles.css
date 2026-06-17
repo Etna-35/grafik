@@ -930,3 +930,9 @@ button.day-block{cursor:pointer;font:inherit}
 .tr-pay-perday{font-size:11px;color:var(--brand-bright);margin-top:7px}
 .tr-alloc-head{align-items:center}
 .tr-alloc-title{font-family:var(--font-display);font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--brand)}
+
+/* Касса · Фаза 3 — подсказки у платежей */
+.tr-sug-wrap{margin-top:8px;display:flex;flex-direction:column;gap:6px}
+.tr-sug{appearance:none;align-self:flex-start;font:inherit;font-size:11px;color:var(--brand-bright);background:none;border:1px solid var(--brand-line);border-radius:var(--r-md);padding:5px 10px;cursor:pointer}
+.tr-sug:active{transform:scale(.98)}
+.tr-sug-reduce{font-size:11px;color:var(--ink-soft);line-height:1.4}
