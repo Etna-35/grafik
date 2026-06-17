@@ -913,3 +913,20 @@ button.day-block{cursor:pointer;font:inherit}
 .tr-set{display:flex;flex-direction:column;gap:10px;margin-top:6px}
 .tr-set-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--ink-soft)}
 .tr-set-row .tr-input{max-width:150px}
+
+/* Касса · Фаза 2 — свободно сегодня, полоса корзин, отчисление/день */
+.tr-today{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--gold-tint);border:1px solid var(--brand-line);border-radius:var(--r-md);padding:10px 13px;margin:0 0 10px;font-size:12px;color:var(--ink)}
+.tr-today b{font-weight:600}
+.tr-today-bad{background:var(--danger-bg);border-color:var(--danger-line)}
+.tr-free-ok{color:var(--green)}
+.tr-free-bad{color:var(--danger)}
+.tr-alloc{margin:0 0 12px}
+.tr-alloc-head{display:flex;align-items:baseline;justify-content:space-between}
+.tr-alloc-bar{display:flex;height:18px;border-radius:6px;overflow:hidden;margin:6px 0 8px}
+.tr-alloc-bar>div{min-width:1px}
+.tr-alloc-legend{display:flex;flex-wrap:wrap;gap:8px 12px;font-size:11px;color:var(--ink-soft)}
+.tr-leg{display:inline-flex;align-items:center;gap:5px}
+.tr-dot{width:8px;height:8px;border-radius:2px;display:inline-block}
+.tr-pay-perday{font-size:11px;color:var(--brand-bright);margin-top:7px}
+.tr-alloc-head{align-items:center}
+.tr-alloc-title{font-family:var(--font-display);font-weight:700;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--brand)}

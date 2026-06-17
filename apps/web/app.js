@@ -830,6 +830,9 @@ function renderTreasuryContent(t){
       <div class="tr-muted">${t.balanceAsOf ? `обновлён ${trShortDate(t.balanceAsOf)}` : "якорь прогноза — введи текущий остаток"}</div>
     </div>
 
+    ${trFreeToday(t)}
+    ${trAllocationBar(t.allocation)}
+
     <h2 class="sec">Конверты бюджета</h2>
     ${trEnvelopeCard("Закуп · бар + кухня", env.purchase)}
     ${trEnvelopeCard("Хозтовары", env.household)}
@@ -845,6 +848,38 @@ function renderTreasuryContent(t){
       <summary>Настройки ставок и подушки</summary>
       ${trSettingsForm(t.settings || {})}
     </details>
+  `;
+}
+
+function trFreeToday(t){
+  const earmark = Math.round(t.todayEarmark || 0);
+  const free = Math.round(t.freeToday || 0);
+  const neg = free < 0;
+  return `
+    <div class="tr-today ${neg ? "tr-today-bad" : ""}">
+      <span>Сегодня отложи <b>${formatMoneyPlain(earmark)} ₽</b></span>
+      <span>${neg ? "не хватает" : "свободно"} <b class="${neg ? "tr-free-bad" : "tr-free-ok"}">${formatMoneyPlain(Math.abs(free))} ₽</b></span>
+    </div>
+  `;
+}
+
+function trAllocationBar(a){
+  if(!a || !a.revenue) return "";
+  const parts = [
+    ["ФОТ", a.fot, "var(--line-strong)"],
+    ["Закуп", a.purchase, "var(--brand)"],
+    ["Хоз", a.household, "var(--gold)"],
+    ["Резерв", a.reserve, "var(--teal)"],
+    ["Свободно", a.free, "var(--green)"]
+  ];
+  const seg = parts.map(([,v,c])=>`<div style="width:${Math.max(0, (Number(v||0)/a.revenue)*100)}%;background:${c}"></div>`).join("");
+  const legend = parts.map(([l,v,c])=>`<span class="tr-leg"><span class="tr-dot" style="background:${c}"></span>${l} ${formatMoneyPlain(v)}</span>`).join("");
+  return `
+    <div class="tr-alloc">
+      <div class="tr-alloc-head"><span class="tr-alloc-title">Распределение · месяц</span><span class="tr-muted">${formatMoneyPlain(a.revenue)} ₽</span></div>
+      <div class="tr-alloc-bar">${seg}</div>
+      <div class="tr-alloc-legend">${legend}</div>
+    </div>
   `;
 }
 
@@ -896,6 +931,7 @@ function trPaymentCopilka(p){
           <button class="tr-link tr-del" data-tr-del="${escapeAttr(p.id)}">удалить</button>
         </span>
       </div>
+      ${p.statusFlag !== "ok" && p.perDay > 0 ? `<div class="tr-pay-perday">откладывай ${formatMoneyPlain(p.perDay)} ₽/день</div>` : ""}
     </div>
   `;
 }

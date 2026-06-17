@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
+import { predictRevenue } from "./finance.js";
 
 // Касса — планировщик cash-flow. Раздел строго owner. См. docs/treasury-planner.md.
 // Фаза 1: остаток + ставки, конверты закуп/хоз (накопление от факта с переносом),
@@ -160,9 +161,20 @@ async function computeState() {
   // Стартовый резерв "сейчас": остаток минус подушка и неизрасходованные конверты.
   const reservableNow = Math.round(balance - settings.safetyBuffer - envelopes.purchase.available - envelopes.household.available);
 
+  // Пас A: покрытие ТОЛЬКО текущим резервом (без будущего FCF) — основа для "сколько откладывать в день".
+  let poolNow = Math.max(0, reservableNow);
+  const coveredNowList = payRows.rows.map((p) => {
+    const c = Math.max(0, Math.min(Number(p.amount), poolNow));
+    poolNow -= c;
+    return c;
+  });
+
+  // Пас B: покрытие с учётом прогнозного FCF до срока — для статуса/копилки.
   let consumed = 0;
-  const payments = payRows.rows.map((p) => {
+  let todayEarmark = 0;
+  const payments = payRows.rows.map((p, i) => {
     const amount = Number(p.amount);
+    const daysLeft = Math.max(1, daysBetween(today, p.due_date));
     const availableByDue = reservableNow + cumUpTo(p.due_date) - consumed;
     const coverage = Math.max(0, Math.min(amount, Math.round(availableByDue)));
     consumed += coverage;
@@ -172,7 +184,9 @@ async function computeState() {
     if (coverage >= amount) statusFlag = "ok";
     else if (pctCovered >= 80) statusFlag = "tight";
     else statusFlag = "risk";
-    const daysLeft = Math.max(1, daysBetween(today, p.due_date));
+    const uncoveredNow = Math.max(0, amount - coveredNowList[i]);
+    const perDay = Math.ceil(uncoveredNow / daysLeft);
+    todayEarmark += perDay;
     return {
       id: p.id,
       title: p.title,
@@ -185,11 +199,46 @@ async function computeState() {
       shortfall,
       pctCovered,
       statusFlag,
-      perDay: Math.round(amount / daysLeft)
+      perDay
     };
   });
 
-  return { today, balance, balanceAsOf, settings, envelopes, payments };
+  // Свободно сегодня = дневной свободный поток − рекомендованные отчисления.
+  const todayDow = new Date(`${today}T00:00:00Z`).getUTCDay();
+  const todayFotRow = await query<{ fot: string }>(
+    "SELECT COALESCE(SUM(pay_amount), 0)::text AS fot FROM schedule_shifts WHERE work_date = $1::date",
+    [today]
+  );
+  const todayFot = Number(todayFotRow.rows[0]?.fot || 0);
+  const todayRev = todayRevenue > 0 ? todayRevenue : Math.round(wavg.get(todayDow) || 0);
+  const todayFcf = Math.round(todayRev - todayFot - todayRev * opPct);
+  const freeToday = Math.round(todayFcf - todayEarmark);
+
+  // Распределение прогноза месяца по корзинам (для полосы).
+  const [yy, mm] = today.split("-").map(Number);
+  const ym = `${yy}-${String(mm).padStart(2, "0")}`;
+  const monthRev = (await predictRevenue(yy, mm)).predicted;
+  const monthFotRow = await query<{ fot: string }>(
+    "SELECT COALESCE(SUM(pay_amount), 0)::text AS fot FROM schedule_shifts WHERE work_date >= $1::date AND work_date < ($1::date + interval '1 month')",
+    [`${ym}-01`]
+  );
+  const monthFot = Number(monthFotRow.rows[0]?.fot || 0);
+  const purchaseAlloc = Math.round((monthRev * settings.purchasePct) / 100);
+  const householdAlloc = Math.round((monthRev * settings.householdPct) / 100);
+  const reserveAlloc = Math.round(
+    payRows.rows.filter((p) => p.due_date.slice(0, 7) === ym).reduce((s, p) => s + Number(p.amount), 0)
+  );
+  const freeAlloc = Math.max(0, Math.round(monthRev - monthFot - purchaseAlloc - householdAlloc - reserveAlloc));
+  const allocation = {
+    revenue: monthRev,
+    fot: monthFot,
+    purchase: purchaseAlloc,
+    household: householdAlloc,
+    reserve: reserveAlloc,
+    free: freeAlloc
+  };
+
+  return { today, balance, balanceAsOf, settings, envelopes, payments, freeToday, todayEarmark, allocation };
 }
 
 const balanceSchema = z.object({
