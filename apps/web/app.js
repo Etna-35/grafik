@@ -40,8 +40,15 @@ const serviceMeta = {
     accent: "var(--gold)",
     description: "Выручка и метрики",
     icon: chartIcon
+  },
+  treasury: {
+    accent: "var(--brand-bright)",
+    description: "Планирование и резервы",
+    icon: walletIcon
   }
 };
+
+function walletIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M3 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v0H5a2 2 0 0 0-2 2v0"/><path d="M3 9a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M16 13h2"/></svg>`; }
 
 function chartIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>`; }
 
@@ -108,6 +115,13 @@ let state = {
   financeMonth: null,
   financeNotice: "",
   financeFixedOpen: false,
+  treasury: null,
+  treasuryLoading: false,
+  treasuryError: "",
+  treasurySpendKind: "food",
+  treasurySettingsOpen: false,
+  treasuryAddOpen: false,
+  treasuryNotice: "",
   shiftClosingInit: null,
   shiftClosingDate: null,
   shiftClosingRecord: null,
@@ -718,6 +732,10 @@ function renderServicePage(path){
     renderFinancePage(service);
     return;
   }
+  if(service.code === "treasury"){
+    renderTreasuryPage(service);
+    return;
+  }
 
   const statusText = "готовится";
   const extra = "";
@@ -745,6 +763,260 @@ function renderServicePage(path){
     history.pushState(null, "", "/");
     render();
   });
+}
+
+// ===== Касса (treasury) — планировщик cash-flow, owner-only. См. docs/treasury-planner.md =====
+const TR_MONTHS = ["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+function trShortDate(iso){
+  if(!iso) return "";
+  const [y,m,d] = iso.split("-").map(Number);
+  return `${d} ${TR_MONTHS[m-1] || ""}`;
+}
+function trNum(el){
+  if(!el) return NaN;
+  return Number(String(el.value).replace(",", ".").replace(/\s/g, ""));
+}
+
+function renderTreasuryPage(service){
+  if(!state.treasury && !state.treasuryLoading && !state.treasuryError){ loadTreasury(); }
+  const body = state.treasuryLoading && !state.treasury
+    ? `<div class="panel"><div class="loader compact">Загружаю кассу</div></div>`
+    : state.treasuryError && !state.treasury
+      ? `<div class="panel"><div class="row-title">Не удалось загрузить кассу</div><div class="row-sub">${escapeHtml(state.treasuryError)}</div></div>`
+      : state.treasury ? renderTreasuryContent(state.treasury) : "";
+  app.innerHTML = `
+    <div class="phone wide">
+      <section class="screen service-page">
+        <div class="backrow">
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">${escapeHtml(service.title)}</h1>
+        </div>
+        ${state.treasuryNotice ? `<div class="fin-notice">${escapeHtml(state.treasuryNotice)}</div>` : ""}
+        ${body}
+      </section>
+    </div>
+  `;
+  app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+  bindTreasury();
+}
+
+async function loadTreasury(){
+  state.treasuryLoading = true;
+  state.treasuryError = "";
+  render();
+  try{
+    state.treasury = await apiGet("/api/treasury");
+  }catch(error){
+    state.treasuryError = error.status === 403 ? "Раздел только для собственника" : "Проверь соединение и попробуй ещё раз";
+  }finally{
+    state.treasuryLoading = false;
+    render();
+  }
+}
+
+function renderTreasuryContent(t){
+  const env = t.envelopes || {};
+  const balVal = t.balanceAsOf ? Math.round(t.balance) : "";
+  return `
+    <div class="tr-balance">
+      <div class="sec">Остаток на счёте</div>
+      <div class="tr-row2">
+        <input id="tr-balance" class="tr-input" inputmode="numeric" value="${balVal}" placeholder="введи остаток, ₽">
+        <button class="btn brand-action" data-tr="save-balance">Сохранить</button>
+      </div>
+      <div class="tr-muted">${t.balanceAsOf ? `обновлён ${trShortDate(t.balanceAsOf)}` : "якорь прогноза — введи текущий остаток"}</div>
+    </div>
+
+    <h2 class="sec">Конверты бюджета</h2>
+    ${trEnvelopeCard("Закуп · бар + кухня", env.purchase)}
+    ${trEnvelopeCard("Хозтовары", env.household)}
+
+    <h2 class="sec">Внести трату</h2>
+    ${trSpendForm()}
+
+    <h2 class="sec">Точки платежей</h2>
+    ${(t.payments && t.payments.length) ? t.payments.map(trPaymentCopilka).join("") : `<div class="panel muted-line">Платежей нет — добавь первый</div>`}
+    ${trAddPaymentForm()}
+
+    <details class="tr-fold" ${state.treasurySettingsOpen ? "open" : ""} data-tr-fold="settings">
+      <summary>Настройки ставок и подушки</summary>
+      ${trSettingsForm(t.settings || {})}
+    </details>
+  `;
+}
+
+function trEnvelopeCard(title, e){
+  if(!e) return "";
+  const pct = e.accrued > 0 ? Math.max(0, Math.min(100, Math.round((e.available / e.accrued) * 100))) : 0;
+  return `
+    <div class="tr-env">
+      <div class="tr-env-top"><span>${escapeHtml(title)}</span><span class="tr-rate">ставка ${e.pct}%</span></div>
+      <div class="tr-env-big">${formatMoneyPlain(e.available)} ₽ <span>можно потратить</span></div>
+      <div class="tr-env-bar"><i style="width:${pct}%"></i></div>
+      <div class="tr-env-sub"><span>накоплено ${formatMoneyPlain(e.accrued)}</span><span>потрачено ${formatMoneyPlain(e.spent)}</span></div>
+      ${e.todayAccrual ? `<div class="tr-env-today">+${formatMoneyPlain(e.todayAccrual)} ₽ сегодня · копится до дня заявки</div>` : ""}
+    </div>
+  `;
+}
+
+function trSpendForm(){
+  const kinds = [["food","Продукты"],["household","Хозка"],["personal","Личные"],["other","Прочее"]];
+  return `
+    <div class="tr-spend">
+      <div class="tr-chips">
+        ${kinds.map(([k,l])=>`<button type="button" class="tr-chip ${state.treasurySpendKind === k ? "on" : ""}" data-tr-kind="${k}">${l}</button>`).join("")}
+      </div>
+      <div class="tr-row2">
+        <input id="tr-spend-amount" class="tr-input" inputmode="numeric" placeholder="сумма, ₽">
+        <button class="btn brand-action" data-tr="add-spend">Списать</button>
+      </div>
+      <input id="tr-spend-note" class="tr-input" placeholder="комментарий (необязательно)">
+    </div>
+  `;
+}
+
+function trPaymentCopilka(p){
+  const statusText = p.statusFlag === "ok" ? "обеспечено"
+    : p.statusFlag === "tight" ? "впритык"
+    : `не хватает ${formatMoneyPlain(p.shortfall)} ₽`;
+  return `
+    <div class="tr-pay tr-${p.statusFlag}">
+      <div class="tr-pay-top">
+        <span><span class="tr-pay-date">${trShortDate(p.dueDate)}</span> <b>${escapeHtml(p.title)}</b></span>
+        <span class="tr-pay-amount">${formatMoneyPlain(p.amount)} ₽</span>
+      </div>
+      <div class="tr-pay-bar"><i style="width:${p.pctCovered}%"></i></div>
+      <div class="tr-pay-bottom">
+        <span class="tr-status tr-st-${p.statusFlag}">${statusText}</span>
+        <span class="tr-pay-actions">
+          <button class="tr-link" data-tr-pay="${escapeAttr(p.id)}">оплачен</button>
+          <button class="tr-link tr-del" data-tr-del="${escapeAttr(p.id)}">удалить</button>
+        </span>
+      </div>
+    </div>
+  `;
+}
+
+function trAddPaymentForm(){
+  const cats = ["ЖКХ","Аренда","Налог","Долг","Закуп","Прочее"];
+  return `
+    <details class="tr-fold" ${state.treasuryAddOpen ? "open" : ""} data-tr-fold="add">
+      <summary>＋ Точка платежа</summary>
+      <div class="tr-add-body">
+        <input id="tr-pay-title" class="tr-input" placeholder="название (ЖКХ, аренда…)">
+        <div class="tr-row2">
+          <input id="tr-pay-amount" class="tr-input" inputmode="numeric" placeholder="сумма, ₽">
+          <input id="tr-pay-date" class="tr-input" type="date">
+        </div>
+        <select id="tr-pay-cat" class="tr-input">${cats.map((c)=>`<option>${c}</option>`).join("")}</select>
+        <button class="btn brand-action w-100" data-tr="add-pay">Добавить платёж</button>
+      </div>
+    </details>
+  `;
+}
+
+function trSettingsForm(s){
+  return `
+    <div class="tr-set">
+      <label class="tr-set-row"><span>Закуп, % выручки</span><input id="tr-set-purchase" class="tr-input" inputmode="decimal" value="${s.purchasePct ?? 30}"></label>
+      <label class="tr-set-row"><span>Хоз, % выручки</span><input id="tr-set-household" class="tr-input" inputmode="decimal" value="${s.householdPct ?? 5}"></label>
+      <label class="tr-set-row"><span>Подушка, ₽</span><input id="tr-set-buffer" class="tr-input" inputmode="numeric" value="${Math.round(s.safetyBuffer ?? 0)}"></label>
+      <label class="tr-set-row"><span>Конверты копят с</span><input id="tr-set-start" class="tr-input" type="date" value="${s.accrualStart || ""}"></label>
+      <button class="btn brand-action w-100" data-tr="save-settings">Сохранить настройки</button>
+    </div>
+  `;
+}
+
+function applyTreasury(data){
+  state.treasury = data;
+  render();
+}
+
+function bindTreasury(){
+  app.querySelectorAll("[data-tr-kind]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      state.treasurySpendKind = button.dataset.trKind;
+      app.querySelectorAll("[data-tr-kind]").forEach((b)=>b.classList.toggle("on", b === button));
+    });
+  });
+  app.querySelectorAll("[data-tr-fold]").forEach((node)=>{
+    node.addEventListener("toggle", ()=>{
+      if(node.dataset.trFold === "settings") state.treasurySettingsOpen = node.open;
+      if(node.dataset.trFold === "add") state.treasuryAddOpen = node.open;
+    });
+  });
+  app.querySelectorAll("[data-tr-pay]").forEach((b)=>b.addEventListener("click", ()=>treasuryPay(b.dataset.trPay)));
+  app.querySelectorAll("[data-tr-del]").forEach((b)=>b.addEventListener("click", ()=>treasuryDeletePayment(b.dataset.trDel)));
+  app.querySelectorAll("[data-tr]").forEach((button)=>{
+    button.addEventListener("click", ()=>{
+      const action = button.dataset.tr;
+      if(action === "save-balance") treasurySaveBalance();
+      else if(action === "save-settings") treasurySaveSettings();
+      else if(action === "add-pay") treasuryAddPayment();
+      else if(action === "add-spend") treasuryAddSpend();
+    });
+  });
+}
+
+async function treasuryAction(promise, okMsg){
+  state.treasuryNotice = "";
+  try{
+    const data = await promise;
+    if(okMsg) state.treasuryNotice = okMsg;
+    applyTreasury(data);
+  }catch(error){
+    state.treasuryNotice = error.status === 403 ? "Раздел только для собственника" : "Ошибка — проверь ввод и соединение";
+    render();
+  }
+}
+
+function treasurySaveBalance(){
+  const v = trNum(document.getElementById("tr-balance"));
+  if(!Number.isFinite(v) || v < 0){ state.treasuryNotice = "Введи сумму остатка"; render(); return; }
+  treasuryAction(apiPost("/api/treasury/balance", { balance: Math.round(v) }), "Остаток обновлён");
+}
+
+function treasurySaveSettings(){
+  const purchasePct = trNum(document.getElementById("tr-set-purchase"));
+  const householdPct = trNum(document.getElementById("tr-set-household"));
+  const safetyBuffer = trNum(document.getElementById("tr-set-buffer"));
+  const startEl = document.getElementById("tr-set-start");
+  const accrualStart = startEl && startEl.value ? startEl.value : undefined;
+  if([purchasePct, householdPct, safetyBuffer].some((n)=>!Number.isFinite(n) || n < 0)){
+    state.treasuryNotice = "Проверь значения настроек"; render(); return;
+  }
+  treasuryAction(apiPut("/api/treasury/settings", { purchasePct, householdPct, safetyBuffer: Math.round(safetyBuffer), accrualStart }), "Настройки сохранены");
+}
+
+function treasuryAddPayment(){
+  const title = (document.getElementById("tr-pay-title")?.value || "").trim();
+  const amount = trNum(document.getElementById("tr-pay-amount"));
+  const dueDate = document.getElementById("tr-pay-date")?.value || "";
+  const category = document.getElementById("tr-pay-cat")?.value || "Прочее";
+  if(!title){ state.treasuryNotice = "Укажи название платежа"; render(); return; }
+  if(!Number.isFinite(amount) || amount <= 0){ state.treasuryNotice = "Укажи сумму платежа"; render(); return; }
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)){ state.treasuryNotice = "Укажи дату платежа"; render(); return; }
+  state.treasuryAddOpen = true;
+  treasuryAction(apiPost("/api/treasury/payments", { title, amount: Math.round(amount), dueDate, category }), "Платёж добавлен");
+}
+
+function treasuryAddSpend(){
+  const amount = trNum(document.getElementById("tr-spend-amount"));
+  const note = (document.getElementById("tr-spend-note")?.value || "").trim();
+  if(!Number.isFinite(amount) || amount <= 0){ state.treasuryNotice = "Укажи сумму траты"; render(); return; }
+  treasuryAction(apiPost("/api/treasury/spend", { kind: state.treasurySpendKind, amount: Math.round(amount), note }), "Трата внесена");
+}
+
+function treasuryPay(id){
+  treasuryAction(apiPost(`/api/treasury/payments/${id}/pay`, {}), "Платёж отмечен оплаченным");
+}
+
+function treasuryDeletePayment(id){
+  if(!confirm("Удалить платёж?")) return;
+  treasuryAction(apiDelete(`/api/treasury/payments/${id}`), "Платёж удалён");
 }
 
 function renderTrainingPage(service){
@@ -3298,39 +3570,6 @@ function renderFinanceContent(f){
       ${state.financeNotice ? `<div class="fin-notice">${escapeHtml(state.financeNotice)}</div>` : ""}
     </div>
 
-    <h2 class="sec">P&amp;L · ${rev.isForecast ? "прогноз от выручки" : "факт месяца"}</h2>
-    <div class="fin-table">
-      ${(f.articles || []).map((a)=>`
-        <div class="fin-row ${a.actualPct > a.norm ? "over" : "under"}">
-          <span class="fin-name">${escapeHtml(a.label)}</span>
-          <span class="fin-fact"><b>${formatMoneyPlain(a.actual)} ₽</b><i>${a.actualPct}%</i></span>
-          <span class="fin-norm">норма ${a.norm}%<i>${formatMoneyPlain(a.normAmount)} ₽</i></span>
-        </div>
-      `).join("")}
-      <div class="fin-row total">
-        <span class="fin-name">Итого расходов</span>
-        <span class="fin-fact"><b>${formatMoneyPlain(f.totals.totalExpenses)} ₽</b><i>${f.totals.totalPct}%</i></span>
-        <span class="fin-norm">норма ${f.totals.totalNorm}%</span>
-      </div>
-      <div class="fin-row total ebitda">
-        <span class="fin-name">EBITDA (препрофит)</span>
-        <span class="fin-fact"><b>${formatMoneyPlain(f.totals.ebitda)} ₽</b><i>${f.totals.ebitdaPct}%</i></span>
-        <span class="fin-norm">норма ${f.totals.ebitdaNorm}%</span>
-      </div>
-    </div>
-
-    <details class="fin-fixed" ${state.financeFixedOpen ? "open" : ""}>
-      <summary>Постоянные платежи в месяц</summary>
-      <form id="finFixedForm" class="panel">
-        ${(f.fixed || []).map((x)=>`
-          <label class="fin-fixed-row"><span>${escapeHtml(x.label)}</span>
-            <input type="number" min="0" step="1" inputmode="numeric" name="fix_${x.article}" value="${x.amount || ""}" placeholder="0">
-          </label>
-        `).join("")}
-        <button class="ghost brand-action" type="submit">Сохранить постоянные</button>
-      </form>
-    </details>
-
     ${(f.recentExpenses || []).length ? `
     <details class="fin-recent">
       <summary>Расходы месяца (${f.recentExpenses.length})</summary>
@@ -5210,7 +5449,8 @@ function tintFor(code){
     requisition:"var(--green-tint)",
     payroll:"var(--green-tint)",
     admin:"var(--ink-tint)",
-    finance:"var(--gold-tint)"
+    finance:"var(--gold-tint)",
+    treasury:"var(--gold-tint)"
   }[code] || "var(--brand-tint)";
 }
 

@@ -867,3 +867,49 @@ button.day-block{cursor:pointer;font:inherit}
 .ta-left{text-align:left}
 .hint-block{margin:0 2px 12px}
 .hint-block-sm{margin:0 2px 8px}
+
+/* Касса (treasury) — планировщик cash-flow, owner-only */
+.tr-balance{margin-bottom:6px}
+.tr-row2{display:flex;gap:8px;margin:6px 0}
+.tr-row2 .tr-input{flex:1;min-width:0}
+.tr-input{width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);color:var(--ink);font:inherit;font-size:15px;padding:10px 12px;appearance:none}
+.tr-input::placeholder{color:var(--ink-soft)}
+.tr-muted{font-size:12px;color:var(--ink-soft);margin-top:2px}
+.tr-env{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:13px 14px;margin:0 0 10px}
+.tr-env-top{display:flex;align-items:center;justify-content:space-between;font-size:13px;margin-bottom:8px;color:var(--ink)}
+.tr-rate{font-size:11px;color:var(--brand-bright);border:1px solid var(--brand-line);border-radius:var(--r-pill);padding:2px 9px}
+.tr-env-big{font-family:var(--font-display);font-weight:700;font-size:22px;color:var(--brand-bright);margin-bottom:10px}
+.tr-env-big span{font-family:var(--font);font-weight:400;font-size:11px;color:var(--ink-soft);margin-left:6px}
+.tr-env-bar{height:8px;background:var(--track);border-radius:5px;overflow:hidden;margin-bottom:6px}
+.tr-env-bar i{display:block;height:100%;background:var(--brand)}
+.tr-env-sub{display:flex;justify-content:space-between;font-size:11px;color:var(--ink-soft)}
+.tr-env-today{font-size:11px;color:var(--green);margin-top:8px}
+.tr-spend{margin-bottom:6px}
+.tr-chips{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px}
+.tr-chip{appearance:none;font:inherit;font-size:12px;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:9px 4px;cursor:pointer}
+.tr-chip.on{background:var(--brand);color:var(--brand-ink);border-color:var(--brand);font-weight:600}
+.tr-pay{background:var(--card);border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;margin-bottom:8px}
+.tr-pay.tr-risk{border-color:var(--danger-line)}
+.tr-pay-top{display:flex;align-items:center;justify-content:space-between;font-size:14px;color:var(--ink)}
+.tr-pay-date{font-size:11px;color:var(--ink-soft);margin-right:4px}
+.tr-pay-amount{font-family:var(--font-display);font-weight:500;font-size:14px}
+.tr-pay-bar{height:7px;background:var(--track);border-radius:5px;overflow:hidden;margin:7px 0}
+.tr-pay-bar i{display:block;height:100%;background:var(--brand)}
+.tr-ok .tr-pay-bar i{background:var(--green)}
+.tr-tight .tr-pay-bar i{background:var(--gold)}
+.tr-risk .tr-pay-bar i{background:var(--danger)}
+.tr-pay-bottom{display:flex;align-items:center;justify-content:space-between}
+.tr-status{font-size:11px;border-radius:var(--r-pill);padding:2px 10px}
+.tr-st-ok{color:var(--green);background:var(--ok-bg);border:1px solid var(--ok-line)}
+.tr-st-tight{color:var(--gold);background:var(--gold-tint);border:1px solid var(--brand-line)}
+.tr-st-risk{color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger-line)}
+.tr-pay-actions{display:flex;gap:12px}
+.tr-link{appearance:none;background:none;border:0;font:inherit;font-size:11px;color:var(--brand-bright);cursor:pointer;padding:0}
+.tr-link.tr-del{color:var(--ink-soft)}
+.tr-fold{margin:8px 0}
+.tr-fold>summary{cursor:pointer;font-size:13px;color:var(--brand-bright);list-style:none;padding:8px 0}
+.tr-fold>summary::-webkit-details-marker{display:none}
+.tr-add-body{display:flex;flex-direction:column;gap:8px;margin-top:6px}
+.tr-set{display:flex;flex-direction:column;gap:10px;margin-top:6px}
+.tr-set-row{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:13px;color:var(--ink-soft)}
+.tr-set-row .tr-input{max-width:150px}

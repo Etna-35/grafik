@@ -127,6 +127,22 @@ export async function getServices(employeeId: string): Promise<Service[]> {
       else rows.splice(idx, 0, finance);
     }
   }
+
+  // Касса — планировщик cash-flow, строго для собственника.
+  if (role === "owner" && !rows.some((service) => service.code === "treasury")) {
+    const treasury: Service = {
+      id: "treasury",
+      code: "treasury",
+      title: "Касса",
+      url: "/treasury",
+      is_active: true,
+      can_view: true,
+      can_edit: true
+    };
+    const idx = rows.findIndex((service) => ["payroll", "admin"].includes(service.code));
+    if (idx === -1) rows.push(treasury);
+    else rows.splice(idx, 0, treasury);
+  }
   return rows;
 }
 
