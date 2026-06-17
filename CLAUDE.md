@@ -99,7 +99,10 @@ employee_id nullable + audience_role · 021 quiz (quiz_questions/options/attempt
 message_id, snapshot для диффа ➕/➖) ·
 034 totem_awards (тотемы — редкая именная награда, до 2/сотрудника: slot 1|2, title, description, image_path;
 UNIQUE(employee_id,slot); показ по бокам от куклы на стр. прогресса; отдаётся в `/api/progress` как `totems[]`;
-выдача ВРУЧНУЮ — строка в БД + картинка в `apps/web/assets/totems/`, без UI).
+выдача ВРУЧНУЮ — строка в БД + картинка в `apps/web/assets/totems/`, без UI) ·
+035 treasury (КАССА — планировщик cash-flow, **owner-only**: treasury_balance/settings/payments/spend;
+конверты закуп≤30%/хоз≤5% от факт-выручки с переносом, точки платежей с покрытием. Бэк `treasury.ts` готов
+на проде; фронт-раздел в работе. Спец — `docs/treasury-planner.md`).
 
 ## 7. Что построено (всё на проде)
 - **Главная/ЛК:** приветствие + «цель дня» (план выручки = ФОТ_дня/0.23, ×0.8 будни / ×1.5 ПТ-СБ; наличный план =
