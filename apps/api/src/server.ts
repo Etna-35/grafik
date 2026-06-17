@@ -32,6 +32,7 @@ import { registerSalesGoalRoutes } from "./salesGoals.js";
 import { registerProgressRoutes, getProgressSummary } from "./progress.js";
 import { registerQuizRoutes } from "./quiz.js";
 import { registerFinanceRoutes } from "./finance.js";
+import { registerTreasuryRoutes } from "./treasury.js";
 import { startCron } from "./cron.js";
 
 const pinSchema = z.object({
@@ -250,6 +251,7 @@ export function buildServer() {
   registerProgressRoutes(app);
   registerQuizRoutes(app);
   registerFinanceRoutes(app);
+  registerTreasuryRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,
