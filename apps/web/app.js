@@ -121,6 +121,7 @@ let state = {
   treasurySpendKind: "food",
   treasurySettingsOpen: false,
   treasuryAddOpen: false,
+  treasuryCalOpen: false,
   treasuryNotice: "",
   shiftClosingInit: null,
   shiftClosingDate: null,
@@ -843,6 +844,7 @@ function renderTreasuryContent(t){
     <h2 class="sec">Точки платежей</h2>
     ${(t.payments && t.payments.length) ? t.payments.map(trPaymentCopilka).join("") : `<div class="panel muted-line">Платежей нет — добавь первый</div>`}
     ${trAddPaymentForm()}
+    ${(t.payments && t.payments.length) ? trCalendar(t) : ""}
 
     <details class="tr-fold" ${state.treasurySettingsOpen ? "open" : ""} data-tr-fold="settings">
       <summary>Настройки ставок и подушки</summary>
@@ -954,6 +956,36 @@ function trPaymentSuggestions(p){
   return `<div class="tr-sug-wrap">${chips.join("")}${reduceText}</div>`;
 }
 
+function trCalendar(t){
+  const [y, m] = t.today.split("-").map(Number);
+  const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const firstDow = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
+  const rank = { ok: 1, tight: 2, risk: 3 };
+  const byDay = new Map();
+  (t.payments || []).forEach((p)=>{
+    const [py, pm, pd] = p.dueDate.split("-").map(Number);
+    if(py === y && pm === m){
+      const cur = byDay.get(pd);
+      if(!cur || rank[p.statusFlag] > rank[cur]) byDay.set(pd, p.statusFlag);
+    }
+  });
+  const todayD = Number(t.today.split("-")[2]);
+  const cells = [];
+  for(let i = 0; i < firstDow; i++) cells.push(`<div class="tr-cal-cell empty"></div>`);
+  for(let d = 1; d <= daysInMonth; d++){
+    const flag = byDay.get(d);
+    const cls = `${flag ? ` tr-cal-${flag}` : ""}${d === todayD ? " tr-cal-today" : ""}`;
+    cells.push(`<div class="tr-cal-cell${cls}"><span>${d}</span>${flag ? `<i class="tr-cal-dot tr-dot-${flag}"></i>` : ""}</div>`);
+  }
+  return `
+    <details class="tr-fold" ${state.treasuryCalOpen ? "open" : ""} data-tr-fold="cal">
+      <summary>Календарь месяца</summary>
+      <div class="tr-cal-head">${["пн","вт","ср","чт","пт","сб","вс"].map((w)=>`<span>${w}</span>`).join("")}</div>
+      <div class="tr-cal">${cells.join("")}</div>
+    </details>
+  `;
+}
+
 function trAddPaymentForm(){
   const cats = ["ЖКХ","Аренда","Налог","Долг","Закуп","Прочее"];
   return `
@@ -1001,6 +1033,7 @@ function bindTreasury(){
     node.addEventListener("toggle", ()=>{
       if(node.dataset.trFold === "settings") state.treasurySettingsOpen = node.open;
       if(node.dataset.trFold === "add") state.treasuryAddOpen = node.open;
+      if(node.dataset.trFold === "cal") state.treasuryCalOpen = node.open;
     });
   });
   app.querySelectorAll("[data-tr-pay]").forEach((b)=>b.addEventListener("click", ()=>treasuryPay(b.dataset.trPay)));
