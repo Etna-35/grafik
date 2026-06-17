@@ -920,7 +920,7 @@ function trPaymentCopilka(p){
   return `
     <div class="tr-pay tr-${p.statusFlag}">
       <div class="tr-pay-top">
-        <span><span class="tr-pay-date">${trShortDate(p.dueDate)}</span> <b>${escapeHtml(p.title)}</b></span>
+        <span><span class="tr-pay-date">${trShortDate(p.dueDate)}</span> <b>${escapeHtml(p.title)}</b>${p.recurring === "monthly" ? ` <span class="tr-recur">↻ ежемес.</span>` : ""}</span>
         <span class="tr-pay-amount">${formatMoneyPlain(p.amount)} ₽</span>
       </div>
       <div class="tr-pay-bar"><i style="width:${p.pctCovered}%"></i></div>
@@ -966,6 +966,7 @@ function trAddPaymentForm(){
           <input id="tr-pay-date" class="tr-input" type="date">
         </div>
         <select id="tr-pay-cat" class="tr-input">${cats.map((c)=>`<option>${c}</option>`).join("")}</select>
+        <label class="tr-check"><input type="checkbox" id="tr-pay-recurring"> повторять ежемесячно</label>
         <button class="btn brand-action w-100" data-tr="add-pay">Добавить платёж</button>
       </div>
     </details>
@@ -1052,11 +1053,12 @@ function treasuryAddPayment(){
   const amount = trNum(document.getElementById("tr-pay-amount"));
   const dueDate = document.getElementById("tr-pay-date")?.value || "";
   const category = document.getElementById("tr-pay-cat")?.value || "Прочее";
+  const recurring = document.getElementById("tr-pay-recurring")?.checked ? "monthly" : "none";
   if(!title){ state.treasuryNotice = "Укажи название платежа"; render(); return; }
   if(!Number.isFinite(amount) || amount <= 0){ state.treasuryNotice = "Укажи сумму платежа"; render(); return; }
   if(!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)){ state.treasuryNotice = "Укажи дату платежа"; render(); return; }
   state.treasuryAddOpen = true;
-  treasuryAction(apiPost("/api/treasury/payments", { title, amount: Math.round(amount), dueDate, category }), "Платёж добавлен");
+  treasuryAction(apiPost("/api/treasury/payments", { title, amount: Math.round(amount), dueDate, category, recurring }), "Платёж добавлен");
 }
 
 function treasuryAddSpend(){

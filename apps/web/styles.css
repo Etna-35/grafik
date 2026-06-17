@@ -936,3 +936,6 @@ button.day-block{cursor:pointer;font:inherit}
 .tr-sug{appearance:none;align-self:flex-start;font:inherit;font-size:11px;color:var(--brand-bright);background:none;border:1px solid var(--brand-line);border-radius:var(--r-md);padding:5px 10px;cursor:pointer}
 .tr-sug:active{transform:scale(.98)}
 .tr-sug-reduce{font-size:11px;color:var(--ink-soft);line-height:1.4}
+.tr-check{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-soft);padding:2px 0}
+.tr-check input{width:18px;height:18px;accent-color:var(--brand)}
+.tr-recur{font-size:10px;color:var(--brand-bright);border:1px solid var(--brand-line);border-radius:var(--r-pill);padding:1px 7px;margin-left:4px;white-space:nowrap}

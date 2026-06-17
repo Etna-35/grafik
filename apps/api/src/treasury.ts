@@ -117,9 +117,9 @@ async function computeState() {
   // --- Платежи + покрытие (копилки) ---
   const payRows = await query<{
     id: string; title: string; amount: string; due_date: string; category: string;
-    priority: number; splittable: boolean; status: string;
+    priority: number; splittable: boolean; status: string; recurring: string;
   }>(
-    `SELECT id::text, title, amount, due_date::text, category, priority, splittable, status
+    `SELECT id::text, title, amount, due_date::text, category, priority, splittable, status, recurring
      FROM treasury_payments WHERE status <> 'paid' ORDER BY due_date, priority`
   );
 
@@ -230,6 +230,7 @@ async function computeState() {
       pctCovered,
       statusFlag,
       perDay,
+      recurring: p.recurring,
       suggestions
     };
   });
@@ -289,7 +290,8 @@ const paymentSchema = z.object({
   dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   category: z.enum(PAYMENT_CATEGORIES as unknown as [string, ...string[]]).optional().default("Прочее"),
   priority: z.number().int().min(0).max(1000).optional().default(100),
-  splittable: z.boolean().optional().default(true)
+  splittable: z.boolean().optional().default(true),
+  recurring: z.enum(["none", "monthly"]).optional().default("none")
 });
 const spendSchema = z.object({
   kind: z.enum(["food", "household", "personal", "other"]),
@@ -341,9 +343,9 @@ export function registerTreasuryRoutes(app: FastifyInstance): void {
     if (!user) return;
     const body = paymentSchema.parse(request.body);
     await query(
-      `INSERT INTO treasury_payments (title, amount, due_date, category, priority, splittable)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [body.title, body.amount, body.dueDate, body.category, body.priority, body.splittable]
+      `INSERT INTO treasury_payments (title, amount, due_date, category, priority, splittable, recurring)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [body.title, body.amount, body.dueDate, body.category, body.priority, body.splittable, body.recurring]
     );
     return computeState();
   });
@@ -355,9 +357,9 @@ export function registerTreasuryRoutes(app: FastifyInstance): void {
     const body = paymentSchema.parse(request.body);
     await query(
       `UPDATE treasury_payments
-       SET title = $1, amount = $2, due_date = $3, category = $4, priority = $5, splittable = $6
-       WHERE id = $7`,
-      [body.title, body.amount, body.dueDate, body.category, body.priority, body.splittable, id]
+       SET title = $1, amount = $2, due_date = $3, category = $4, priority = $5, splittable = $6, recurring = $7
+       WHERE id = $8`,
+      [body.title, body.amount, body.dueDate, body.category, body.priority, body.splittable, body.recurring, id]
     );
     return computeState();
   });
@@ -367,6 +369,13 @@ export function registerTreasuryRoutes(app: FastifyInstance): void {
     if (!user) return;
     const { id } = idParam.parse(request.params);
     await query("UPDATE treasury_payments SET status = 'paid', paid_at = now() WHERE id = $1", [id]);
+    // Повторяющийся платёж: при оплате создаём следующий месяц (тот же день, +1 мес; конец месяца клампится).
+    await query(
+      `INSERT INTO treasury_payments (title, amount, due_date, category, priority, splittable, recurring)
+       SELECT title, amount, (due_date + interval '1 month')::date, category, priority, splittable, recurring
+       FROM treasury_payments WHERE id = $1 AND recurring = 'monthly'`,
+      [id]
+    );
     return computeState();
   });
 
