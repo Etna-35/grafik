@@ -953,3 +953,4 @@ button.day-block{cursor:pointer;font:inherit}
 .tr-dot-ok{background:var(--green)}
 .tr-dot-tight{background:var(--gold)}
 .tr-dot-risk{background:var(--danger)}
+.tr-alloc-hint{font-size:11px;color:var(--green);margin-top:7px}

@@ -881,6 +881,7 @@ function trAllocationBar(a){
       <div class="tr-alloc-head"><span class="tr-alloc-title">Распределение · месяц</span><span class="tr-muted">${formatMoneyPlain(a.revenue)} ₽</span></div>
       <div class="tr-alloc-bar">${seg}</div>
       <div class="tr-alloc-legend">${legend}</div>
+      ${a.free > 0 ? `<div class="tr-alloc-hint">Профицит ${formatMoneyPlain(a.free)} ₽ — можно направить на долги или подушку</div>` : ""}
     </div>
   `;
 }
