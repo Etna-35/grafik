@@ -14,6 +14,7 @@ import {
   type OutPhoto
 } from "./telegram.js";
 import { awardPoints } from "./progress.js";
+import { recomputeStreaksForDate } from "./cashPlan.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const moneySchema = z.number().int().min(0).max(10000000).default(0);
@@ -275,6 +276,7 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
       const id = await createClosing(computed, parsed.data.extraExpenses);
       await audit(request, "shift_closing_create", user.id, "shift_closing", id, computed);
       await awardPoints(user.id, "shift_closed", "Закрыл смену", "shift_closing", id);
+      await recomputeStreaksForDate(computed.workDate);
       // Отчёты шлём после загрузки фото — фронт вызовет /send-telegram-report.
       return getClosingById(id, user);
     } catch (error) {
@@ -337,6 +339,7 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
       const computed = await computeClosing(user, { ...parsed.data, workDate: current.work_date });
       await updateClosing(params.data.id, computed, parsed.data.extraExpenses);
       await audit(request, "shift_closing_update", user.id, "shift_closing", params.data.id, computed);
+      await recomputeStreaksForDate(computed.workDate);
       return getClosingById(params.data.id, user);
     } catch (error) {
       if (isHookahEmployeeError(error)) {

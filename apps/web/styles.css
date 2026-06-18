@@ -954,3 +954,19 @@ button.day-block{cursor:pointer;font:inherit}
 .tr-dot-tight{background:var(--gold)}
 .tr-dot-risk{background:var(--danger)}
 .tr-alloc-hint{font-size:11px;color:var(--green);margin-top:7px}
+
+/* Награда официанта — наличный план ($×N смен, 🏆×N серии, полоса серии) */
+.cp-card{background:linear-gradient(135deg,var(--card-2),var(--card));border:1px solid var(--brand-line);border-radius:var(--r-lg);padding:14px;margin:0 2px 14px}
+.cp-title{margin:0 0 12px}
+.cp-stats{display:flex;gap:10px;margin-bottom:14px}
+.cp-stat{flex:1;background:var(--gold-tint);border:1px solid var(--brand-line);border-radius:var(--r-md);padding:12px 6px;display:flex;flex-direction:column;align-items:center;gap:2px}
+.cp-ic{display:flex}
+.cp-dollar{color:var(--green)}
+.cp-trophy{color:var(--brand-bright)}
+.cp-num{font-family:var(--font-display);font-weight:700;font-size:22px;color:var(--ink)}
+.cp-num .mult{color:var(--ink-soft);font-weight:400;font-size:14px}
+.cp-lbl{font-size:11px;color:var(--ink-soft)}
+.cp-streak-pips{display:flex;gap:7px;margin-bottom:8px}
+.cp-pip{flex:1;height:9px;border-radius:5px;background:var(--track)}
+.cp-pip.on{background:var(--green)}
+.cp-streak-sub{font-size:11px;color:var(--ink-soft)}

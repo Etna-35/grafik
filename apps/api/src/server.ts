@@ -33,6 +33,7 @@ import { registerProgressRoutes, getProgressSummary } from "./progress.js";
 import { registerQuizRoutes } from "./quiz.js";
 import { registerFinanceRoutes } from "./finance.js";
 import { registerTreasuryRoutes } from "./treasury.js";
+import { getWaiterCashStats } from "./cashPlan.js";
 import { startCron } from "./cron.js";
 
 const pinSchema = z.object({
@@ -192,6 +193,7 @@ export function buildServer() {
     );
 
     const progress = await getProgressSummary(user.id, result.rows[0].start_date);
+    const cashPlanStats = await getWaiterCashStats(user.id);
 
     // Дни рождения: своё (личное поздравление) и коллег (предложить сказать «Спасибо»).
     const birthdays = await query<{ id: string; display_name: string; is_self: boolean }>(
@@ -230,6 +232,7 @@ export function buildServer() {
       handoverCount: Number(result.rows[0].handover_count),
       cashPlanToday: dayFot,
       revenuePlanToday: dayFot > 0 ? Math.round((dayFot / 0.23) * revenueMult) : 0,
+      cashPlan: cashPlanStats,
       praisesReceived: Number(result.rows[0].praises_received),
       scoresTotal: Number(result.rows[0].scores_total),
       scoresGood: Number(result.rows[0].scores_good),

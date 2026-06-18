@@ -403,6 +403,33 @@ function renderMerits(){
         <button class="badge-stat badge-praise" data-action="praise"><span class="praise-plus">＋</span><span class="bs-lbl">Спасибо</span></button>
       </div>
     </div>
+    ${renderCashPlan()}
+  `;
+}
+
+function dollarIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 6.5C17 4.6 14.8 3.5 12 3.5S7 4.6 7 6.5 9.2 9.5 12 9.5s5 1.1 5 3-2.2 3-5 3-5-1.1-5-3"/></svg>`; }
+function trophyIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><path d="M8 4h8v5a4 4 0 0 1-8 0z"/><path d="M8 5H5v2a3 3 0 0 0 3 3M16 5h3v2a3 3 0 0 1-3 3"/><line x1="12" y1="13" x2="12" y2="17"/><path d="M9 20h6M10 17h4l1 3H9z"/></svg>`; }
+
+// Профильная награда официанта за наличный план (только официантам — бэк отдаёт cashPlan).
+function renderCashPlan(){
+  const c = state.summary?.cashPlan;
+  if(!c) return "";
+  const streak = Math.max(0, Math.min(5, c.currentStreak || 0));
+  let pips = "";
+  for(let i = 0; i < 5; i++) pips += `<span class="cp-pip${i < streak ? " on" : ""}"></span>`;
+  const toNext = c.streakToNext ?? (5 - streak);
+  return `
+    <div class="cp-card">
+      <h2 class="section-title cp-title">Наличный план</h2>
+      <div class="cp-stats">
+        <div class="cp-stat"><span class="cp-ic cp-dollar">${dollarIcon()}</span><div class="cp-num"><span class="mult">×</span>${c.planShifts ?? 0}</div><span class="cp-lbl">смен с планом</span></div>
+        <div class="cp-stat"><span class="cp-ic cp-trophy">${trophyIcon()}</span><div class="cp-num"><span class="mult">×</span>${c.trophies ?? 0}</div><span class="cp-lbl">серии</span></div>
+      </div>
+      <div class="cp-streak">
+        <div class="cp-streak-pips">${pips}</div>
+        <div class="cp-streak-sub">${streak} из 5 · ещё ${toNext} ${pluralize(toNext, "смена", "смены", "смен")} с планом до бонуса +1,5%</div>
+      </div>
+    </div>
   `;
 }
 

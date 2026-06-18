@@ -514,7 +514,7 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
 
   // Доп. начисления месяца для плиток графика (как в ЛК): премии за задачи, цели продаж, кальяны.
   // Премии/цели входят и в «начислено», и в «остаток»; кальяны — только в «начислено» (выдаются сразу).
-  const [taskRewardByEmp, goalRewardByEmp, hookahByEmp] = await Promise.all([
+  const [taskRewardByEmp, goalRewardByEmp, hookahByEmp, streakByEmp] = await Promise.all([
     query<{ employee_id: string; v: number }>(
       `SELECT employee_id, SUM(reward_amount)::int AS v FROM tasks
        WHERE status = 'done' AND reward_amount IS NOT NULL AND reward_amount > 0
@@ -535,12 +535,19 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
        WHERE sc.work_date >= $1::date AND sc.work_date < ($1::date + interval '1 month') AND h.payout > 0
        GROUP BY h.employee_id`,
       [start]
+    ),
+    query<{ employee_id: string; v: number }>(
+      `SELECT employee_id, SUM(bonus_amount)::int AS v FROM cash_streak_awards
+       WHERE streak_end_date >= $1::date AND streak_end_date < ($1::date + interval '1 month')
+       GROUP BY employee_id`,
+      [start]
     )
   ]);
   const extrasByEmp = new Map<string, number>();
   const hookahMap = new Map<string, number>();
   for (const r of taskRewardByEmp.rows) extrasByEmp.set(r.employee_id, (extrasByEmp.get(r.employee_id) || 0) + Number(r.v || 0));
   for (const r of goalRewardByEmp.rows) extrasByEmp.set(r.employee_id, (extrasByEmp.get(r.employee_id) || 0) + Number(r.v || 0));
+  for (const r of streakByEmp.rows) extrasByEmp.set(r.employee_id, (extrasByEmp.get(r.employee_id) || 0) + Number(r.v || 0));
   for (const r of hookahByEmp.rows) hookahMap.set(r.employee_id, Number(r.v || 0));
 
   const days = buildMonthDays(year, month).map((date) => {

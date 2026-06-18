@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
+import { streakRewardsForMonth } from "./cashPlan.js";
 
 const payrollQuerySchema = z.object({
   year: z.coerce.number().int().min(2020).max(2100).optional(),
@@ -325,6 +326,8 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
   const hookahCountTotal = hookahRows.rows.reduce((sum, row) => sum + Number(row.hookah_count || 0), 0);
   const taskRewardTotal = taskRewardRows.rows.reduce((sum, row) => sum + Number(row.reward_amount || 0), 0);
   const goalRewardTotal = goalRewardRows.rows.reduce((sum, row) => sum + Number(row.reward_amount || 0), 0);
+  const streakReward = await streakRewardsForMonth(user.id, start);
+  const streakRewardTotal = streakReward.total;
   const hoursTotal = shiftRows.rows.reduce((sum, row) => sum + Number(row.planned_hours || 0), 0) + histHours;
   const todayIso = new Date().toISOString().slice(0, 10);
   const upcomingPayday = paydayRows.rows.find((row) => row.work_date >= todayIso)?.work_date || paydayRows.rows.at(-1)?.work_date || "";
@@ -392,15 +395,17 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       shifts: shiftRows.rows.length + histShifts,
       hours: Math.round(hoursTotal * 100) / 100,
       pastDebt,
-      accrued: salaryAccruedTotal + hookahAccruedTotal + taskRewardTotal + goalRewardTotal,
+      accrued: salaryAccruedTotal + hookahAccruedTotal + taskRewardTotal + goalRewardTotal + streakRewardTotal,
       paid: salaryPaidTotal + hookahAccruedTotal,
-      remaining: Math.max(0, salaryAccruedTotal + taskRewardTotal + goalRewardTotal - salaryPaidTotal),
+      remaining: Math.max(0, salaryAccruedTotal + taskRewardTotal + goalRewardTotal + streakRewardTotal - salaryPaidTotal),
       salaryAccrued: salaryAccruedTotal,
       salaryPaid: salaryPaidTotal,
       taskRewardAccrued: taskRewardTotal,
       taskRewardCount: taskRewardRows.rows.length,
       goalRewardAccrued: goalRewardTotal,
       goalRewardCount: goalRewardRows.rows.length,
+      streakRewardAccrued: streakRewardTotal,
+      streakRewardCount: streakReward.count,
       hookahAccrued: hookahAccruedTotal,
       hookahPaid: hookahAccruedTotal,
       hookahCount: hookahCountTotal,
