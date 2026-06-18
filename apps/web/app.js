@@ -868,10 +868,12 @@ function renderTreasuryContent(t){
     <h2 class="sec">Внести трату</h2>
     ${trSpendForm()}
 
+    ${(t.salary && t.salary.length) ? `<h2 class="sec">Зарплата</h2>${t.salary.map(trSalaryRow).join("")}` : ""}
+
     <h2 class="sec">Точки платежей</h2>
     ${(t.payments && t.payments.length) ? t.payments.map(trPaymentCopilka).join("") : `<div class="panel muted-line">Платежей нет — добавь первый</div>`}
     ${trAddPaymentForm()}
-    ${(t.payments && t.payments.length) ? trCalendar(t) : ""}
+    ${((t.payments && t.payments.length) || (t.salary && t.salary.length)) ? trCalendar(t) : ""}
 
     <details class="tr-fold" ${state.treasurySettingsOpen ? "open" : ""} data-tr-fold="settings">
       <summary>Настройки ставок и подушки</summary>
@@ -895,7 +897,7 @@ function trFreeToday(t){
 function trAllocationBar(a){
   if(!a || !a.revenue) return "";
   const parts = [
-    ["ФОТ", a.fot, "var(--line-strong)"],
+    ["ЗП", a.fot, "var(--line-strong)"],
     ["Закуп", a.purchase, "var(--brand)"],
     ["Хоз", a.household, "var(--gold)"],
     ["Резерв", a.reserve, "var(--teal)"],
@@ -967,6 +969,27 @@ function trPaymentCopilka(p){
   `;
 }
 
+// ЗП — датированное обязательство (за прошлый месяц, срок 10-е). Read-only: выплата идёт в «Выплаты».
+function trSalaryRow(s){
+  const statusText = s.statusFlag === "ok" ? "обеспечено"
+    : s.statusFlag === "tight" ? "впритык"
+    : `не хватает ${formatMoneyPlain(s.shortfall)} ₽`;
+  return `
+    <div class="tr-pay tr-${s.statusFlag}">
+      <div class="tr-pay-top">
+        <span><span class="tr-pay-date">до ${trShortDate(s.dueDate)}</span> <b>${escapeHtml(s.title)}</b></span>
+        <span class="tr-pay-amount">${formatMoneyPlain(s.amount)} ₽</span>
+      </div>
+      <div class="tr-pay-bar"><i style="width:${s.pctCovered}%"></i></div>
+      <div class="tr-pay-bottom">
+        <span class="tr-status tr-st-${s.statusFlag}">${statusText}</span>
+        <span class="tr-muted">выплата в разделе «Выплаты»</span>
+      </div>
+      ${s.statusFlag !== "ok" && s.perDay > 0 ? `<div class="tr-pay-perday">откладывай ${formatMoneyPlain(s.perDay)} ₽/день</div>` : ""}
+    </div>
+  `;
+}
+
 function trPaymentSuggestions(p){
   const s = p.suggestions;
   if(!s) return "";
@@ -990,7 +1013,7 @@ function trCalendar(t){
   const firstDow = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
   const rank = { ok: 1, tight: 2, risk: 3 };
   const byDay = new Map();
-  (t.payments || []).forEach((p)=>{
+  [...(t.payments || []), ...(t.salary || [])].forEach((p)=>{
     const [py, pm, pd] = p.dueDate.split("-").map(Number);
     if(py === y && pm === m){
       const cur = byDay.get(pd);
