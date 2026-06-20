@@ -447,13 +447,15 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
   );
 
   const canSeeAllMoney = user.role === "owner" || user.role === "manager";
-  const payoutRows = await query<{ id: string; work_date: string; employee_id: string; amount: number; apply_month: string | null; obligation_id: string | null }>(
+  const payoutRows = await query<{ id: string; work_date: string; employee_id: string; amount: number; apply_month: string | null; obligation_id: string | null; obligation_title: string | null }>(
     `
-      SELECT id::text, work_date::text, employee_id, amount, apply_month::text, obligation_id::text
-      FROM payroll_payouts
-      WHERE work_date >= $1::date
-        AND work_date < ($1::date + interval '1 month')
-        AND ($2::boolean = true OR employee_id = $3::uuid)
+      SELECT p.id::text, p.work_date::text, p.employee_id, p.amount, p.apply_month::text,
+             p.obligation_id::text, o.title AS obligation_title
+      FROM payroll_payouts p
+      LEFT JOIN employee_obligations o ON o.id = p.obligation_id
+      WHERE p.work_date >= $1::date
+        AND p.work_date < ($1::date + interval '1 month')
+        AND ($2::boolean = true OR p.employee_id = $3::uuid)
     `,
     [start, canSeeAllMoney, user.id]
   );
@@ -567,7 +569,8 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
           employee_id: row.employee_id,
           amount: canSeeAllMoney ? row.amount : 0,
           applyMonth: row.apply_month ? row.apply_month.slice(0, 7) : null,
-          obligationId: row.obligation_id || null
+          obligationId: row.obligation_id || null,
+          obligationTitle: row.obligation_title || null
         })),
       scores: scoreRows.rows.filter((row) => row.work_date === date),
       shifts,

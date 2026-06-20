@@ -343,6 +343,20 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
     `,
     [user.id]
   );
+  // Платежи по обязательствам (для истории под каждым обязательством в ЛК).
+  const obligationPayRows = await query<{ obligation_id: string; work_date: string; amount: number }>(
+    `SELECT obligation_id::text, work_date::text, amount
+     FROM payroll_payouts
+     WHERE employee_id = $1 AND obligation_id IS NOT NULL
+     ORDER BY work_date DESC, created_at DESC`,
+    [user.id]
+  );
+  const oblPaymentsById = new Map<string, Array<{ workDate: string; amount: number }>>();
+  for (const r of obligationPayRows.rows) {
+    const arr = oblPaymentsById.get(r.obligation_id) || [];
+    arr.push({ workDate: r.work_date, amount: Number(r.amount) });
+    oblPaymentsById.set(r.obligation_id, arr);
+  }
   let manageEmployees: Array<{ id: string; name: string }> = [];
   let allObligations: Array<Record<string, unknown>> = [];
   if (manager) {
@@ -380,7 +394,8 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       amountTotal: row.amount_total,
       amountPaid: row.amount_paid,
       remaining: row.amount_total - row.amount_paid,
-      note: row.note || ""
+      note: row.note || "",
+      payments: oblPaymentsById.get(row.id) || []
     })),
     manageEmployees,
     allObligations,

@@ -3126,6 +3126,7 @@ function renderObligations(payroll){
             ${o.note ? `<div class="oblig-note">${escapeHtml(o.note)}</div>` : ""}
             <div class="oblig-bar meter thin ok"><i style="width:${pct}%"></i></div>
             <div class="oblig-sub">Уже вернули ${formatMoneyPlain(o.amountPaid)} из ${formatMoneyPlain(o.amountTotal)} ₽</div>
+            ${(o.payments || []).length ? `<div class="oblig-pays">${o.payments.map((p)=>`<div class="oblig-pay"><span>${escapeHtml(formatDateHuman(p.workDate))}</span><b>+${formatMoneyPlain(p.amount)} ₽</b></div>`).join("")}</div>` : ""}
           </div>
         `;
       }).join("")}
@@ -4917,9 +4918,12 @@ function renderScheduleDateEditor(service){
               </div>
             </div>`;
           }
+          const purpose = payout.obligationTitle
+            ? `обязательство: ${payout.obligationTitle}`
+            : `за ${formatYearMonth(ym)}`;
           return `
           <div class="payout-item">
-            <span><b>${escapeHtml(nm)}</b> · ${formatMoneyPlain(payout.amount)} ₽ <i class="payout-period">за ${escapeHtml(formatYearMonth(ym))}</i></span>
+            <span><b>${escapeHtml(nm)}</b> · ${formatMoneyPlain(payout.amount)} ₽ <i class="payout-period">${escapeHtml(purpose)}</i></span>
             <span class="payout-item-actions">
               <button class="ghost mini" data-payout-edit="${escapeAttr(payout.id)}">Изменить</button>
               <button class="ghost mini danger-action" data-date-delete-payout="${escapeAttr(payout.id)}">Удалить</button>
