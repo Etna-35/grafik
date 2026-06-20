@@ -38,7 +38,9 @@ const employeeDateSchema = z.object({
 
 const shiftEditSchema = employeeDateSchema.extend({
   hours: z.number().positive().max(24).optional(),
-  payAmount: z.number().int().positive().max(100000).optional()
+  payAmount: z.number().int().positive().max(100000).optional(),
+  roleOverride: z.enum(["cook", "bar", "waiter", "dish", "other"]).nullable().optional(),
+  rate: z.number().int().positive().max(100000).optional()
 });
 
 const dayEditSchema = z.object({
@@ -414,9 +416,10 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     actual_end_time: string | null;
     pay_amount: number | null;
     pay_model: string | null;
+    role_override: string | null;
   }>(
     `
-      SELECT work_date::text, employee_id, planned_hours, actual_end_time::text, pay_amount, pay_model
+      SELECT work_date::text, employee_id, planned_hours, actual_end_time::text, pay_amount, pay_model, role_override
       FROM schedule_shifts
       WHERE work_date >= $1::date
         AND work_date < ($1::date + interval '1 month')
@@ -482,7 +485,8 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       hours: row.planned_hours ? Number(row.planned_hours) : null,
       actualEndTime: row.actual_end_time,
       payAmount: canSeeAllMoney ? row.pay_amount || 0 : null,
-      payModel: row.pay_model
+      payModel: row.pay_model,
+      roleOverride: row.role_override || null
     };
     shiftsByDate.set(date, {
       ...(shiftsByDate.get(date) || {}),
@@ -667,14 +671,20 @@ async function upsertShift(
     throw new Error("Employee not found");
   }
 
-  const payModel = employee.pay_model || (employee.schedule_role === "dish" || employee.role === "dishwasher" ? "fixed" : "hourly");
-  const hourlyRate = Number(employee.hourly_rate || 0);
+  // Роль дня: переопределение (если выбрано) либо штатная роль сотрудника. От неё зависит модель оплаты.
+  const defaultRole = employee.schedule_role || (employee.role === "dishwasher" ? "dish" : employee.role);
+  const dayRole = data.roleOverride || defaultRole;
+  const roleIsFixed = dayRole === "dish" || dayRole === "dishwasher";
+  const payModel = roleIsFixed ? "fixed" : "hourly";
+  const dayRate = Number(data.rate || employee.hourly_rate || 0);
   // Часы храним с округлением до 1 знака после запятой, вверх — в пользу сотрудника.
   const rawHours = Number(data.hours || employee.default_hours || 12);
   const plannedHours = payModel === "fixed" ? null : Math.ceil(rawHours * 10) / 10;
   const payAmount = payModel === "fixed"
     ? Number(data.payAmount || 3000)
-    : Math.round((plannedHours || 0) * hourlyRate);
+    : Math.round((plannedHours || 0) * dayRate);
+  // role_override храним только если роль дня ОТЛИЧАЕТСЯ от штатной (для цвета ячейки).
+  const roleOverrideToStore = data.roleOverride && data.roleOverride !== defaultRole ? data.roleOverride : null;
 
   if (!Number.isFinite(payAmount) || payAmount <= 0 || (payModel !== "fixed" && (!plannedHours || plannedHours <= 0))) {
     throw new Error("Bad shift values");
@@ -689,18 +699,20 @@ async function upsertShift(
         planned_hours,
         pay_amount,
         pay_model,
+        role_override,
         created_by,
         updated_by
       )
-      VALUES ($1::date, $2, $3, $4, $5, $6, $6)
+      VALUES ($1::date, $2, $3, $4, $5, $6, $7, $7)
       ON CONFLICT (work_date, employee_id) DO UPDATE
       SET planned_hours = excluded.planned_hours,
           pay_amount = excluded.pay_amount,
           pay_model = excluded.pay_model,
+          role_override = excluded.role_override,
           updated_by = excluded.updated_by,
           updated_at = now()
     `,
-    [data.workDate, data.employeeId, plannedHours, payAmount, payModel, actorEmployeeId]
+    [data.workDate, data.employeeId, plannedHours, payAmount, payModel, roleOverrideToStore, actorEmployeeId]
   );
 
   return { ok: true, payAmount, plannedHours, payModel };

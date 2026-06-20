@@ -62,6 +62,7 @@ let state = {
   scheduleError: "",
   scheduleSaveError: "",
   selectedScheduleCell: null,
+  scheduleEditorRole: null,
   selectedScheduleDate: null,
   selectedDateEmployeeId: null,
   editingPayoutId: null,
@@ -4657,7 +4658,7 @@ function renderShiftCell(day, employee, canSeeMoney){
 
   return `
     <td class="${classes}${isBirthday ? " bday" : ""}" data-schedule-cell="1" data-date="${escapeAttr(day.date)}" data-employee="${escapeAttr(employee.id)}">
-      <span class="${valueClass}" style="${shift ? `background:${roleColor(employee.role)}` : ""}">${label}</span>
+      <span class="${valueClass}" style="${shift ? `background:${roleColor(shift.roleOverride || employee.role)}` : ""}">${label}</span>
       ${isBirthday ? `<span class="bday-mark" title="${escapeAttr(bdayTitle)}">ДР${bdayAge!=null ? `<i>${bdayAge}</i>` : ""}</span>` : ""}
       ${renderScoreDots(score)}
     </td>
@@ -4818,44 +4819,64 @@ function renderScheduleEditor(service){
   if(!context) return "";
 
   const { day, employee, shift } = context;
-  const isFixed = isFixedPayEmployee(employee);
   const dateLabel = formatDateHuman(day.date);
-  const shiftValue = isFixed
-    ? Math.round(shift?.payAmount || 3000)
-    : formatInputNumber(shift?.hours || employee.defaultHours || 12);
+  const defaultRole = employee.role;
+  const selRole = state.scheduleEditorRole || shift?.roleOverride || defaultRole;
+  const roleIsFixed = selRole === "dish" || selRole === "dishwasher";
+  const isOverride = selRole !== defaultRole;
+  const fixedValue = Math.round(shift?.payAmount || 3000);
+  const hoursValue = formatInputNumber(shift?.hours || employee.defaultHours || 12);
+  const rateValue = (shift && shift.hours > 0 && shift.payAmount)
+    ? Math.round(shift.payAmount / shift.hours)
+    : Math.round(employee.hourlyRate || 0);
+  const roleOpts = scheduleRoleOptions().map((o)=>`<option value="${o.value}" ${selRole === o.value ? "selected" : ""}>${o.label}</option>`).join("");
 
   return `
     <div class="panel editor-panel">
       <div class="editor-head">
         <span class="grow">
           <span class="row-title">${escapeHtml(employee.name)}</span>
-          <span class="row-sub">${dateLabel} · ${isFixed ? "ставка смены" : "нестандартные часы"}</span>
+          <span class="row-sub">${dateLabel} · ${isOverride ? "роль на день" : (roleIsFixed ? "ставка смены" : "нестандартные часы")}</span>
         </span>
         <button class="iconbtn small" data-editor-action="close">×</button>
       </div>
 
-      <div class="editor-grid">
-        <label class="field">
-          <span>${isFixed ? "Своя сумма" : "Часы"}</span>
-          <input id="shiftValue" type="number" min="0" step="${isFixed ? "100" : "0.5"}" value="${escapeAttr(shiftValue)}">
-        </label>
-        <button class="ghost brand-action" data-editor-action="save-shift">${shift ? "Сохранить" : "Поставить"}</button>
-        ${shift ? `<button class="ghost danger-action" data-editor-action="delete-shift">Снять смену</button>` : ""}
-      </div>
+      <label class="field">
+        <span>Должность в этот день</span>
+        <select id="shiftRole" data-editor-role>${roleOpts}</select>
+      </label>
 
-      ${isFixed ? `
-        <div class="fixed-pay-row">
-          ${[3000,4000,6000,8000].map((amount)=>`
-            <button class="fixed-pay ${Math.round(shift?.payAmount || 0) === amount ? "on" : ""}" data-fixed-pay="${amount}">
-              ${formatMoneyPlain(amount)}
-            </button>
-          `).join("")}
+      ${roleIsFixed ? `
+        <div class="editor-grid mt-10">
+          <label class="field"><span>Своя сумма</span>
+            <input id="shiftValue" type="number" min="0" step="100" value="${escapeAttr(fixedValue)}"></label>
+          <button class="ghost brand-action" data-editor-action="save-shift">${shift ? "Сохранить" : "Поставить"}</button>
+          ${shift ? `<button class="ghost danger-action" data-editor-action="delete-shift">Снять смену</button>` : ""}
         </div>
-      ` : ""}
+        <div class="fixed-pay-row">
+          ${[3000,4000,6000,8000].map((amount)=>`<button class="fixed-pay ${fixedValue === amount ? "on" : ""}" data-fixed-pay="${amount}">${formatMoneyPlain(amount)}</button>`).join("")}
+        </div>
+      ` : `
+        <div class="editor-grid editor-grid-2 mt-10">
+          <label class="field"><span>Часы</span>
+            <input id="shiftValue" type="number" min="0" step="0.5" value="${escapeAttr(hoursValue)}"></label>
+          <label class="field"><span>Ставка/час</span>
+            <input id="shiftRate" type="number" min="0" step="10" value="${escapeAttr(rateValue)}"></label>
+        </div>
+        <div class="editor-grid mt-10">
+          <button class="ghost brand-action" data-editor-action="save-shift">${shift ? "Сохранить" : "Поставить"}</button>
+          ${shift ? `<button class="ghost danger-action" data-editor-action="delete-shift">Снять смену</button>` : ""}
+        </div>
+      `}
 
+      ${isOverride ? `<div class="hint hint-block-sm">Этот день будет цветом роли «${escapeHtml(roleLabelOf(selRole))}»</div>` : ""}
       ${state.scheduleSaving ? `<div class="import-result">Сохраняю</div>` : ""}
     </div>
   `;
+}
+
+function roleLabelOf(role){
+  return (scheduleRoleOptions().find((o)=>o.value === role) || {}).label || role;
 }
 
 function renderScheduleDateEditor(service){
@@ -4994,6 +5015,7 @@ function openScheduleEditor(cell){
     employeeId: cell.dataset.employee
   };
   state.selectedScheduleDate = null;
+  state.scheduleEditorRole = null;
   state.scheduleSaveError = "";
   render();
 }
@@ -5041,6 +5063,14 @@ function bindScheduleEditor(){
   if(close){
     close.addEventListener("click", ()=>{
       state.selectedScheduleCell = null;
+      render();
+    });
+  }
+
+  const roleSel = app.querySelector("[data-editor-role]");
+  if(roleSel){
+    roleSel.addEventListener("change", ()=>{
+      state.scheduleEditorRole = roleSel.value;
       render();
     });
   }
@@ -5161,11 +5191,19 @@ function scheduleContext(date, employeeId){
 async function saveSelectedShift(context){
   const value = Number(app.querySelector("#shiftValue")?.value);
   if(!Number.isFinite(value) || value <= 0) return;
-  if(isFixedPayEmployee(context.employee)){
-    await saveShiftFor(context, { payAmount: Math.round(value) });
+  const roleSel = app.querySelector("#shiftRole");
+  const roleOverride = roleSel ? roleSel.value : undefined;
+  const roleIsFixed = roleOverride === "dish" || roleOverride === "dishwasher";
+  if(roleIsFixed){
+    await saveShiftFor(context, { payAmount: Math.round(value), roleOverride });
     return;
   }
-  await saveShiftFor(context, { hours: value });
+  const rate = Number(app.querySelector("#shiftRate")?.value);
+  await saveShiftFor(context, {
+    hours: value,
+    rate: Number.isFinite(rate) && rate > 0 ? Math.round(rate) : undefined,
+    roleOverride
+  });
 }
 
 async function saveShiftFor(context, values){
@@ -5175,12 +5213,16 @@ async function saveShiftFor(context, values){
   };
   if(values.payAmount != null) body.payAmount = Math.round(values.payAmount);
   if(values.hours != null) body.hours = values.hours;
+  if(values.rate != null) body.rate = values.rate;
+  if(values.roleOverride !== undefined) body.roleOverride = values.roleOverride;
   await saveAndReload(()=>apiPut("/api/schedule/shifts", body));
 }
 
 async function saveFixedPreset(context, payAmount){
+  const roleSel = app.querySelector("#shiftRole");
+  const roleOverride = roleSel ? roleSel.value : undefined;
   state.selectedScheduleCell = null;
-  await saveShiftFor(context, { payAmount });
+  await saveShiftFor(context, { payAmount, roleOverride });
 }
 
 async function deleteSelectedShift(context){
