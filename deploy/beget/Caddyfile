@@ -1,11 +1,30 @@
+# ВАЖНО (доступ из РФ): TLS форсирован в 1.2 и выключен HTTP/3 (QUIC).
+# Причина — ТСПУ/DPI в сетях РФ выборочно ломает рукопожатие TLS 1.3 (часть пользователей
+# не могла открыть сайт без VPN). См. обсуждение 2026-06-21. TLS 1.2 безопасен и совместим.
+# Если когда-нибудь вернуть 1.3 — поменять обе версии в блоках tls и убрать servers.protocols.
+{
+	servers {
+		protocols h1 h2
+	}
+}
+
 lk.no-money-no-honey.ru {
   reverse_proxy api:3000
+  tls {
+    protocols tls1.2 tls1.2
+  }
 }
 
 api.no-money-no-honey.ru {
   reverse_proxy api:3000
+  tls {
+    protocols tls1.2 tls1.2
+  }
 }
 
 admin.no-money-no-honey.ru {
   reverse_proxy nocodb:8080
+  tls {
+    protocols tls1.2 tls1.2
+  }
 }
