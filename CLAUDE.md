@@ -14,9 +14,14 @@
 
 - **Прод:** https://lk.no-money-no-honey.ru/ (вход по PIN). `api.no-money-no-honey.ru/api/health`, `admin.no-money-no-honey.ru` (NocoDB).
 - **Репо:** `github.com/Etna-35/grafik` (origin, `main`). Публичный (см. §9 риск).
-- **Сервер:** Beget VPS, IP `85.198.68.243` (сменился с `212.67.14.25` ~2026-06-09; алиас обновлён),
-  SSH-алиас **`etna-vps`** (root, ключ на машине пользователя).
+- **Сервер (ПРОД с 2026-06-21):** **SberCloud / Cloud.ru** VM, IP `213.171.28.138`, Москва (whitelisted-диапазон,
+  доступен из РФ-сетей). SSH: `ssh -i ~/.ssh/etna_sber_rsa rio35@213.171.28.138` (sudo есть; для docker — `sudo docker compose`).
   Код: `/opt/etna/app`. Compose+`.env`: `/opt/etna/deploy`. Контейнеры: postgres, redis, nocodb, caddy, api.
+  ПЕРЕЕХАЛИ с Beget из-за блокировки IP Beget в РФ-сетях (белые списки/ТСПУ) — см. §9. Caddy форсит **TLS 1.2**
+  + выкл HTTP/3 (`deploy/beget/Caddyfile`). DNS `lk./api./admin.` → 213.171.28.138 (панель Beget, NS beget);
+  корень `@`/`www` — GitHub Pages, НЕ трогать.
+- **Beget (старый прод, FALLBACK):** VPS, IP `85.198.68.243`, SSH-алиас `etna-vps` (root). Оставлен включённым
+  как мгновенный откат (вернуть DNS на него). После пары дней стабильной работы SberCloud — выключить (бэклог).
 
 ## 2. Стек и структура
 - **Backend:** Node + Fastify + PostgreSQL, TypeScript (`apps/api/src/*.ts`). Вход `server.ts`. Сборка `tsc` → `apps/api/dist`.
@@ -46,6 +51,11 @@
   (иначе iOS красит синим). Селекты — `appearance:none` + кастомная каретка (глобальный стиль уже есть).
 
 ## 4. ДЕПЛОЙ — повторять ровно так (фронт запечён в образ!)
+> **ВНИМАНИЕ (с 2026-06-21):** прод переехал на **SberCloud** (`213.171.28.138`). Везде ниже, где написано
+> `etna-vps` (это Beget-fallback), для боевого деплоя используй: `ssh -i ~/.ssh/etna_sber_rsa rio35@213.171.28.138`
+> и **`sudo docker compose`** (не просто `docker compose`). Пути те же (`/opt/etna/app`, `/opt/etna/deploy`).
+> Пример: `scp apps/web/app.js -i ~/.ssh/etna_sber_rsa rio35@213.171.28.138:/opt/etna/app/apps/web/` →
+> `ssh -i ~/.ssh/etna_sber_rsa rio35@213.171.28.138 "cd /opt/etna/deploy && sudo docker compose build api && sudo docker compose up -d api"`.
 1. Правки → проверка: `npm run check` (tsc, из корня) и `node --check apps/web/app.js`.
 2. (опц.) Превью: Claude Preview `web-static` (launch.json, python http.server по `apps/web`).
    **ВАЖНО:** превью-браузер кэширует `styles.css` — после CSS-правок делать reload и/или cache-bust
