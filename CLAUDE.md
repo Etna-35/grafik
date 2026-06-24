@@ -20,6 +20,10 @@
   ПЕРЕЕХАЛИ с Beget из-за блокировки IP Beget в РФ-сетях (белые списки/ТСПУ) — см. §9. Caddy форсит **TLS 1.2**
   + выкл HTTP/3 (`deploy/beget/Caddyfile`). DNS `lk./api./admin.` → 213.171.28.138 (панель Beget, NS beget);
   корень `@`/`www` — GitHub Pages, НЕ трогать.
+  **TELEGRAM-ФИКС (обязателен на этой VM):** у VM нет IPv6, а часть IP `api.telegram.org` фильтруется → отчёты
+  в ТГ не уходили. Лечится в `/opt/etna/deploy`: `.env` → `NODE_OPTIONS=--dns-result-order=ipv4first`; в
+  `docker-compose.yml` сервис `api` → `extra_hosts: ["api.telegram.org:149.154.167.220"]` (рабочий IPv4 Telegram).
+  При пересоздании контейнера/переносе — не потерять эти две строки (проверять `getMe`).
 - **Beget (старый прод, FALLBACK):** VPS, IP `85.198.68.243`, SSH-алиас `etna-vps` (root). Оставлен включённым
   как мгновенный откат (вернуть DNS на него). После пары дней стабильной работы SberCloud — выключить (бэклог).
 
