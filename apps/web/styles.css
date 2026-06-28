@@ -217,6 +217,9 @@ a{color:inherit;text-decoration:none}
 .schedule-lock-btn.unlocked{background:var(--brand);border-color:var(--brand);color:var(--brand-ink)}
 .schedule-screen.edit-locked .schedule-grid td.cell,
 .schedule-screen.edit-locked .schedule-grid .markDate{cursor:default}
+.schedule-grid td.cell.self-editable{cursor:pointer}
+.schedule-grid td.cell.self-editable::after{content:"";position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:var(--brand);opacity:.85;z-index:2}
+.hint.danger{color:var(--danger);font-weight:600}
 .gridwrap{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);box-shadow:var(--shadow);overflow-x:auto;overflow-y:visible;-webkit-overflow-scrolling:touch}
 .schedule-grid{border-collapse:separate;border-spacing:0;width:100%;min-width:max-content;font-size:12px}
 .schedule-grid th,.schedule-grid td{border-right:1px solid var(--line);border-bottom:1px solid var(--line)}

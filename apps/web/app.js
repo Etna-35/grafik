@@ -65,6 +65,7 @@ let state = {
   scheduleEditorRole: null,
   selectedScheduleDate: null,
   selectedDateEmployeeId: null,
+  selectedMyHoursDate: null,
   editingPayoutId: null,
   scheduleSaving: false,
   scheduleEditUnlocked: false,
@@ -4474,6 +4475,7 @@ function renderSchedulePage(service){
         </div>
         ${renderScheduleEditor(service)}
         ${renderScheduleDateEditor(service)}
+        ${renderMyHoursEditor()}
         ${state.scheduleSaveError ? `<div class="panel save-error">${escapeHtml(state.scheduleSaveError)}</div>` : ""}
         ${body}
         ${importBox}
@@ -4491,6 +4493,7 @@ function renderSchedulePage(service){
     state.scheduleEditUnlocked = !state.scheduleEditUnlocked;
     state.selectedScheduleCell = null;
     state.selectedScheduleDate = null;
+    state.selectedMyHoursDate = null;
     render();
   });
 
@@ -4508,6 +4511,7 @@ function renderSchedulePage(service){
       const base = new Date((state.schedule?.year || year), (state.schedule?.month || month) - 1 + direction, 1);
       state.selectedScheduleCell = null;
       state.selectedScheduleDate = null;
+      state.selectedMyHoursDate = null;
       state.schedule = null;
       loadSchedule(base.getFullYear(), base.getMonth() + 1);
     });
@@ -4515,6 +4519,7 @@ function renderSchedulePage(service){
 
   bindScheduleEditor();
   bindScheduleDateEditor();
+  bindMyHoursEditor();
 }
 
 function renderScheduleImport(service){
@@ -4561,7 +4566,9 @@ function renderScheduleContent(schedule){
       <button class="btn icon" data-month-action="next">›</button>
     </div>
     ${schedule.canSeeMoney ? renderMoneySummary(schedule, totals) : ""}
-    ${state.scheduleEditUnlocked ? `<div class="hint hint-block-sm">Клик по ячейке — поставить/снять смену. Двойной клик — задать нестандартные часы. Клик по дате — выплаты и оценки.</div>` : ""}
+    ${state.scheduleEditUnlocked
+      ? `<div class="hint hint-block-sm">Клик по ячейке — поставить/снять смену. Двойной клик — задать нестандартные часы. Клик по дате — выплаты и оценки.</div>`
+      : (hasOwnEditableShift(schedule) ? `<div class="hint hint-block-sm">Нажми на свою смену, чтобы уточнить отработанные часы (если ушёл раньше).</div>` : "")}
     ${schedule.employees.length ? renderScheduleTable(schedule) : renderEmptySchedule()}
     ${schedule.canSeeMoney ? `
       <h2 class="sec">Итоги за месяц</h2>
@@ -4571,6 +4578,20 @@ function renderScheduleContent(schedule){
       </div>
     ` : ""}
   `;
+}
+
+// Есть ли у текущего сотрудника хотя бы одна своя почасовая смена в прошлом/сегодня (для подсказки).
+function hasOwnEditableShift(schedule){
+  const uid = state.user?.id;
+  if(!uid) return false;
+  const today = todayIsoDate();
+  return (schedule.days || []).some((day)=>{
+    if(day.date > today) return false;
+    const shift = day.shifts?.[uid];
+    if(!shift) return false;
+    const employee = schedule.employees.find((e)=>e.id === uid);
+    return !isFixedShift(employee, shift);
+  });
 }
 
 function renderEmptySchedule(){
@@ -4972,31 +4993,164 @@ function renderScheduleDateEditor(service){
   `;
 }
 
-function bindScheduleCells(service){
-  app.querySelectorAll("[data-schedule-cell]").forEach((cell)=>{
-    if(!isScheduleEditingUnlocked(service)) return;
+function renderMyHoursEditor(){
+  if(!state.schedule || !state.selectedMyHoursDate) return "";
+  const context = scheduleContext(state.selectedMyHoursDate, state.user?.id);
+  if(!context || !context.shift || isFixedShift(context.employee, context.shift)) return "";
 
-    // Одиночный клик — поставить/снять смену; двойной клик — редактор (нестандартные часы);
-    // правый клик — тоже редактор. Без долгого тапа.
-    let clickTimer = null;
+  const { day, shift } = context;
+  const planned = Number(shift.hours || 0);
+  const start = shift.startTime ? String(shift.startTime).slice(0, 5) : "";
+  const end = shift.endTime ? String(shift.endTime).slice(0, 5) : "";
 
-    cell.addEventListener("click", ()=>{
-      if(clickTimer){ clearTimeout(clickTimer); clickTimer = null; return; }
-      clickTimer = setTimeout(()=>{ clickTimer = null; quickEditScheduleCell(cell); }, 220);
-    });
+  return `
+    <div class="panel editor-panel">
+      <div class="editor-head">
+        <span class="grow">
+          <span class="row-title">Мои часы за смену</span>
+          <span class="row-sub">${formatDateHuman(day.date)} · по графику ${formatHours(planned)} ч</span>
+        </span>
+        <button class="iconbtn small" data-myhours-action="close">×</button>
+      </div>
 
-    cell.addEventListener("dblclick", (event)=>{
-      event.preventDefault();
-      if(clickTimer){ clearTimeout(clickTimer); clickTimer = null; }
-      openScheduleEditor(cell);
-    });
+      <div class="editor-grid editor-grid-2 mt-10">
+        <label class="field"><span>Начало смены</span>
+          <input id="myStart" type="time" value="${escapeAttr(start)}"></label>
+        <label class="field"><span>Конец смены</span>
+          <input id="myEnd" type="time" value="${escapeAttr(end)}"></label>
+      </div>
 
-    cell.addEventListener("contextmenu", (event)=>{
-      event.preventDefault();
-      if(clickTimer){ clearTimeout(clickTimer); clickTimer = null; }
-      openScheduleEditor(cell);
-    });
+      <div class="hint hint-block-sm" data-myhours-preview>Укажи время — посчитаю часы автоматически</div>
+
+      <div class="editor-grid mt-10">
+        <button class="ghost brand-action" data-myhours-action="save">Сохранить часы</button>
+      </div>
+
+      <div class="hint hint-block-sm">Часы можно указать только в меньшую сторону — если ушёл раньше плана.</div>
+      ${state.scheduleSaving ? `<div class="import-result">Сохраняю</div>` : ""}
+    </div>
+  `;
+}
+
+// Часы между «началом» и «концом» (минутная точность). Конец ≤ начала = ночная смена (+24ч). Зеркало бэкенда.
+function computeShiftHours(start, end){
+  const m = /^(\d{2}):(\d{2})$/.exec(start || "");
+  const n = /^(\d{2}):(\d{2})$/.exec(end || "");
+  if(!m || !n) return null;
+  let minutes = (Number(n[1]) * 60 + Number(n[2])) - (Number(m[1]) * 60 + Number(m[2]));
+  if(minutes <= 0) minutes += 24 * 60;
+  return minutes / 60;
+}
+
+function updateMyHoursPreview(planned){
+  const node = app.querySelector("[data-myhours-preview]");
+  if(!node) return;
+  const start = app.querySelector("#myStart")?.value;
+  const end = app.querySelector("#myEnd")?.value;
+  if(!start || !end){ node.textContent = "Укажи время — посчитаю часы автоматически"; node.classList.remove("danger"); return; }
+  const h = computeShiftHours(start, end);
+  if(h == null || h <= 0){ node.textContent = "Проверь время смены"; node.classList.add("danger"); return; }
+  if(h > planned + 0.001){
+    node.textContent = `Получится ${formatHours(h)} ч — больше плана (${formatHours(planned)} ч). Можно только меньше.`;
+    node.classList.add("danger");
+    return;
+  }
+  node.textContent = `Получится ${formatHours(h)} ч`;
+  node.classList.remove("danger");
+}
+
+function bindMyHoursEditor(){
+  if(!state.selectedMyHoursDate) return;
+  const context = scheduleContext(state.selectedMyHoursDate, state.user?.id);
+  if(!context || !context.shift) return;
+  const planned = Number(context.shift.hours || 0);
+
+  app.querySelector("[data-myhours-action='close']")?.addEventListener("click", ()=>{
+    state.selectedMyHoursDate = null;
+    render();
   });
+  app.querySelectorAll("#myStart, #myEnd").forEach((input)=>{
+    input.addEventListener("input", ()=>updateMyHoursPreview(planned));
+  });
+  app.querySelector("[data-myhours-action='save']")?.addEventListener("click", ()=>saveMyHours(context));
+  updateMyHoursPreview(planned);
+}
+
+async function saveMyHours(context){
+  const start = app.querySelector("#myStart")?.value;
+  const end = app.querySelector("#myEnd")?.value;
+  if(!start || !end){ state.scheduleSaveError = "Укажи начало и конец смены"; render(); return; }
+  const planned = Number(context.shift?.hours || 0);
+  const h = computeShiftHours(start, end);
+  if(h == null || h <= 0){ state.scheduleSaveError = "Проверь время смены"; render(); return; }
+  if(h > planned + 0.001){
+    state.scheduleSaveError = `Часы можно только уменьшить (по графику ${formatHours(planned)} ч)`;
+    render();
+    return;
+  }
+  state.selectedMyHoursDate = null;
+  await saveAndReload(()=>apiPatch("/api/schedule/my-hours", {
+    workDate: context.day.date,
+    startTime: start,
+    endTime: end
+  }));
+}
+
+function bindScheduleCells(service){
+  const unlocked = isScheduleEditingUnlocked(service);
+  app.querySelectorAll("[data-schedule-cell]").forEach((cell)=>{
+    if(unlocked){
+      // Управление графиком (руководитель): одиночный клик — поставить/снять смену;
+      // двойной клик / правый клик — редактор (нестандартные часы). Без долгого тапа.
+      let clickTimer = null;
+
+      cell.addEventListener("click", ()=>{
+        if(clickTimer){ clearTimeout(clickTimer); clickTimer = null; return; }
+        clickTimer = setTimeout(()=>{ clickTimer = null; quickEditScheduleCell(cell); }, 220);
+      });
+
+      cell.addEventListener("dblclick", (event)=>{
+        event.preventDefault();
+        if(clickTimer){ clearTimeout(clickTimer); clickTimer = null; }
+        openScheduleEditor(cell);
+      });
+
+      cell.addEventListener("contextmenu", (event)=>{
+        event.preventDefault();
+        if(clickTimer){ clearTimeout(clickTimer); clickTimer = null; }
+        openScheduleEditor(cell);
+      });
+      return;
+    }
+
+    // Замок закрыт: сотрудник может уточнить СВОИ отработанные часы (только своя строка,
+    // только почасовая смена, только сегодня/прошлое). Клик по своей ячейке со сменой.
+    if(cell.dataset.employee !== state.user?.id) return;
+    if(!isSelfEditableCell(cell.dataset.date, cell.dataset.employee)) return;
+    cell.classList.add("self-editable");
+    cell.addEventListener("click", ()=>openMyHoursEditor(cell));
+  });
+}
+
+// Своя ячейка пригодна для правки часов: есть почасовая смена и дата не в будущем.
+function isSelfEditableCell(date, employeeId){
+  const ctx = scheduleContext(date, employeeId);
+  if(!ctx || !ctx.shift || isFixedShift(ctx.employee, ctx.shift)) return false;
+  return date <= todayIsoDate();
+}
+
+function todayIsoDate(){
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+}
+
+function openMyHoursEditor(cell){
+  if(!cell?.dataset.date) return;
+  state.selectedMyHoursDate = cell.dataset.date;
+  state.selectedScheduleCell = null;
+  state.selectedScheduleDate = null;
+  state.scheduleSaveError = "";
+  render();
 }
 
 function bindScheduleDates(service){

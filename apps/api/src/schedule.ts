@@ -43,6 +43,14 @@ const shiftEditSchema = employeeDateSchema.extend({
   rate: z.number().int().positive().max(100000).optional()
 });
 
+// Сотрудник правит СВОИ отработанные часы за смену через время начала/конца (только в меньшую сторону).
+const timeSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+const myHoursSchema = z.object({
+  workDate: dateSchema,
+  startTime: timeSchema,
+  endTime: timeSchema
+});
+
 const dayEditSchema = z.object({
   workDate: dateSchema,
   isDeadline: z.boolean()
@@ -138,6 +146,27 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     await query("DELETE FROM schedule_shifts WHERE work_date = $1::date AND employee_id = $2", [parsed.data.workDate, parsed.data.employeeId]);
     await audit(request, "schedule_shift_delete", user.id, "schedule_shift", `${parsed.data.workDate}:${parsed.data.employeeId}`);
     return { ok: true };
+  });
+
+  // Сотрудник правит ТОЛЬКО свои отработанные часы за смену (ушёл раньше) — через время начала/конца,
+  // строго в меньшую сторону. Доступно любому залогиненному (но только для своей строки).
+  app.patch("/api/schedule/my-hours", async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+
+    const parsed = myHoursSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_hours" });
+      return;
+    }
+
+    try {
+      const result = await updateOwnShiftHours(parsed.data, user.id);
+      await audit(request, "schedule_my_hours", user.id, "schedule_shift", `${parsed.data.workDate}:${user.id}`, result);
+      return result;
+    } catch (error) {
+      await reply.code(400).send({ error: (error as Error).message || "bad_hours" });
+    }
   });
 
   app.patch("/api/schedule/days", async (request, reply) => {
@@ -414,12 +443,15 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     employee_id: string;
     planned_hours: string | null;
     actual_end_time: string | null;
+    planned_start_time: string | null;
+    planned_end_time: string | null;
     pay_amount: number | null;
     pay_model: string | null;
     role_override: string | null;
   }>(
     `
-      SELECT work_date::text, employee_id, planned_hours, actual_end_time::text, pay_amount, pay_model, role_override
+      SELECT work_date::text, employee_id, planned_hours, actual_end_time::text,
+             planned_start_time::text, planned_end_time::text, pay_amount, pay_model, role_override
       FROM schedule_shifts
       WHERE work_date >= $1::date
         AND work_date < ($1::date + interval '1 month')
@@ -484,6 +516,8 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       employeeId: row.employee_id,
       hours: row.planned_hours ? Number(row.planned_hours) : null,
       actualEndTime: row.actual_end_time,
+      startTime: row.planned_start_time ? row.planned_start_time.slice(0, 5) : null,
+      endTime: row.planned_end_time ? row.planned_end_time.slice(0, 5) : null,
       payAmount: canSeeAllMoney ? row.pay_amount || 0 : null,
       payModel: row.pay_model,
       roleOverride: row.role_override || null
@@ -716,6 +750,69 @@ async function upsertShift(
   );
 
   return { ok: true, payAmount, plannedHours, payModel };
+}
+
+// Часы между началом и концом смены (минутная точность). Конец ≤ начала трактуется как ночная смена (+24ч).
+function hoursBetween(startTime: string, endTime: string): number {
+  const [sh, sm] = startTime.split(":").map(Number);
+  const [eh, em] = endTime.split(":").map(Number);
+  let minutes = eh * 60 + em - (sh * 60 + sm);
+  if (minutes <= 0) minutes += 24 * 60;
+  return minutes / 60;
+}
+
+// Правка СВОИХ часов сотрудником: только почасовая смена, только сегодня/прошлое, только в меньшую сторону.
+// Ставка дня сохраняется (pay_amount / planned_hours), сумма пересчитывается пропорционально.
+async function updateOwnShiftHours(
+  data: z.infer<typeof myHoursSchema>,
+  employeeId: string
+): Promise<{ ok: true; hours: number; payAmount: number }> {
+  const existing = await query<{
+    planned_hours: string | null;
+    pay_amount: number | null;
+    pay_model: string | null;
+    is_today_or_past: boolean;
+  }>(
+    `
+      SELECT planned_hours, pay_amount, pay_model,
+             (work_date <= (now() AT TIME ZONE 'Europe/Moscow')::date) AS is_today_or_past
+      FROM schedule_shifts
+      WHERE work_date = $1::date AND employee_id = $2
+      LIMIT 1
+    `,
+    [data.workDate, employeeId]
+  );
+  const shift = existing.rows[0];
+  if (!shift) throw new Error("shift_not_found");
+  if (shift.pay_model === "fixed") throw new Error("fixed_shift");
+  if (!shift.is_today_or_past) throw new Error("future_shift");
+
+  const plannedHours = shift.planned_hours ? Number(shift.planned_hours) : null;
+  if (!plannedHours || plannedHours <= 0) throw new Error("no_planned_hours");
+
+  // Минуты → часы, округление до 0.01 (схема numeric(5,2)).
+  const newHours = Math.round(hoursBetween(data.startTime, data.endTime) * 100) / 100;
+  if (newHours <= 0) throw new Error("bad_hours");
+  if (newHours > plannedHours + 0.001) throw new Error("only_downward");
+
+  const rate = (shift.pay_amount || 0) / plannedHours;
+  const payAmount = Math.max(1, Math.round(newHours * rate));
+
+  await query(
+    `
+      UPDATE schedule_shifts
+      SET planned_hours = $3,
+          planned_start_time = $4::time,
+          planned_end_time = $5::time,
+          pay_amount = $6,
+          updated_by = $2,
+          updated_at = now()
+      WHERE work_date = $1::date AND employee_id = $2
+    `,
+    [data.workDate, employeeId, newHours, data.startTime, data.endTime, payAmount]
+  );
+
+  return { ok: true, hours: newHours, payAmount };
 }
 
 async function ensureScheduleDay(workDate: string): Promise<void> {
