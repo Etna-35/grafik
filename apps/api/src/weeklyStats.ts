@@ -25,7 +25,8 @@ export type WeeklyDigest = {
 type TopRow = { name: string; value: number };
 
 // Лидерборды только для линейного персонала: без руководителя и без мойщиц.
-const EMPLOYEE_FILTER = "e.is_active = true AND e.archived_at IS NULL AND e.role NOT IN ('owner', 'dishwasher', 'dish')";
+// role — enum employee_role; кастуем к тексту, чтобы значения не из enum не валили запрос.
+const EMPLOYEE_FILTER = "e.is_active = true AND e.archived_at IS NULL AND e.role::text NOT IN ('owner', 'dishwasher', 'dish')";
 
 // Границы последней ЗАВЕРШЁННОЙ недели (Пн–Вс) в МСК. В воскресенье неделя считается завершённой
 // сегодня (Пн..сегодня); в остальные дни — прошлая неделя (Пн..Вс). Публикация — в вс после закрытия смены.
