@@ -60,6 +60,8 @@ let state = {
   schedule: null,
   scheduleLoading: false,
   scheduleError: "",
+  weeklyStats: undefined,
+  weeklyStatsLoading: false,
   scheduleSaveError: "",
   selectedScheduleCell: null,
   scheduleEditorRole: null,
@@ -268,6 +270,7 @@ async function login(){
 function renderHub(){
   const today = new Intl.DateTimeFormat("ru-RU", { weekday:"short", day:"numeric", month:"long" }).format(new Date());
   state.praisePrefillTo = null;
+  if(state.weeklyStats === undefined && !state.weeklyStatsLoading) loadWeeklyStats();
   app.innerHTML = `
     <div class="phone">
       <section class="screen">
@@ -282,6 +285,7 @@ function renderHub(){
         ${renderDayPanel()}
         ${renderSalesGoals()}
         ${renderMerits()}
+        ${renderWeeklyStats()}
         <h2 class="section-title">Сервисы</h2>
         <div class="nav">
           ${state.services.map(renderServiceCard).join("")}
@@ -407,6 +411,42 @@ function renderMerits(){
     </div>
     ${renderCashPlan()}
   `;
+}
+
+// Еженедельная «движуха»: итоги прошлой недели (Пн–Вс). Монохромно, без emoji (бренд).
+async function loadWeeklyStats(){
+  state.weeklyStatsLoading = true;
+  try{
+    state.weeklyStats = await apiGet("/api/weekly-stats");
+  }catch{
+    state.weeklyStats = null;
+  }finally{
+    state.weeklyStatsLoading = false;
+    render();
+  }
+}
+
+function renderWeeklyStats(){
+  const w = state.weeklyStats;
+  if(!w || !Array.isArray(w.items) || !w.items.length) return "";
+  const range = `${formatWeekDay(w.weekStart)} — ${formatWeekDay(w.weekEnd)}`;
+  return `
+    <h2 class="section-title">Итоги недели</h2>
+    <div class="weekly">
+      <div class="weekly-range">${escapeHtml(range)}</div>
+      ${w.items.map((item)=>`
+        <div class="weekly-item">
+          <span class="weekly-label">${escapeHtml(item.label)}</span>
+          <span class="weekly-detail">${escapeHtml(item.detail)}</span>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function formatWeekDay(iso){
+  if(!iso) return "";
+  return new Intl.DateTimeFormat("ru-RU", { day:"numeric", month:"long" }).format(new Date(`${iso}T00:00:00`));
 }
 
 function dollarIcon(){ return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20"><line x1="12" y1="2" x2="12" y2="22"/><path d="M17 6.5C17 4.6 14.8 3.5 12 3.5S7 4.6 7 6.5 9.2 9.5 12 9.5s5 1.1 5 3-2.2 3-5 3-5-1.1-5-3"/></svg>`; }
@@ -5544,6 +5584,8 @@ async function logout(){
 function clearSessionData(){
   state.summary = null;
   state.schedule = null;
+  state.weeklyStats = undefined;
+  state.weeklyStatsLoading = false;
   state.selectedScheduleCell = null;
   state.selectedScheduleDate = null;
   state.selectedDateEmployeeId = null;

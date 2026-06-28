@@ -33,6 +33,7 @@ import { registerProgressRoutes, getProgressSummary } from "./progress.js";
 import { registerQuizRoutes } from "./quiz.js";
 import { registerFinanceRoutes } from "./finance.js";
 import { registerTreasuryRoutes } from "./treasury.js";
+import { registerWeeklyStatsRoutes } from "./weeklyStats.js";
 import { getWaiterCashStats } from "./cashPlan.js";
 import { startCron } from "./cron.js";
 
@@ -255,6 +256,7 @@ export function buildServer() {
   registerQuizRoutes(app);
   registerFinanceRoutes(app);
   registerTreasuryRoutes(app);
+  registerWeeklyStatsRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,
