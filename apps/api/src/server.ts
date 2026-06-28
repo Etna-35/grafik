@@ -35,6 +35,7 @@ import { registerFinanceRoutes } from "./finance.js";
 import { registerTreasuryRoutes } from "./treasury.js";
 import { registerWeeklyStatsRoutes } from "./weeklyStats.js";
 import { getWaiterCashStats } from "./cashPlan.js";
+import { genitiveFirstName } from "./names.js";
 import { startCron } from "./cron.js";
 
 const pinSchema = z.object({
@@ -210,7 +211,7 @@ export function buildServer() {
 
     return {
       isBirthdayToday: birthdays.rows.some((row) => row.is_self),
-      birthdaysToday: birthdays.rows.filter((row) => !row.is_self).map((row) => ({ id: row.id, name: row.display_name })),
+      birthdaysToday: birthdays.rows.filter((row) => !row.is_self).map((row) => ({ id: row.id, name: row.display_name, nameGenitive: genitiveFirstName(row.display_name) })),
       level: progress.level,
       progressPct: progress.progressPct,
       toNextPct: progress.toNextPct,

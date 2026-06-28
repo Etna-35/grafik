@@ -188,8 +188,11 @@ function render(){
     return;
   }
 
-  if(window.location.hash === "#praise" && !state.praiseHashHandled){
+  if(window.location.hash.startsWith("#praise") && !state.praiseHashHandled){
     state.praiseHashHandled = true;
+    // #praise=<employeeId> — предзаполнить получателя (ссылка-поздравление из Telegram).
+    const m = window.location.hash.match(/^#praise=(.+)$/);
+    if(m) state.praisePrefillTo = decodeURIComponent(m[1]);
     history.replaceState(null, "", "/");
     openPraise();
     return;
@@ -372,7 +375,7 @@ function renderBirthday(){
   for(const person of others){
     blocks.push(`
       <div class="bday-banner">
-        <div class="bb-title">Сегодня день рождения у ${escapeHtml(person.name)}</div>
+        <div class="bb-title">Сегодня день рождения у ${escapeHtml(person.nameGenitive || person.name)}</div>
         <div class="bb-sub">Поздравь и скажи спасибо — это приятно.</div>
         <button class="ghost brand-action bb-btn" type="button" data-praise-bday="${escapeAttr(person.id)}">Поздравить</button>
       </div>

@@ -1,4 +1,5 @@
 import { query } from "./db.js";
+import { genitiveFirstName } from "./names.js";
 import { PUBLIC_BASE_URL, sendMessage, teamChatId } from "./telegram.js";
 
 // Простой планировщик: раз в минуту проверяет МСК-время. В 11:11 один раз в день
@@ -62,12 +63,46 @@ async function sendDailyPlan(today: string): Promise<void> {
   await sendMessage(teamChatId(), lines.join("\n"));
 }
 
+// Поздравления именинников в общий чат: имя в род. падеже + ссылка на «спасибо» с предзаполнением.
+async function sendBirthdayGreetings(): Promise<void> {
+  if (!teamChatId()) return;
+  const rows = await query<{ id: string; display_name: string }>(
+    `
+      SELECT id::text, display_name
+      FROM employees
+      WHERE is_active = true AND archived_at IS NULL AND birth_date IS NOT NULL
+        AND to_char(birth_date, 'MM-DD') = to_char((now() AT TIME ZONE 'Europe/Moscow')::date, 'MM-DD')
+      ORDER BY display_name
+    `
+  );
+  if (!rows.rows.length) return;
+
+  const link = (id: string, label: string) => `<a href="${PUBLIC_BASE_URL}/#praise=${id}">${label}</a>`;
+  const lines: string[] = [];
+  if (rows.rows.length === 1) {
+    const p = rows.rows[0];
+    lines.push(
+      `🎂 Сегодня день рождения у <b>${genitiveFirstName(p.display_name)}</b>!`,
+      ``,
+      `Поздравьте коллегу 🎉`,
+      link(p.id, "Поздравить и сказать спасибо")
+    );
+  } else {
+    lines.push(`🎂 Сегодня дни рождения!`, ``);
+    for (const p of rows.rows) {
+      lines.push(`• <b>${genitiveFirstName(p.display_name)}</b> — ${link(p.id, "поздравить")}`);
+    }
+  }
+  await sendMessage(teamChatId(), lines.join("\n"));
+}
+
 async function tick(): Promise<void> {
   try {
     const { hh, mm, date } = mskNow();
     if (hh === 11 && mm >= 11 && lastDailyFired !== date) {
       lastDailyFired = date;
       await sendDailyPlan(date);
+      await sendBirthdayGreetings();
     }
   } catch {
     // планировщик не должен ронять процесс
