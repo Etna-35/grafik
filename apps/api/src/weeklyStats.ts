@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { requireUser } from "./auth.js";
 import { query } from "./db.js";
+import { sendMessage, teamChatId } from "./telegram.js";
 
 // Еженедельная «движуха»: мотивационно-развлекательный дайджест за ПРОШЕДШУЮ неделю (Пн–Вс, МСК).
 // Показывается в ЛК всю текущую неделю + раз в неделю постится ботом в общий чат (см. cron.ts).
@@ -23,15 +24,24 @@ export type WeeklyDigest = {
 
 type TopRow = { name: string; value: number };
 
-const EMPLOYEE_FILTER = "e.is_active = true AND e.archived_at IS NULL AND e.role <> 'owner'";
+// Лидерборды только для линейного персонала: без руководителя и без мойщиц.
+const EMPLOYEE_FILTER = "e.is_active = true AND e.archived_at IS NULL AND e.role NOT IN ('owner', 'dishwasher', 'dish')";
 
-// Границы прошедшей недели в МСК: прошлый понедельник .. прошлое воскресенье.
+// Границы последней ЗАВЕРШЁННОЙ недели (Пн–Вс) в МСК. В воскресенье неделя считается завершённой
+// сегодня (Пн..сегодня); в остальные дни — прошлая неделя (Пн..Вс). Публикация — в вс после закрытия смены.
 async function weekBounds(): Promise<{ start: string; end: string }> {
   const res = await query<{ start: string; end: string }>(
     `
       SELECT
-        (date_trunc('week', (now() AT TIME ZONE 'Europe/Moscow')) - interval '7 days')::date::text AS start,
-        (date_trunc('week', (now() AT TIME ZONE 'Europe/Moscow')) - interval '1 day')::date::text AS end
+        CASE WHEN EXTRACT(DOW FROM d) = 0
+          THEN date_trunc('week', d)::date::text
+          ELSE (date_trunc('week', d) - interval '7 days')::date::text
+        END AS start,
+        CASE WHEN EXTRACT(DOW FROM d) = 0
+          THEN d::date::text
+          ELSE (date_trunc('week', d) - interval '1 day')::date::text
+        END AS end
+      FROM (SELECT (now() AT TIME ZONE 'Europe/Moscow') AS d) t
     `
   );
   return { start: res.rows[0].start, end: res.rows[0].end };
@@ -227,6 +237,27 @@ export function formatWeeklyDigestTelegram(digest: WeeklyDigest): string | null 
   }
   lines.push(`Спасибо, что делаете Etna лучше 💪`);
   return lines.join("\n");
+}
+
+// Публикует дайджест в общий чат ОДИН раз за неделю (idempotent по дате воскресенья).
+// Вызывается в воскресенье после сдачи закрытия смены. Возвращает true, если пост ушёл.
+export async function postWeeklyDigestOnce(): Promise<boolean> {
+  if (!teamChatId()) return false;
+  const digest = await getWeeklyDigest();
+  const text = formatWeeklyDigestTelegram(digest);
+  if (!text) return false;
+
+  // Защита от повторной отправки (несколько закрытий/переотправок за вс).
+  const claimed = await query<{ week_end: string }>(
+    `INSERT INTO weekly_digest_posts (week_end) VALUES ($1::date)
+     ON CONFLICT (week_end) DO NOTHING
+     RETURNING week_end::text`,
+    [digest.weekEnd]
+  );
+  if (!claimed.rows.length) return false;
+
+  await sendMessage(teamChatId(), text);
+  return true;
 }
 
 export function registerWeeklyStatsRoutes(app: FastifyInstance): void {

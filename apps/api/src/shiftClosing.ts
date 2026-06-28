@@ -15,6 +15,7 @@ import {
 } from "./telegram.js";
 import { awardPoints } from "./progress.js";
 import { recomputeStreaksForDate } from "./cashPlan.js";
+import { postWeeklyDigestOnce } from "./weeklyStats.js";
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const moneySchema = z.number().int().min(0).max(10000000).default(0);
@@ -437,6 +438,16 @@ export function registerShiftClosingRoutes(app: FastifyInstance): void {
     const audiences = parsed.data.audience === "both" ? ["manager", "team"] : [parsed.data.audience];
     const reports = await sendTelegramReports(params.data.id, audiences as Array<"manager" | "team">);
     await audit(request, "shift_closing_telegram_send", user.id, "shift_closing", params.data.id, reports);
+
+    // Закрытие смены за ВОСКРЕСЕНЬЕ сдано → публикуем «Итоги недели» в общий чат (один раз за неделю).
+    if (new Date(`${current.work_date}T00:00:00Z`).getUTCDay() === 0) {
+      try {
+        await postWeeklyDigestOnce();
+      } catch {
+        // не валим ответ закрытия, если дайджест не ушёл
+      }
+    }
+
     return { ok: true, reports };
   });
 }
