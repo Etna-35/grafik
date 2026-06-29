@@ -4763,7 +4763,7 @@ function renderScheduleDay(day, employees, canSeeMoney){
         <div class="dcell">
           <span class="dnum">${date.getDate()}</span>
           <span class="dwd">${weekdayShort(date)}</span>
-          ${(day.isDeadline || day.eventTitle) ? `<div class="dmarks">${day.isDeadline ? `<span class="markIcon star" title="Дедлайн">☆</span>` : ""}${day.eventTitle ? `<span class="markIcon ev" title="Корпоратив">К</span>` : ""}</div>` : ""}
+          ${day.isDeadline ? `<div class="dmarks"><span class="markIcon star" title="Дедлайн">☆</span></div>` : ""}
         </div>
       </td>
       ${employees.map((employee)=>renderShiftCell(day, employee, canSeeMoney)).join("")}
