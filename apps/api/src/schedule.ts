@@ -477,13 +477,14 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
           WHERE work_date >= $1::date
             AND work_date < ($1::date + interval '1 month')
         )
-        -- Активный ростер месяца: в графике, не архивный, и месяц попадает в окно «в графике с/по».
+        -- Активный ростер месяца: в графике, не архивный; появляется с месяца даты начала работы,
+        -- скрывается после месяца даты увольнения (schedule_until).
         OR (
           is_active = true
           AND archived_at IS NULL
           AND schedule_role IS NOT NULL
-          AND ($1::date >= schedule_from OR schedule_from IS NULL)
-          AND ($1::date <= schedule_until OR schedule_until IS NULL)
+          AND ($1::date >= date_trunc('month', start_date)::date OR start_date IS NULL)
+          AND ($1::date <= date_trunc('month', schedule_until)::date OR schedule_until IS NULL)
         )
       ORDER BY
         CASE COALESCE(schedule_role, role::text)

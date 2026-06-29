@@ -3473,19 +3473,17 @@ function renderEmployeeForm(admin){
           <input name="birthDate" type="date" value="${employee.birthDate || ""}">
         </label>
       </div>
-      ${employee.startDate ? `<div class="hint">Стаж: ${escapeHtml(formatTenure(employee.startDate))}</div>` : ""}
+      <div class="hint">${employee.startDate ? `Стаж: ${escapeHtml(formatTenure(employee.startDate))}. ` : ""}От даты начала работы зависит и появление в графике — в месяцах до неё сотрудник не показывается.</div>
 
-      <div class="two">
-        <label class="field">
-          <span>В графике с месяца</span>
-          <input name="scheduleFrom" type="month" value="${employee.scheduleFrom ? employee.scheduleFrom.slice(0,7) : ""}">
-        </label>
-        <label class="field">
-          <span>В графике по месяц</span>
-          <input name="scheduleUntil" type="month" value="${employee.scheduleUntil ? employee.scheduleUntil.slice(0,7) : ""}">
-        </label>
+      <div class="field dismiss-field">
+        <span>Увольнение</span>
+        <div class="dismiss-row">
+          <button type="button" class="ghost danger-action" data-dismiss-toggle ${employee.scheduleUntil ? "hidden" : ""}>Уволить</button>
+          <input name="dismissDate" type="date" value="${employee.scheduleUntil ? employee.scheduleUntil.slice(0,10) : ""}" ${employee.scheduleUntil ? "" : "hidden"}>
+          <button type="button" class="ghost" data-dismiss-clear ${employee.scheduleUntil ? "" : "hidden"}>Отменить увольнение</button>
+        </div>
       </div>
-      <div class="hint">Пусто — без ограничений. Месяцы, где сотрудник реально работал (есть смены), показываются всегда.</div>
+      <div class="hint">Укажи дату увольнения — сотрудник пропадёт из графика со следующего месяца. Прошлые месяцы со сменами сохранятся.</div>
 
       <div class="access-box">
         <div class="row-title">Доступы</div>
@@ -3545,6 +3543,19 @@ function bindAdminPage(){
     form.addEventListener("submit", (event)=>{
       event.preventDefault();
       saveAdminEmployee();
+    });
+    // «Уволить» — показать календарь даты увольнения; «Отменить увольнение» — очистить.
+    const dismissInput = form.querySelector("input[name='dismissDate']");
+    form.querySelector("[data-dismiss-toggle]")?.addEventListener("click", (e)=>{
+      e.target.hidden = true;
+      if(dismissInput){ dismissInput.hidden = false; dismissInput.focus(); if(dismissInput.showPicker) try{ dismissInput.showPicker(); }catch{} }
+    });
+    form.querySelector("[data-dismiss-clear]")?.addEventListener("click", (e)=>{
+      if(dismissInput) dismissInput.value = "";
+      e.target.hidden = true;
+      if(dismissInput) dismissInput.hidden = true;
+      const toggle = form.querySelector("[data-dismiss-toggle]");
+      if(toggle) toggle.hidden = false;
     });
   }
 
@@ -3653,8 +3664,7 @@ function collectAdminEmployeeForm(isNew){
     hookahRate: integerOrNull(form.elements.hookahRate.value),
     startDate: form.elements.startDate.value || null,
     birthDate: form.elements.birthDate.value || null,
-    scheduleFrom: form.elements.scheduleFrom.value ? `${form.elements.scheduleFrom.value}-01` : null,
-    scheduleUntil: form.elements.scheduleUntil.value ? `${form.elements.scheduleUntil.value}-01` : null,
+    scheduleUntil: form.elements.dismissDate.value || null,
     services: Array.from(app.querySelectorAll("[data-admin-service]")).map((row)=>{
       const canEdit = row.querySelector("input[name='canEdit']").checked;
       const canView = row.querySelector("input[name='canView']").checked || canEdit;
@@ -3684,7 +3694,6 @@ function emptyAdminEmployee(services){
     hookahRate: 300,
     startDate: "",
     birthDate: "",
-    scheduleFrom: "",
     scheduleUntil: "",
     hasPin: false,
     services: services.map((service)=>({

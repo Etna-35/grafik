@@ -27,7 +27,6 @@ const employeeBaseSchema = z.object({
   hookahRate: z.number().int().min(0).max(100000).nullable(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  scheduleFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   scheduleUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
   services: z.array(serviceAccessSchema).max(20)
 });
@@ -65,7 +64,6 @@ type EmployeeRow = {
   hookah_rate: number;
   start_date: string | null;
   birth_date: string | null;
-  schedule_from: string | null;
   schedule_until: string | null;
   has_pin: boolean;
 };
@@ -250,7 +248,6 @@ async function getAdminEmployees() {
           e.hookah_rate,
           e.start_date::text,
           e.birth_date::text,
-          e.schedule_from::text,
           e.schedule_until::text,
           EXISTS(SELECT 1 FROM employee_auth a WHERE a.employee_id = e.id) AS has_pin
         FROM employees e
@@ -301,7 +298,6 @@ async function getAdminEmployees() {
       hookahRate: employee.hookah_rate,
       startDate: employee.start_date,
       birthDate: employee.birth_date,
-      scheduleFrom: employee.schedule_from,
       scheduleUntil: employee.schedule_until,
       hasPin: employee.has_pin,
       services: services.map((service) => {
@@ -336,10 +332,9 @@ async function createEmployee(data: z.infer<typeof createEmployeeSchema>) {
           hookah_rate,
           start_date,
           birth_date,
-          schedule_from,
           schedule_until
         )
-        VALUES ($1, $2::employee_role, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        VALUES ($1, $2::employee_role, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING id
       `,
       [
@@ -354,7 +349,6 @@ async function createEmployee(data: z.infer<typeof createEmployeeSchema>) {
         data.hookahRate || 0,
         data.startDate || null,
         data.birthDate || null,
-        data.scheduleFrom || null,
         data.scheduleUntil || null
       ]
     );
@@ -394,8 +388,7 @@ async function updateEmployee(employeeId: string, data: z.infer<typeof updateEmp
             hookah_rate = $10,
             start_date = $11,
             birth_date = $12,
-            schedule_from = $13,
-            schedule_until = $14,
+            schedule_until = $13,
             updated_at = now()
         WHERE id = $1
       `,
@@ -412,7 +405,6 @@ async function updateEmployee(employeeId: string, data: z.infer<typeof updateEmp
         data.hookahRate || 0,
         data.startDate || null,
         data.birthDate || null,
-        data.scheduleFrom || null,
         data.scheduleUntil || null
       ]
     );
