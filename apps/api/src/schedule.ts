@@ -414,15 +414,21 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     `
       SELECT id, display_name, role, schedule_role, default_hours, hourly_rate, pay_model, birth_date::text
       FROM employees
-      WHERE is_active = true
-        AND (
-          schedule_role IS NOT NULL
-          OR id IN (
-            SELECT employee_id
-            FROM schedule_shifts
-            WHERE work_date >= $1::date
-              AND work_date < ($1::date + interval '1 month')
-          )
+      WHERE
+        -- Историю показываем ВСЕГДА: кто работал в этом месяце (даже архивный) остаётся при пролистывании назад.
+        id IN (
+          SELECT employee_id
+          FROM schedule_shifts
+          WHERE work_date >= $1::date
+            AND work_date < ($1::date + interval '1 month')
+        )
+        -- Активный ростер месяца: в графике, не архивный, и месяц попадает в окно «в графике с/по».
+        OR (
+          is_active = true
+          AND archived_at IS NULL
+          AND schedule_role IS NOT NULL
+          AND ($1::date >= schedule_from OR schedule_from IS NULL)
+          AND ($1::date <= schedule_until OR schedule_until IS NULL)
         )
       ORDER BY
         CASE COALESCE(schedule_role, role::text)

@@ -3439,6 +3439,18 @@ function renderEmployeeForm(admin){
       </div>
       ${employee.startDate ? `<div class="hint">Стаж: ${escapeHtml(formatTenure(employee.startDate))}</div>` : ""}
 
+      <div class="two">
+        <label class="field">
+          <span>В графике с месяца</span>
+          <input name="scheduleFrom" type="month" value="${employee.scheduleFrom ? employee.scheduleFrom.slice(0,7) : ""}">
+        </label>
+        <label class="field">
+          <span>В графике по месяц</span>
+          <input name="scheduleUntil" type="month" value="${employee.scheduleUntil ? employee.scheduleUntil.slice(0,7) : ""}">
+        </label>
+      </div>
+      <div class="hint">Пусто — без ограничений. Месяцы, где сотрудник реально работал (есть смены), показываются всегда.</div>
+
       <div class="access-box">
         <div class="row-title">Доступы</div>
         <div class="row-sub">Раздел виден сотруднику только при включённом доступе</div>
@@ -3605,6 +3617,8 @@ function collectAdminEmployeeForm(isNew){
     hookahRate: integerOrNull(form.elements.hookahRate.value),
     startDate: form.elements.startDate.value || null,
     birthDate: form.elements.birthDate.value || null,
+    scheduleFrom: form.elements.scheduleFrom.value ? `${form.elements.scheduleFrom.value}-01` : null,
+    scheduleUntil: form.elements.scheduleUntil.value ? `${form.elements.scheduleUntil.value}-01` : null,
     services: Array.from(app.querySelectorAll("[data-admin-service]")).map((row)=>{
       const canEdit = row.querySelector("input[name='canEdit']").checked;
       const canView = row.querySelector("input[name='canView']").checked || canEdit;
@@ -3634,6 +3648,8 @@ function emptyAdminEmployee(services){
     hookahRate: 300,
     startDate: "",
     birthDate: "",
+    scheduleFrom: "",
+    scheduleUntil: "",
     hasPin: false,
     services: services.map((service)=>({
       code: service.code,
