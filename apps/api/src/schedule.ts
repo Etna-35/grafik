@@ -697,6 +697,18 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     ? Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.paid, 0)
     : 0;
 
+  // «Осталось выплатить» (грандитог) = СУММА остатков по сотрудникам, той же формулой, что в карточках:
+  // max(0, смены + премии/цели/кэш-серии − выплачено). Раньше считалось как (ФОТ смен − выдано) и занижалось,
+  // т.к. ФОТ не включает премии, а остаток у сотрудника — включает.
+  let totalRemaining = 0;
+  if (canSeeAllMoney) {
+    for (const employee of employeeRows.rows) {
+      const t = employeeTotals.get(employee.id) || { accrued: 0, paid: 0, shifts: 0 };
+      const extras = extrasByEmp.get(employee.id) || 0;
+      totalRemaining += Math.max(0, t.accrued + extras - t.paid);
+    }
+  }
+
   // Индивидуальные ставки на этот месяц (перекрывают штатную ставку сотрудника в графике/при добавлении смен).
   const monthRateRows = await query<{ employee_id: string; hourly_rate: number }>(
     "SELECT employee_id::text, hourly_rate FROM schedule_month_rates WHERE year = $1 AND month = $2",
@@ -753,7 +765,7 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     summary: {
       totalFot,
       totalPaid,
-      totalRemaining: Math.max(0, totalFot - totalPaid),
+      totalRemaining,
       workingDays: daysWithShifts.size,
       revenuePlan: canSeeAllMoney ? planRange(totalFot) : null
     }
