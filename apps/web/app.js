@@ -4786,7 +4786,10 @@ function renderShiftCell(day, employee, canSeeMoney){
       ? !canSeeMoney || shift.payAmount == null ? "✓" : compactCellMoney(shift.payAmount)
       : shift.hours == null ? "•" : formatHours(shift.hours)
     : "";
-  const valueClass = isFixedShift(employee, shift) ? "h fx" : "h";
+  const dayPart = shift?.dayPart;
+  const dpClass = dayPart === "morning" ? " dp-morning" : dayPart === "evening" ? " dp-evening" : "";
+  const dpTitle = dayPart === "morning" ? "Утренняя смена" : dayPart === "evening" ? "Вечерняя смена" : "";
+  const valueClass = (isFixedShift(employee, shift) ? "h fx" : "h") + dpClass;
   const isBirthday = employee.birthDate && day.date.slice(5) === employee.birthDate.slice(5);
   let bdayAge = null;
   if(isBirthday && employee.birthDate.length >= 4){
@@ -4799,7 +4802,7 @@ function renderShiftCell(day, employee, canSeeMoney){
 
   return `
     <td class="${classes}${isBirthday ? " bday" : ""}" data-schedule-cell="1" data-date="${escapeAttr(day.date)}" data-employee="${escapeAttr(employee.id)}">
-      <span class="${valueClass}" style="${shift ? `background:${roleColor(shift.roleOverride || employee.role)}` : ""}">${label}</span>
+      <span class="${valueClass}"${dpTitle ? ` title="${escapeAttr(dpTitle)}"` : ""} style="${shift ? `background:${roleColor(shift.roleOverride || employee.role)}` : ""}">${label}</span>
       ${isBirthday ? `<span class="bday-mark" title="${escapeAttr(bdayTitle)}">ДР${bdayAge!=null ? `<i>${bdayAge}</i>` : ""}</span>` : ""}
       ${renderScoreDots(score)}
     </td>
@@ -4986,6 +4989,15 @@ function renderScheduleEditor(service){
       <label class="field">
         <span>Должность в этот день</span>
         <select id="shiftRole" data-editor-role>${roleOpts}</select>
+      </label>
+
+      <label class="field mt-10">
+        <span>Часть дня</span>
+        <select id="shiftDayPart">
+          <option value="" ${!shift?.dayPart ? "selected" : ""}>Весь день</option>
+          <option value="morning" ${shift?.dayPart === "morning" ? "selected" : ""}>Утренняя</option>
+          <option value="evening" ${shift?.dayPart === "evening" ? "selected" : ""}>Вечерняя</option>
+        </select>
       </label>
 
       ${roleIsFixed ? `
@@ -5542,21 +5554,28 @@ function scheduleContext(date, employeeId){
   return { day, employee, shift, employeePayouts, score };
 }
 
+function selectedDayPart(){
+  const sel = app.querySelector("#shiftDayPart");
+  return sel ? (sel.value || null) : null;
+}
+
 async function saveSelectedShift(context){
   const value = Number(app.querySelector("#shiftValue")?.value);
   if(!Number.isFinite(value) || value <= 0) return;
   const roleSel = app.querySelector("#shiftRole");
   const roleOverride = roleSel ? roleSel.value : undefined;
+  const dayPart = selectedDayPart();
   const roleIsFixed = roleOverride === "dish" || roleOverride === "dishwasher";
   if(roleIsFixed){
-    await saveShiftFor(context, { payAmount: Math.round(value), roleOverride });
+    await saveShiftFor(context, { payAmount: Math.round(value), roleOverride, dayPart });
     return;
   }
   const rate = Number(app.querySelector("#shiftRate")?.value);
   await saveShiftFor(context, {
     hours: value,
     rate: Number.isFinite(rate) && rate > 0 ? Math.round(rate) : undefined,
-    roleOverride
+    roleOverride,
+    dayPart
   });
 }
 
@@ -5569,14 +5588,16 @@ async function saveShiftFor(context, values){
   if(values.hours != null) body.hours = values.hours;
   if(values.rate != null) body.rate = values.rate;
   if(values.roleOverride !== undefined) body.roleOverride = values.roleOverride;
+  if(values.dayPart !== undefined) body.dayPart = values.dayPart || null;
   await saveAndReload(()=>apiPut("/api/schedule/shifts", body));
 }
 
 async function saveFixedPreset(context, payAmount){
   const roleSel = app.querySelector("#shiftRole");
   const roleOverride = roleSel ? roleSel.value : undefined;
+  const dayPart = selectedDayPart();
   state.selectedScheduleCell = null;
-  await saveShiftFor(context, { payAmount, roleOverride });
+  await saveShiftFor(context, { payAmount, roleOverride, dayPart });
 }
 
 async function deleteSelectedShift(context){

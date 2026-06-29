@@ -40,7 +40,8 @@ const shiftEditSchema = employeeDateSchema.extend({
   hours: z.number().positive().max(24).optional(),
   payAmount: z.number().int().positive().max(100000).optional(),
   roleOverride: z.enum(["cook", "bar", "waiter", "dish", "other"]).nullable().optional(),
-  rate: z.number().int().positive().max(100000).optional()
+  rate: z.number().int().positive().max(100000).optional(),
+  dayPart: z.enum(["morning", "evening"]).nullable().optional()
 });
 
 // Сотрудник правит СВОИ отработанные часы за смену через время начала/конца (только в меньшую сторону).
@@ -510,10 +511,11 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     pay_amount: number | null;
     pay_model: string | null;
     role_override: string | null;
+    day_part: string | null;
   }>(
     `
       SELECT work_date::text, employee_id, planned_hours, actual_end_time::text,
-             planned_start_time::text, planned_end_time::text, pay_amount, pay_model, role_override
+             planned_start_time::text, planned_end_time::text, pay_amount, pay_model, role_override, day_part
       FROM schedule_shifts
       WHERE work_date >= $1::date
         AND work_date < ($1::date + interval '1 month')
@@ -582,7 +584,8 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       endTime: row.planned_end_time ? row.planned_end_time.slice(0, 5) : null,
       payAmount: canSeeAllMoney ? row.pay_amount || 0 : null,
       payModel: row.pay_model,
-      roleOverride: row.role_override || null
+      roleOverride: row.role_override || null,
+      dayPart: row.day_part || null
     };
     shiftsByDate.set(date, {
       ...(shiftsByDate.get(date) || {}),
@@ -811,19 +814,21 @@ async function upsertShift(
         pay_amount,
         pay_model,
         role_override,
+        day_part,
         created_by,
         updated_by
       )
-      VALUES ($1::date, $2, $3, $4, $5, $6, $7, $7)
+      VALUES ($1::date, $2, $3, $4, $5, $6, $7, $8, $8)
       ON CONFLICT (work_date, employee_id) DO UPDATE
       SET planned_hours = excluded.planned_hours,
           pay_amount = excluded.pay_amount,
           pay_model = excluded.pay_model,
           role_override = excluded.role_override,
+          day_part = excluded.day_part,
           updated_by = excluded.updated_by,
           updated_at = now()
     `,
-    [data.workDate, data.employeeId, plannedHours, payAmount, payModel, roleOverrideToStore, actorEmployeeId]
+    [data.workDate, data.employeeId, plannedHours, payAmount, payModel, roleOverrideToStore, data.dayPart ?? null, actorEmployeeId]
   );
 
   return { ok: true, payAmount, plannedHours, payModel };
