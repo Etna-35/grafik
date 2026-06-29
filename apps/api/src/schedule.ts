@@ -41,7 +41,11 @@ const shiftEditSchema = employeeDateSchema.extend({
   payAmount: z.number().int().positive().max(100000).optional(),
   roleOverride: z.enum(["cook", "bar", "waiter", "dish", "other"]).nullable().optional(),
   rate: z.number().int().positive().max(100000).optional(),
-  dayPart: z.enum(["morning", "evening"]).nullable().optional()
+  dayPart: z.enum(["morning", "evening"]).nullable().optional(),
+  // Корпоратив/спецмероприятие: разовая выплата (не почасовая) + краткая инфо на дне.
+  corporate: z.boolean().optional(),
+  eventTitle: z.string().trim().max(120).nullable().optional(),
+  eventNote: z.string().trim().max(1000).nullable().optional()
 });
 
 // Сотрудник правит СВОИ отработанные часы за смену через время начала/конца (только в меньшую сторону).
@@ -524,9 +528,9 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     [start]
   );
 
-  const dayRows = await query<{ work_date: string; is_deadline: boolean }>(
+  const dayRows = await query<{ work_date: string; is_deadline: boolean; event_title: string | null; event_note: string | null }>(
     `
-      SELECT work_date::text, is_deadline
+      SELECT work_date::text, is_deadline, event_title, event_note
       FROM schedule_days
       WHERE work_date >= $1::date
         AND work_date < ($1::date + interval '1 month')
@@ -658,9 +662,12 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
   const days = buildMonthDays(year, month).map((date) => {
     const shifts = (shiftsByDate.get(date) || {}) as Record<string, { payAmount?: number }>;
     const dayFot = Object.values(shifts).reduce<number>((sum, value) => sum + Number(value.payAmount || 0), 0);
+    const dayMeta = dayRows.rows.find((row) => row.work_date === date);
     return {
       date,
-      isDeadline: dayRows.rows.some((row) => row.work_date === date && row.is_deadline),
+      isDeadline: dayMeta?.is_deadline || false,
+      eventTitle: dayMeta?.event_title || null,
+      eventNote: dayMeta?.event_note || null,
       plannedPayEmployeeIds: plannedPayRows.rows
         .filter((row) => row.work_date === date && (canSeeAllMoney || row.employee_id === user.id))
         .map((row) => row.employee_id),
@@ -777,6 +784,33 @@ async function upsertShift(
   const employee = employeeResult.rows[0];
   if (!employee) {
     throw new Error("Employee not found");
+  }
+
+  // Корпоратив/спецмероприятие: разовая выплата (не почасовая), без роли дня и часов.
+  // Краткая инфо о мероприятии хранится на дне (показывается сотруднику по клику на дату).
+  if (data.corporate) {
+    const amount = Math.round(Number(data.payAmount || 0));
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new Error("Bad event amount");
+    }
+    await ensureScheduleDay(data.workDate);
+    await query(
+      `
+        INSERT INTO schedule_shifts (work_date, employee_id, planned_hours, pay_amount, pay_model, role_override, day_part, created_by, updated_by)
+        VALUES ($1::date, $2, NULL, $3, 'event', NULL, NULL, $4, $4)
+        ON CONFLICT (work_date, employee_id) DO UPDATE
+        SET planned_hours = NULL, pay_amount = excluded.pay_amount, pay_model = 'event',
+            role_override = NULL, day_part = NULL, updated_by = excluded.updated_by, updated_at = now()
+      `,
+      [data.workDate, data.employeeId, amount, actorEmployeeId]
+    );
+    if (data.eventTitle !== undefined || data.eventNote !== undefined) {
+      await query(
+        "UPDATE schedule_days SET event_title = $2, event_note = $3, updated_at = now() WHERE work_date = $1::date",
+        [data.workDate, data.eventTitle ?? null, data.eventNote ?? null]
+      );
+    }
+    return { ok: true, payAmount: amount, plannedHours: null, payModel: "event" };
   }
 
   // Роль дня: переопределение (если выбрано) либо штатная роль сотрудника. От неё зависит модель оплаты.

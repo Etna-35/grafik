@@ -236,6 +236,8 @@ a{color:inherit;text-decoration:none}
 .schedule-grid .dmarks{display:flex;gap:3px;align-items:center;margin-top:3px;min-height:11px}
 .markIcon{display:inline-flex;align-items:center;justify-content:center;min-width:13px;height:13px;padding:0 3px;color:var(--ink);font-size:10px;font-weight:600;line-height:1;border:1px solid var(--line-strong);border-radius:var(--r-sm);background:rgba(255,255,255,.05)}
 .markIcon.star{font-size:11px;font-weight:700}
+.markIcon.ev{color:var(--brand-ink);background:var(--brand);border-color:var(--brand);font-weight:700}
+.schedule-grid .colDate.hasEvent{cursor:pointer}
 .schedule-grid tr.we .colDate,.schedule-grid tr.we td.cell{background:var(--weekend)}
 .schedule-grid tr.we .dcell .dwd{color:var(--brand-bright)}
 .schedule-grid tr.today .colDate{box-shadow:inset 3px 0 0 var(--brand)}
@@ -250,6 +252,9 @@ a{color:inherit;text-decoration:none}
 /* Часть дня: цвет должности сохраняется, сверху плашки мягкий градиент — утро (тёплый рассвет) / вечер (прохладные сумерки). Текст по центру остаётся читаемым. */
 .schedule-grid td.cell .h.dp-morning::before{content:"";position:absolute;left:0;right:0;top:0;height:58%;pointer-events:none;background:linear-gradient(to bottom,rgba(255,233,170,.95),rgba(255,233,170,0))}
 .schedule-grid td.cell .h.dp-evening::before{content:"";position:absolute;left:0;right:0;top:0;height:58%;pointer-events:none;background:linear-gradient(to bottom,rgba(96,124,200,.9),rgba(96,124,200,0))}
+/* Корпоратив: золотая плашка с буквой «К» — выделяется среди цветов должностей. */
+.schedule-grid td.cell .h.ev{background:var(--brand);color:var(--brand-ink);font-weight:700;font-family:var(--font-display)}
+.event-note{font-size:13px;line-height:1.5;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;margin-top:2px}
 .schedule-grid td.cell.payday::before{content:"";position:absolute;inset:1px;border:2px solid var(--payday);border-radius:5px;background:var(--brand-tint);pointer-events:none;z-index:0}
 .schedule-grid td.cell .scoreDots{position:absolute;left:50%;bottom:2px;transform:translateX(-50%);display:flex;gap:2px;align-items:center;justify-content:center;z-index:2;pointer-events:none}
 .scoreDot{display:inline-block;width:5px;height:5px;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.55)}

@@ -65,10 +65,12 @@ let state = {
   scheduleSaveError: "",
   selectedScheduleCell: null,
   scheduleEditorRole: null,
+  scheduleEditorKind: null,
   selectedScheduleDate: null,
   selectedDateEmployeeId: null,
   selectedMyHoursDate: null,
   selectedRosterEmployeeId: null,
+  selectedEventDate: null,
   editingPayoutId: null,
   scheduleSaving: false,
   scheduleEditUnlocked: false,
@@ -4580,6 +4582,7 @@ function renderSchedulePage(service){
         ${renderScheduleEditor(service)}
         ${renderScheduleDateEditor(service)}
         ${renderRosterEditor(service)}
+        ${renderEventPopup()}
         ${renderMyHoursEditor()}
         ${state.scheduleSaveError ? `<div class="panel save-error">${escapeHtml(state.scheduleSaveError)}</div>` : ""}
         ${body}
@@ -4619,6 +4622,7 @@ function renderSchedulePage(service){
       state.selectedScheduleDate = null;
       state.selectedMyHoursDate = null;
       state.selectedRosterEmployeeId = null;
+      state.selectedEventDate = null;
       state.schedule = null;
       loadSchedule(base.getFullYear(), base.getMonth() + 1);
     });
@@ -4627,6 +4631,7 @@ function renderSchedulePage(service){
   bindScheduleEditor();
   bindScheduleDateEditor();
   bindRosterEditor();
+  bindEventPopup();
   bindMyHoursEditor();
 
   // Клик по имени сотрудника в шапке (замок открыт) — ставка/состав на месяц.
@@ -4754,11 +4759,11 @@ function renderScheduleDay(day, employees, canSeeMoney){
     && date.getDate() === today.getDate();
   return `
     <tr class="${isWeekend ? "we" : ""} ${isToday ? "today" : ""}">
-      <td class="colDate markDate" data-schedule-date="${escapeAttr(day.date)}">
+      <td class="colDate markDate${day.eventTitle ? " hasEvent" : ""}" data-schedule-date="${escapeAttr(day.date)}"${day.eventTitle ? ` title="${escapeAttr(day.eventTitle)}"` : ""}>
         <div class="dcell">
           <span class="dnum">${date.getDate()}</span>
           <span class="dwd">${weekdayShort(date)}</span>
-          ${day.isDeadline ? `<div class="dmarks"><span class="markIcon star" title="Дедлайн">☆</span></div>` : ""}
+          ${(day.isDeadline || day.eventTitle) ? `<div class="dmarks">${day.isDeadline ? `<span class="markIcon star" title="Дедлайн">☆</span>` : ""}${day.eventTitle ? `<span class="markIcon ev" title="Корпоратив">К</span>` : ""}</div>` : ""}
         </div>
       </td>
       ${employees.map((employee)=>renderShiftCell(day, employee, canSeeMoney)).join("")}
@@ -4781,15 +4786,20 @@ function renderShiftCell(day, employee, canSeeMoney){
     hasPayout && !shift ? "payoutEmpty" : ""
   ].filter(Boolean).join(" ");
 
-  const label = shift
-    ? isFixedShift(employee, shift)
-      ? !canSeeMoney || shift.payAmount == null ? "✓" : compactCellMoney(shift.payAmount)
-      : shift.hours == null ? "•" : formatHours(shift.hours)
-    : "";
-  const dayPart = shift?.dayPart;
+  const isEvent = shift?.payModel === "event";
+  const label = !shift
+    ? ""
+    : isEvent
+      ? "К"
+      : isFixedShift(employee, shift)
+        ? !canSeeMoney || shift.payAmount == null ? "✓" : compactCellMoney(shift.payAmount)
+        : shift.hours == null ? "•" : formatHours(shift.hours);
+  const dayPart = isEvent ? null : shift?.dayPart;
   const dpClass = dayPart === "morning" ? " dp-morning" : dayPart === "evening" ? " dp-evening" : "";
-  const dpTitle = dayPart === "morning" ? "Утренняя смена" : dayPart === "evening" ? "Вечерняя смена" : "";
-  const valueClass = (isFixedShift(employee, shift) ? "h fx" : "h") + dpClass;
+  const dpTitle = isEvent
+    ? (day.eventTitle ? `Корпоратив: ${day.eventTitle}` : "Корпоратив")
+    : dayPart === "morning" ? "Утренняя смена" : dayPart === "evening" ? "Вечерняя смена" : "";
+  const valueClass = (isEvent ? "h ev" : isFixedShift(employee, shift) ? "h fx" : "h") + dpClass;
   const isBirthday = employee.birthDate && day.date.slice(5) === employee.birthDate.slice(5);
   let bdayAge = null;
   if(isBirthday && employee.birthDate.length >= 4){
@@ -4802,7 +4812,7 @@ function renderShiftCell(day, employee, canSeeMoney){
 
   return `
     <td class="${classes}${isBirthday ? " bday" : ""}" data-schedule-cell="1" data-date="${escapeAttr(day.date)}" data-employee="${escapeAttr(employee.id)}">
-      <span class="${valueClass}"${dpTitle ? ` title="${escapeAttr(dpTitle)}"` : ""} style="${shift ? `background:${roleColor(shift.roleOverride || employee.role)}` : ""}">${label}</span>
+      <span class="${valueClass}"${dpTitle ? ` title="${escapeAttr(dpTitle)}"` : ""} style="${shift && !isEvent ? `background:${roleColor(shift.roleOverride || employee.role)}` : ""}">${label}</span>
       ${isBirthday ? `<span class="bday-mark" title="${escapeAttr(bdayTitle)}">ДР${bdayAge!=null ? `<i>${bdayAge}</i>` : ""}</span>` : ""}
       ${renderScoreDots(score)}
     </td>
@@ -4966,6 +4976,7 @@ function renderScheduleEditor(service){
   const { day, employee, shift } = context;
   const dateLabel = formatDateHuman(day.date);
   const defaultRole = employee.role;
+  const kind = state.scheduleEditorKind || (shift?.payModel === "event" ? "event" : "shift");
   const selRole = state.scheduleEditorRole || shift?.roleOverride || defaultRole;
   const roleIsFixed = selRole === "dish" || selRole === "dishwasher";
   const isOverride = selRole !== defaultRole;
@@ -4976,31 +4987,35 @@ function renderScheduleEditor(service){
     : Math.round(employee.hourlyRate || 0);
   const roleOpts = scheduleRoleOptions().map((o)=>`<option value="${o.value}" ${selRole === o.value ? "selected" : ""}>${o.label}</option>`).join("");
 
-  return `
-    <div class="panel editor-panel">
-      <div class="editor-head">
-        <span class="grow">
-          <span class="row-title">${escapeHtml(employee.name)}</span>
-          <span class="row-sub">${dateLabel} · ${isOverride ? "роль на день" : (roleIsFixed ? "ставка смены" : "нестандартные часы")}</span>
-        </span>
-        <button class="iconbtn small" data-editor-action="close">×</button>
-      </div>
+  const eventAmount = shift?.payModel === "event" ? Math.round(shift.payAmount || 0) : "";
+  const eventTitle = day.eventTitle || "";
+  const eventNote = day.eventNote || "";
 
+  const kindSelect = `
       <label class="field">
-        <span>Должность в этот день</span>
-        <select id="shiftRole" data-editor-role>${roleOpts}</select>
-      </label>
-
-      <label class="field mt-10">
-        <span>Часть дня</span>
-        <select id="shiftDayPart">
-          <option value="" ${!shift?.dayPart ? "selected" : ""}>Весь день</option>
-          <option value="morning" ${shift?.dayPart === "morning" ? "selected" : ""}>Утренняя</option>
-          <option value="evening" ${shift?.dayPart === "evening" ? "selected" : ""}>Вечерняя</option>
+        <span>Тип смены</span>
+        <select id="shiftKind" data-editor-kind>
+          <option value="shift" ${kind !== "event" ? "selected" : ""}>Обычная</option>
+          <option value="event" ${kind === "event" ? "selected" : ""}>Корпоратив / спецмероприятие</option>
         </select>
-      </label>
+      </label>`;
 
-      ${roleIsFixed ? `
+  const body = kind === "event"
+    ? `
+      <div class="editor-grid mt-10">
+        <label class="field"><span>Выплата за мероприятие, ₽</span>
+          <input id="eventAmount" type="number" min="0" step="100" inputmode="numeric" value="${escapeAttr(eventAmount)}" placeholder="напр. 5000"></label>
+      </div>
+      <label class="field mt-10"><span>Название мероприятия</span>
+        <input id="eventTitle" type="text" maxlength="120" value="${escapeAttr(eventTitle)}" placeholder="напр. Корпоратив «Газпром»"></label>
+      <label class="field mt-10"><span>Кратко для сотрудников</span>
+        <textarea id="eventNote" maxlength="1000" rows="2" placeholder="Во сколько, форма одежды, что важно знать">${escapeHtml(eventNote)}</textarea></label>
+      <div class="editor-grid mt-10">
+        <button class="ghost brand-action" data-editor-action="save-shift">${shift ? "Сохранить" : "Поставить"}</button>
+        ${shift ? `<button class="ghost danger-action" data-editor-action="delete-shift">Снять смену</button>` : ""}
+      </div>
+      <div class="hint hint-block-sm">Разовая выплата (не почасовая). Инфо о мероприятии увидят сотрудники по клику на дату.</div>`
+    : roleIsFixed ? `
         <div class="editor-grid mt-10">
           <label class="field"><span>Своя сумма</span>
             <input id="shiftValue" type="number" min="0" step="100" value="${escapeAttr(fixedValue)}"></label>
@@ -5021,9 +5036,40 @@ function renderScheduleEditor(service){
           <button class="ghost brand-action" data-editor-action="save-shift">${shift ? "Сохранить" : "Поставить"}</button>
           ${shift ? `<button class="ghost danger-action" data-editor-action="delete-shift">Снять смену</button>` : ""}
         </div>
-      `}
+      `;
 
-      ${isOverride ? `<div class="hint hint-block-sm">Этот день будет цветом роли «${escapeHtml(roleLabelOf(selRole))}»</div>` : ""}
+  const subLabel = kind === "event" ? "корпоратив" : (isOverride ? "роль на день" : (roleIsFixed ? "ставка смены" : "нестандартные часы"));
+
+  return `
+    <div class="panel editor-panel">
+      <div class="editor-head">
+        <span class="grow">
+          <span class="row-title">${escapeHtml(employee.name)}</span>
+          <span class="row-sub">${dateLabel} · ${subLabel}</span>
+        </span>
+        <button class="iconbtn small" data-editor-action="close">×</button>
+      </div>
+
+      ${kindSelect}
+
+      ${kind === "event" ? "" : `
+      <label class="field mt-10">
+        <span>Должность в этот день</span>
+        <select id="shiftRole" data-editor-role>${roleOpts}</select>
+      </label>
+
+      <label class="field mt-10">
+        <span>Часть дня</span>
+        <select id="shiftDayPart">
+          <option value="" ${!shift?.dayPart ? "selected" : ""}>Весь день</option>
+          <option value="morning" ${shift?.dayPart === "morning" ? "selected" : ""}>Утренняя</option>
+          <option value="evening" ${shift?.dayPart === "evening" ? "selected" : ""}>Вечерняя</option>
+        </select>
+      </label>`}
+
+      ${body}
+
+      ${kind !== "event" && isOverride ? `<div class="hint hint-block-sm">Этот день будет цветом роли «${escapeHtml(roleLabelOf(selRole))}»</div>` : ""}
       ${state.scheduleSaving ? `<div class="import-result">Сохраняю</div>` : ""}
     </div>
   `;
@@ -5205,6 +5251,33 @@ async function hideEmployeeFromMonth(employeeId){
   await saveAndReload(()=>apiPut("/api/schedule/roster-window", { employeeId, scheduleUntil: until }));
 }
 
+// Окно с инфо о корпоративе (видит любой по клику на дату с меткой «К»).
+function renderEventPopup(){
+  if(!state.schedule || !state.selectedEventDate) return "";
+  const day = state.schedule.days.find((d)=>d.date === state.selectedEventDate);
+  if(!day || !day.eventTitle) return "";
+  return `
+    <div class="panel editor-panel event-popup">
+      <div class="editor-head">
+        <span class="grow">
+          <span class="row-title">${escapeHtml(day.eventTitle)}</span>
+          <span class="row-sub">${formatDateHuman(day.date)} · корпоратив</span>
+        </span>
+        <button class="iconbtn small" data-event-action="close">×</button>
+      </div>
+      ${day.eventNote ? `<div class="event-note">${escapeHtml(day.eventNote)}</div>` : `<div class="hint hint-block-sm">Подробности уточняй у руководителя.</div>`}
+    </div>
+  `;
+}
+
+function bindEventPopup(){
+  if(!state.selectedEventDate) return;
+  app.querySelector("[data-event-action='close']")?.addEventListener("click", ()=>{
+    state.selectedEventDate = null;
+    render();
+  });
+}
+
 function renderMyHoursEditor(){
   if(!state.schedule || !state.selectedMyHoursDate) return "";
   const context = scheduleContext(state.selectedMyHoursDate, state.user?.id);
@@ -5366,11 +5439,21 @@ function openMyHoursEditor(cell){
 }
 
 function bindScheduleDates(service){
+  const unlocked = isScheduleEditingUnlocked(service);
   app.querySelectorAll("[data-schedule-date]").forEach((cell)=>{
-    if(!isScheduleEditingUnlocked(service)) return;
-    cell.addEventListener("click", ()=>{
-      openDateEditor(cell.dataset.scheduleDate);
-    });
+    const date = cell.dataset.scheduleDate;
+    if(unlocked){
+      cell.addEventListener("click", ()=>openDateEditor(date));
+      return;
+    }
+    // Сотрудник (или замок закрыт): клик по дате с корпоративом — окно с инфо о мероприятии.
+    const day = state.schedule?.days.find((d)=>d.date === date);
+    if(day?.eventTitle){
+      cell.addEventListener("click", ()=>{
+        state.selectedEventDate = date;
+        render();
+      });
+    }
   });
 }
 
@@ -5382,6 +5465,7 @@ function openScheduleEditor(cell){
   };
   state.selectedScheduleDate = null;
   state.scheduleEditorRole = null;
+  state.scheduleEditorKind = null;
   state.scheduleSaveError = "";
   render();
 }
@@ -5429,6 +5513,14 @@ function bindScheduleEditor(){
   if(close){
     close.addEventListener("click", ()=>{
       state.selectedScheduleCell = null;
+      render();
+    });
+  }
+
+  const kindSel = app.querySelector("[data-editor-kind]");
+  if(kindSel){
+    kindSel.addEventListener("change", ()=>{
+      state.scheduleEditorKind = kindSel.value;
       render();
     });
   }
@@ -5560,6 +5652,18 @@ function selectedDayPart(){
 }
 
 async function saveSelectedShift(context){
+  // Корпоратив: разовая выплата + инфо о мероприятии.
+  if(app.querySelector("#shiftKind")?.value === "event"){
+    const amount = Number(app.querySelector("#eventAmount")?.value);
+    if(!Number.isFinite(amount) || amount <= 0){ state.scheduleSaveError = "Укажи выплату за мероприятие"; render(); return; }
+    await saveShiftFor(context, {
+      corporate: true,
+      payAmount: Math.round(amount),
+      eventTitle: app.querySelector("#eventTitle")?.value.trim() || null,
+      eventNote: app.querySelector("#eventNote")?.value.trim() || null
+    });
+    return;
+  }
   const value = Number(app.querySelector("#shiftValue")?.value);
   if(!Number.isFinite(value) || value <= 0) return;
   const roleSel = app.querySelector("#shiftRole");
@@ -5589,6 +5693,9 @@ async function saveShiftFor(context, values){
   if(values.rate != null) body.rate = values.rate;
   if(values.roleOverride !== undefined) body.roleOverride = values.roleOverride;
   if(values.dayPart !== undefined) body.dayPart = values.dayPart || null;
+  if(values.corporate) body.corporate = true;
+  if(values.eventTitle !== undefined) body.eventTitle = values.eventTitle;
+  if(values.eventNote !== undefined) body.eventNote = values.eventNote;
   await saveAndReload(()=>apiPut("/api/schedule/shifts", body));
 }
 
@@ -5772,6 +5879,7 @@ function clearSessionData(){
   state.selectedDateEmployeeId = null;
   state.selectedMyHoursDate = null;
   state.selectedRosterEmployeeId = null;
+  state.selectedEventDate = null;
   state.scheduleEditUnlocked = false;
   state.payroll = null;
   state.tasks = null;
