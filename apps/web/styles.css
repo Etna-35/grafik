@@ -670,6 +670,10 @@ button.day-block{cursor:pointer;font:inherit}
 .task-status{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.3px;padding:4px 9px;border:1px solid var(--line-strong);border-radius:var(--r-pill);white-space:nowrap;flex:none}
 .task-status.open{color:var(--gold);background:var(--gold-bg)}
 .task-status.done{color:var(--green);background:var(--ok-bg)}
+.task-status.pending{color:var(--brand-bright);background:var(--brand-tint);border-color:var(--brand-line)}
+.task-card.pending{border-color:var(--brand-line)}
+.task-reward.ok{color:var(--green)}
+.task-metric.accent{border-color:var(--brand-line);background:var(--brand-tint)}
 .training-phone{max-width:none}
 .training-screen{max-width:1120px;margin:0 auto}
 .training-hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(150px,220px);gap:14px;align-items:end;border:1px solid var(--line);background:linear-gradient(135deg,var(--card),var(--card-2));padding:16px;margin:0 2px 12px}

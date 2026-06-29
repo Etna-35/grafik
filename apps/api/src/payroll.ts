@@ -269,15 +269,16 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
     ),
     query<TaskRewardRow>(
       `
-        SELECT id::text, title, reward_amount, updated_at::text
+        SELECT id::text, title, reward_amount, approved_at::text AS updated_at
         FROM tasks
         WHERE employee_id = $2
           AND status = 'done'
+          AND approved_at IS NOT NULL
           AND reward_amount IS NOT NULL
           AND reward_amount > 0
-          AND updated_at >= $1::date
-          AND updated_at < ($1::date + interval '1 month')
-        ORDER BY updated_at DESC
+          AND approved_at >= $1::date
+          AND approved_at < ($1::date + interval '1 month')
+        ORDER BY approved_at DESC
       `,
       [start, user.id]
     ),

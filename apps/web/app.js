@@ -1788,7 +1788,9 @@ function renderTasksContent(tasks){
     <div class="task-metrics">
       <div class="task-metric"><span>Мои в работе</span><b>${ownTasks.filter((task)=>task.status === "open").length}</b></div>
       <div class="task-metric"><span>Мои готово</span><b>${ownTasks.filter((task)=>task.status === "done").length}</b></div>
-      <div class="task-metric"><span>У команды</span><b>${team.total || 0}</b></div>
+      ${tasks.canManage
+        ? `<div class="task-metric ${team.awaiting ? "accent" : ""}"><span>На проверке</span><b>${team.awaiting || 0}</b></div>`
+        : `<div class="task-metric"><span>У команды</span><b>${team.total || 0}</b></div>`}
       <div class="task-metric"><span>Сделано другими</span><b>${team.doneByOthers || 0}</b></div>
     </div>
 
@@ -2005,26 +2007,50 @@ function roleAudienceLabel(role){
 }
 
 function renderTaskCard(task, showEmployee){
+  const isRole = Boolean(task.audienceRole);
   const done = task.status === "done";
+  const approved = done && Boolean(task.approvedAt);
+  const awaiting = done && !isRole && !task.approvedAt; // личная: отмечена выполненной, ждёт приёмки
+
+  let statusLabel = "В работе", statusClass = "open";
+  if(done && isRole){ statusLabel = "Готово"; statusClass = "done"; }
+  else if(awaiting){ statusLabel = "На проверке"; statusClass = "pending"; }
+  else if(approved){ statusLabel = "Принято"; statusClass = "done"; }
+
+  const cardClass = awaiting ? "pending" : (done ? "done" : "open");
+  const rewardLabel = task.rewardAmount
+    ? `<span class="task-reward${approved ? " ok" : ""}">+${formatMoneyPlain(task.rewardAmount)} ₽${awaiting ? " · на проверке" : (approved ? " · начислена" : "")}</span>`
+    : "";
+
+  const actions = [];
+  // Готово/Вернуть: сотруднику — пока не принято; руководителю (команда) — всегда (может вернуть).
+  if(showEmployee || !approved){
+    actions.push(`<button class="ghost mini" type="button" data-task-status="${escapeAttr(task.id)}" data-status="${done ? "open" : "done"}">${done ? "Вернуть" : "Готово"}</button>`);
+  }
+  // Подтвердить приёмку: руководителю для личной задачи на проверке.
+  if(showEmployee && awaiting){
+    actions.push(`<button class="ghost mini brand-action" type="button" data-task-approve="${escapeAttr(task.id)}">Подтвердить</button>`);
+  }
+  if(showEmployee){
+    actions.push(`<button class="ghost mini danger-action" type="button" data-task-cancel="${escapeAttr(task.id)}">Снять</button>`);
+  }
+
   return `
-    <div class="task-card ${done ? "done" : "open"}">
+    <div class="task-card ${cardClass}">
       <div class="task-main">
         <div class="task-title-row">
           <span class="task-title">${escapeHtml(task.title)}</span>
-          <span class="task-status ${done ? "done" : "open"}">${done ? "Готово" : "В работе"}</span>
+          <span class="task-status ${statusClass}">${statusLabel}</span>
         </div>
         ${task.description ? `<div class="task-desc">${escapeHtml(task.description)}</div>` : ""}
         <div class="task-meta">
-          ${task.audienceRole ? `<span class="task-aud">Вся смена · ${roleAudienceLabel(task.audienceRole)}</span>` : (showEmployee && task.employeeName ? `<span>${escapeHtml(task.employeeName)}</span>` : "")}
+          ${isRole ? `<span class="task-aud">Вся смена · ${roleAudienceLabel(task.audienceRole)}</span>` : (showEmployee && task.employeeName ? `<span>${escapeHtml(task.employeeName)}</span>` : "")}
           ${task.deadlineDate ? `<span>${escapeHtml(formatDateHuman(task.deadlineDate))}</span>` : ""}
-          ${task.rewardAmount ? `<span class="task-reward">+${formatMoneyPlain(task.rewardAmount)} ₽</span>` : ""}
+          ${rewardLabel}
         </div>
       </div>
       <div class="task-actions">
-        <button class="ghost mini" type="button" data-task-status="${escapeAttr(task.id)}" data-status="${done ? "open" : "done"}">
-          ${done ? "Вернуть" : "Готово"}
-        </button>
-        ${showEmployee ? `<button class="ghost mini danger-action" type="button" data-task-cancel="${escapeAttr(task.id)}">Снять</button>` : ""}
+        ${actions.join("")}
       </div>
     </div>
   `;
@@ -2051,6 +2077,10 @@ function bindTasksPage(){
 
   app.querySelectorAll("[data-task-cancel]").forEach((button)=>{
     button.addEventListener("click", ()=>cancelTask(button.dataset.taskCancel));
+  });
+
+  app.querySelectorAll("[data-task-approve]").forEach((button)=>{
+    button.addEventListener("click", ()=>approveTask(button.dataset.taskApprove));
   });
 
   const handoverForm = app.querySelector("#handoverForm");
@@ -2169,6 +2199,11 @@ async function setTaskStatus(id, status){
 async function cancelTask(id){
   if(!id || state.tasksSaving) return;
   await saveTasksAction(()=>apiDelete(`/api/tasks/${encodeURIComponent(id)}`));
+}
+
+async function approveTask(id){
+  if(!id || state.tasksSaving) return;
+  await saveTasksAction(()=>apiPatch(`/api/tasks/${encodeURIComponent(id)}/approve`, {}));
 }
 
 async function saveTasksAction(action){

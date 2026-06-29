@@ -618,8 +618,8 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
   const [taskRewardByEmp, goalRewardByEmp, hookahByEmp, streakByEmp] = await Promise.all([
     query<{ employee_id: string; v: number }>(
       `SELECT employee_id, SUM(reward_amount)::int AS v FROM tasks
-       WHERE status = 'done' AND reward_amount IS NOT NULL AND reward_amount > 0
-         AND updated_at >= $1::date AND updated_at < ($1::date + interval '1 month')
+       WHERE status = 'done' AND approved_at IS NOT NULL AND reward_amount IS NOT NULL AND reward_amount > 0
+         AND approved_at >= $1::date AND approved_at < ($1::date + interval '1 month')
        GROUP BY employee_id`,
       [start]
     ),

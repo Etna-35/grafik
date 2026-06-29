@@ -34,6 +34,7 @@ type TaskRow = {
   deadline_date: string | null;
   reward_amount: number | null;
   status: string;
+  approved_at: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -49,6 +50,7 @@ type TeamSummaryRow = {
   open_total: string;
   done_total: string;
   done_by_others: string;
+  awaiting_total: string;
 };
 
 export function registerTaskRoutes(app: FastifyInstance): void {
@@ -123,29 +125,68 @@ export function registerTaskRoutes(app: FastifyInstance): void {
       return;
     }
 
+    // Возврат личной задачи в работу снимает приёмку: убираем approved_at и начисленные очки.
     await query(
       `
         UPDATE tasks
         SET status = $2::task_status,
+            approved_at = CASE WHEN $2 = 'open' THEN NULL ELSE approved_at END,
             updated_at = now()
         WHERE id = $1
       `,
       [params.data.id, parsed.data.status]
     );
+    if (parsed.data.status === "open" && task.employee_id) {
+      await query("DELETE FROM progress_events WHERE ref_type = 'task' AND ref_id = $1 AND kind = 'manager_task'", [params.data.id]);
+    }
     await audit(request, "task_status_update", user.id, "task", params.data.id, parsed.data);
-    if (parsed.data.status === "done" && task.status !== "done") {
-      if (task.employee_id) {
-        await awardPoints(task.employee_id, "manager_task", "Задание выполнено", "task", params.data.id);
-        if (teamChatId()) {
-          const info = await query<{ name: string }>(
-            `SELECT e.display_name AS name FROM tasks t JOIN employees e ON e.id = t.employee_id WHERE t.id = $1`,
-            [params.data.id]
-          );
-          const name = info.rows[0]?.name;
-          if (name) void sendMessage(teamChatId(), `✅ ${tgEscape(name)} завершил работу над личной задачей`).catch(() => {});
-        }
-      } else if (task.audience_role) {
-        await awardPointsToRole(task.audience_role, "role_task", "Задание смены выполнено", "task", params.data.id);
+    // ЛИЧНАЯ задача: отметка «выполнено» = только заявка на приёмку. Очки/ТГ/премия — после одобрения (см. /approve).
+    // РОЛЕВАЯ задача (вся смена): засчитывается сразу при «выполнено» (премии у неё нет).
+    if (parsed.data.status === "done" && task.status !== "done" && !task.employee_id && task.audience_role) {
+      await awardPointsToRole(task.audience_role, "role_task", "Задание смены выполнено", "task", params.data.id);
+    }
+    return { ok: true };
+  });
+
+  // Приёмка выполненной личной задачи руководителем: только теперь премия легитимна — очки + ТГ + учёт в доходе.
+  app.patch("/api/tasks/:id/approve", async (request, reply) => {
+    const user = await requireTaskManager(request, reply);
+    if (!user) return;
+
+    const params = taskParamsSchema.safeParse(request.params);
+    if (!params.success) {
+      await reply.code(400).send({ error: "bad_task" });
+      return;
+    }
+
+    const task = await getTaskOwner(params.data.id);
+    if (!task || !task.employee_id) {
+      await reply.code(404).send({ error: "not_found" });
+      return;
+    }
+    if (task.status !== "done") {
+      await reply.code(409).send({ error: "not_done" });
+      return;
+    }
+    if (task.approved_at) {
+      return { ok: true, alreadyApproved: true };
+    }
+
+    await query("UPDATE tasks SET approved_at = now(), updated_at = now() WHERE id = $1", [params.data.id]);
+    await awardPoints(task.employee_id, "manager_task", "Задание принято руководителем", "task", params.data.id);
+    await audit(request, "task_approve", user.id, "task", params.data.id, { rewardAmount: task.reward_amount ?? null });
+
+    if (teamChatId()) {
+      const info = await query<{ name: string }>(
+        "SELECT display_name AS name FROM employees WHERE id = $1",
+        [task.employee_id]
+      );
+      const name = info.rows[0]?.name;
+      if (name) {
+        const reward = task.reward_amount && task.reward_amount > 0
+          ? `\nПремия ${task.reward_amount.toLocaleString("ru-RU")} ₽ начислена 💰`
+          : "";
+        void sendMessage(teamChatId(), `✅ ${tgEscape(name)} выполнил личную задачу «${tgEscape(task.title)}»${reward}`).catch(() => {});
       }
     }
     return { ok: true };
@@ -215,6 +256,7 @@ async function getOwnTasks(employeeId: string, role: string): Promise<TaskRow[]>
         t.deadline_date::text,
         t.reward_amount,
         t.status::text,
+        t.approved_at::text,
         t.created_at::text,
         t.updated_at::text
       FROM tasks t
@@ -244,6 +286,7 @@ async function getTeamTasks(): Promise<TaskRow[]> {
         t.deadline_date::text,
         t.reward_amount,
         t.status::text,
+        t.approved_at::text,
         t.created_at::text,
         t.updated_at::text
       FROM tasks t
@@ -288,17 +331,18 @@ async function getTeamSummary(employeeId: string): Promise<TeamSummaryRow> {
         COUNT(*) FILTER (WHERE status <> 'cancelled')::text AS total,
         COUNT(*) FILTER (WHERE status = 'open')::text AS open_total,
         COUNT(*) FILTER (WHERE status = 'done')::text AS done_total,
-        COUNT(*) FILTER (WHERE status = 'done' AND employee_id <> $1)::text AS done_by_others
+        COUNT(*) FILTER (WHERE status = 'done' AND employee_id <> $1)::text AS done_by_others,
+        COUNT(*) FILTER (WHERE status = 'done' AND employee_id IS NOT NULL AND approved_at IS NULL)::text AS awaiting_total
       FROM tasks
     `,
     [employeeId]
   );
-  return result.rows[0] || { total: "0", open_total: "0", done_total: "0", done_by_others: "0" };
+  return result.rows[0] || { total: "0", open_total: "0", done_total: "0", done_by_others: "0", awaiting_total: "0" };
 }
 
-async function getTaskOwner(id: string): Promise<{ employee_id: string | null; audience_role: string | null; status: string } | undefined> {
-  const result = await query<{ employee_id: string | null; audience_role: string | null; status: string }>(
-    "SELECT employee_id::text, audience_role, status FROM tasks WHERE id = $1 AND status <> 'cancelled'",
+async function getTaskOwner(id: string): Promise<{ employee_id: string | null; audience_role: string | null; status: string; approved_at: string | null; reward_amount: number | null; title: string } | undefined> {
+  const result = await query<{ employee_id: string | null; audience_role: string | null; status: string; approved_at: string | null; reward_amount: number | null; title: string }>(
+    "SELECT employee_id::text, audience_role, status, approved_at::text, reward_amount, title FROM tasks WHERE id = $1 AND status <> 'cancelled'",
     [id]
   );
   return result.rows[0];
@@ -315,6 +359,9 @@ function serializeTask(task: TaskRow) {
     deadlineDate: task.deadline_date || "",
     rewardAmount: task.reward_amount ?? null,
     status: task.status,
+    approvedAt: task.approved_at || null,
+    // Личная задача, отмеченная выполненной, но ещё не принятая руководителем.
+    awaitingApproval: Boolean(task.employee_id) && task.status === "done" && !task.approved_at,
     createdAt: task.created_at,
     updatedAt: task.updated_at
   };
@@ -325,6 +372,7 @@ function serializeTeamSummary(summary: TeamSummaryRow) {
     total: Number(summary.total || 0),
     open: Number(summary.open_total || 0),
     done: Number(summary.done_total || 0),
-    doneByOthers: Number(summary.done_by_others || 0)
+    doneByOthers: Number(summary.done_by_others || 0),
+    awaiting: Number(summary.awaiting_total || 0)
   };
 }
