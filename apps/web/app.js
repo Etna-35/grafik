@@ -68,6 +68,7 @@ let state = {
   selectedScheduleDate: null,
   selectedDateEmployeeId: null,
   selectedMyHoursDate: null,
+  selectedRosterEmployeeId: null,
   editingPayoutId: null,
   scheduleSaving: false,
   scheduleEditUnlocked: false,
@@ -4534,6 +4535,7 @@ function renderSchedulePage(service){
         </div>
         ${renderScheduleEditor(service)}
         ${renderScheduleDateEditor(service)}
+        ${renderRosterEditor(service)}
         ${renderMyHoursEditor()}
         ${state.scheduleSaveError ? `<div class="panel save-error">${escapeHtml(state.scheduleSaveError)}</div>` : ""}
         ${body}
@@ -4553,6 +4555,7 @@ function renderSchedulePage(service){
     state.selectedScheduleCell = null;
     state.selectedScheduleDate = null;
     state.selectedMyHoursDate = null;
+    state.selectedRosterEmployeeId = null;
     render();
   });
 
@@ -4571,6 +4574,7 @@ function renderSchedulePage(service){
       state.selectedScheduleCell = null;
       state.selectedScheduleDate = null;
       state.selectedMyHoursDate = null;
+      state.selectedRosterEmployeeId = null;
       state.schedule = null;
       loadSchedule(base.getFullYear(), base.getMonth() + 1);
     });
@@ -4578,7 +4582,20 @@ function renderSchedulePage(service){
 
   bindScheduleEditor();
   bindScheduleDateEditor();
+  bindRosterEditor();
   bindMyHoursEditor();
+
+  // Клик по имени сотрудника в шапке (замок открыт) — ставка/состав на месяц.
+  app.querySelectorAll("[data-emp-header]").forEach((th)=>{
+    th.addEventListener("click", ()=>{
+      state.selectedRosterEmployeeId = th.dataset.empHeader;
+      state.selectedScheduleCell = null;
+      state.selectedScheduleDate = null;
+      state.selectedMyHoursDate = null;
+      state.scheduleSaveError = "";
+      render();
+    });
+  });
 }
 
 function renderScheduleImport(service){
@@ -4746,8 +4763,9 @@ function renderShiftCell(day, employee, canSeeMoney){
 }
 
 function renderEmployeeHeader(employee){
+  const editable = state.scheduleEditUnlocked;
   return `
-    <th class="emp" title="${escapeAttr(employee.name)}">
+    <th class="emp${editable ? " emp-editable" : ""}" title="${escapeAttr(employee.name)}"${editable ? ` data-emp-header="${escapeAttr(employee.id)}"` : ""}>
       <div class="nm">${escapeHtml(shortScheduleName(employee.name))}</div>
       <div class="bar" style="background:${roleColor(employee.role)}"></div>
     </th>
@@ -5050,6 +5068,85 @@ function renderScheduleDateEditor(service){
       ${state.scheduleSaving ? `<div class="import-result">Сохраняю</div>` : ""}
     </div>
   `;
+}
+
+// Редактор «состав/ставка на месяц» (замок открыт): клик по имени в шапке.
+function renderRosterEditor(service){
+  if(!isScheduleEditingUnlocked(service) || !state.schedule || !state.selectedRosterEmployeeId) return "";
+  const employee = state.schedule.employees.find((e)=>e.id === state.selectedRosterEmployeeId);
+  if(!employee) return "";
+  const monthTitle = formatScheduleMonth(state.schedule.year, state.schedule.month);
+  const isFixed = isFixedPayEmployee(employee);
+  const rateValue = employee.hourlyRate ?? employee.baseRate ?? "";
+  const base = employee.baseRate ?? 0;
+
+  return `
+    <div class="panel editor-panel">
+      <div class="editor-head">
+        <span class="grow">
+          <span class="row-title">${escapeHtml(employee.name)}</span>
+          <span class="row-sub">${escapeHtml(monthTitle)} · ставка и состав на месяц</span>
+        </span>
+        <button class="iconbtn small" data-roster-action="close">×</button>
+      </div>
+
+      ${isFixed ? `
+        <div class="hint hint-block-sm">У этой должности фиксированная оплата — индивидуальная ставка/час не применяется.</div>
+      ` : `
+        <label class="field"><span>Ставка/час на ${escapeHtml(monthTitle)}</span>
+          <input id="rosterRate" type="number" min="0" step="10" value="${escapeAttr(rateValue)}"></label>
+        <div class="hint hint-block-sm">Штатная ставка: ${base ? formatMoneyPlain(base) : "—"} ₽${employee.rateOverride ? " · сейчас задана своя на этот месяц" : ""}. Меняет смены только этого месяца — прошлые периоды без изменений.</div>
+        <div class="editor-grid editor-grid-2 mt-10">
+          <button class="ghost brand-action" data-roster-action="save-rate">Сохранить ставку</button>
+          ${employee.rateOverride ? `<button class="ghost" data-roster-action="reset-rate">Сбросить к штатной</button>` : ""}
+        </div>
+      `}
+
+      <div class="roster-sep"></div>
+      <div class="hint hint-block-sm">Состав месяца: скрой тех, кто больше не работает (история прошлых месяцев сохранится).</div>
+      <button class="ghost danger-action" data-roster-action="hide-from">Убрать из графика с ${escapeHtml(monthTitle)}</button>
+
+      ${state.scheduleSaving ? `<div class="import-result">Сохраняю</div>` : ""}
+    </div>
+  `;
+}
+
+function bindRosterEditor(){
+  if(!state.selectedRosterEmployeeId) return;
+  const employee = state.schedule?.employees.find((e)=>e.id === state.selectedRosterEmployeeId);
+  if(!employee) return;
+
+  app.querySelector("[data-roster-action='close']")?.addEventListener("click", ()=>{
+    state.selectedRosterEmployeeId = null;
+    render();
+  });
+  app.querySelector("[data-roster-action='save-rate']")?.addEventListener("click", ()=>{
+    const rate = Number(app.querySelector("#rosterRate")?.value);
+    if(!Number.isFinite(rate) || rate <= 0){ state.scheduleSaveError = "Укажи ставку"; render(); return; }
+    saveMonthRate(employee.id, Math.round(rate));
+  });
+  app.querySelector("[data-roster-action='reset-rate']")?.addEventListener("click", ()=>saveMonthRate(employee.id, null));
+  app.querySelector("[data-roster-action='hide-from']")?.addEventListener("click", ()=>hideEmployeeFromMonth(employee.id));
+}
+
+async function saveMonthRate(employeeId, rate){
+  state.selectedRosterEmployeeId = null;
+  await saveAndReload(()=>apiPut("/api/schedule/month-rate", {
+    year: state.schedule.year,
+    month: state.schedule.month,
+    employeeId,
+    rate
+  }));
+}
+
+// «Убрать с этого месяца» = в графике по предыдущий месяц (schedule_until = месяц−1, первое число).
+async function hideEmployeeFromMonth(employeeId){
+  const y = state.schedule.year;
+  const m = state.schedule.month;
+  const prev = new Date(y, m - 2, 1); // m-1 это текущий (1-indexed), ещё −1 = предыдущий
+  const until = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}-01`;
+  state.selectedRosterEmployeeId = null;
+  await saveAndReload(()=>apiPut("/api/schedule/roster-window", { employeeId, scheduleUntil: until }));
 }
 
 function renderMyHoursEditor(){
@@ -5608,6 +5705,8 @@ function clearSessionData(){
   state.selectedScheduleCell = null;
   state.selectedScheduleDate = null;
   state.selectedDateEmployeeId = null;
+  state.selectedMyHoursDate = null;
+  state.selectedRosterEmployeeId = null;
   state.scheduleEditUnlocked = false;
   state.payroll = null;
   state.tasks = null;

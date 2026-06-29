@@ -56,6 +56,19 @@ const dayEditSchema = z.object({
   isDeadline: z.boolean()
 });
 
+const monthRateSchema = z.object({
+  year: z.coerce.number().int().min(2020).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
+  employeeId: z.string().uuid(),
+  rate: z.number().int().positive().max(100000).nullable()
+});
+
+const rosterWindowSchema = z.object({
+  employeeId: z.string().uuid(),
+  scheduleFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
+  scheduleUntil: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional()
+});
+
 const payoutCreateSchema = employeeDateSchema.extend({
   amount: z.number().int().positive().max(1000000),
   applyMonth: z.string().regex(/^\d{4}-\d{2}$/).optional(),
@@ -167,6 +180,48 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     } catch (error) {
       await reply.code(400).send({ error: (error as Error).message || "bad_hours" });
     }
+  });
+
+  // Индивидуальная ставка сотрудника на месяц (rate=null — снять). Пересчитывает почасовые смены ЭТОГО месяца.
+  app.put("/api/schedule/month-rate", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = monthRateSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_month_rate" });
+      return;
+    }
+
+    const result = await setMonthRate(parsed.data);
+    await audit(request, "schedule_month_rate", user.id, "schedule_month_rate", `${parsed.data.year}-${parsed.data.month}:${parsed.data.employeeId}`, parsed.data);
+    return result;
+  });
+
+  // Окно участия в графике (скрыть с месяца / вернуть) — управление прямо из экрана графика.
+  app.put("/api/schedule/roster-window", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+
+    const parsed = rosterWindowSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_roster_window" });
+      return;
+    }
+
+    // Обновляем только переданные поля (undefined — не трогаем существующее значение).
+    const setFrom = parsed.data.scheduleFrom !== undefined;
+    const setUntil = parsed.data.scheduleUntil !== undefined;
+    await query(
+      `UPDATE employees
+       SET schedule_from = CASE WHEN $4 THEN $2::date ELSE schedule_from END,
+           schedule_until = CASE WHEN $5 THEN $3::date ELSE schedule_until END,
+           updated_at = now()
+       WHERE id = $1`,
+      [parsed.data.employeeId, parsed.data.scheduleFrom || null, parsed.data.scheduleUntil || null, setFrom, setUntil]
+    );
+    await audit(request, "schedule_roster_window", user.id, "employee", parsed.data.employeeId, parsed.data);
+    return { ok: true };
   });
 
   app.patch("/api/schedule/days", async (request, reply) => {
@@ -631,6 +686,13 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     ? Array.from(employeeTotals.values()).reduce((sum, total) => sum + total.paid, 0)
     : 0;
 
+  // Индивидуальные ставки на этот месяц (перекрывают штатную ставку сотрудника в графике/при добавлении смен).
+  const monthRateRows = await query<{ employee_id: string; hourly_rate: number }>(
+    "SELECT employee_id::text, hourly_rate FROM schedule_month_rates WHERE year = $1 AND month = $2",
+    [year, month]
+  );
+  const monthRates = new Map(monthRateRows.rows.map((r) => [r.employee_id, r.hourly_rate]));
+
   // Активные личные обязательства (для привязки выплаты к обязательству в окне дня).
   const obligations = canSeeAllMoney
     ? (
@@ -658,7 +720,9 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
         roleLabel: roleLabels[employee.schedule_role || employee.role] || "Сотрудник",
         defaultHours: employee.default_hours ? Number(employee.default_hours) : null,
         birthDate: employee.birth_date,
-        hourlyRate: canSeeAllMoney ? employee.hourly_rate : null,
+        hourlyRate: canSeeAllMoney ? (monthRates.get(employee.id) ?? employee.hourly_rate) : null,
+        baseRate: canSeeAllMoney ? employee.hourly_rate : null,
+        rateOverride: canSeeAllMoney ? monthRates.has(employee.id) : false,
         payModel: canSeeAllMoney ? payModel : null,
         totals: (() => {
           const extras = extrasByEmp.get(employee.id) || 0; // премии за задачи + цели
@@ -716,7 +780,13 @@ async function upsertShift(
   const dayRole = data.roleOverride || defaultRole;
   const roleIsFixed = dayRole === "dish" || dayRole === "dishwasher";
   const payModel = roleIsFixed ? "fixed" : "hourly";
-  const dayRate = Number(data.rate || employee.hourly_rate || 0);
+  // Ставка дня: явная из редактора > индивидуальная ставка месяца (только для штатной роли) > штатная ставка.
+  let baseRate = employee.hourly_rate || 0;
+  if (!data.roleOverride) {
+    const monthRate = await getMonthRateFor(data.workDate, data.employeeId);
+    if (monthRate != null) baseRate = monthRate;
+  }
+  const dayRate = Number(data.rate || baseRate || 0);
   // Часы храним с округлением до 1 знака после запятой, вверх — в пользу сотрудника.
   const rawHours = Number(data.hours || employee.default_hours || 12);
   const plannedHours = payModel === "fixed" ? null : Math.ceil(rawHours * 10) / 10;
@@ -819,6 +889,54 @@ async function updateOwnShiftHours(
   );
 
   return { ok: true, hours: newHours, payAmount };
+}
+
+// Индивидуальная ставка месяца для даты смены (или null). workDate = YYYY-MM-DD.
+async function getMonthRateFor(workDate: string, employeeId: string): Promise<number | null> {
+  const [y, m] = workDate.split("-").map(Number);
+  if (!y || !m) return null;
+  const res = await query<{ hourly_rate: number }>(
+    "SELECT hourly_rate FROM schedule_month_rates WHERE year = $1 AND month = $2 AND employee_id = $3",
+    [y, m, employeeId]
+  );
+  return res.rows[0] ? Number(res.rows[0].hourly_rate) : null;
+}
+
+// Ставит/снимает ставку месяца и пересчитывает почасовые смены ЭТОГО месяца (роль-дня и фикс не трогаем).
+// Прошлые месяцы не затрагиваются — финансовые показатели прошлого периода сохраняются.
+async function setMonthRate(
+  data: z.infer<typeof monthRateSchema>
+): Promise<{ ok: true; recomputed: number; rate: number | null }> {
+  const empRes = await query<{ hourly_rate: number | null }>(
+    "SELECT hourly_rate FROM employees WHERE id = $1 LIMIT 1",
+    [data.employeeId]
+  );
+  if (!empRes.rows[0]) throw new Error("Employee not found");
+  const defaultRate = Number(empRes.rows[0].hourly_rate || 0);
+
+  if (data.rate == null) {
+    await query("DELETE FROM schedule_month_rates WHERE year = $1 AND month = $2 AND employee_id = $3", [data.year, data.month, data.employeeId]);
+  } else {
+    await query(
+      `INSERT INTO schedule_month_rates (year, month, employee_id, hourly_rate)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (year, month, employee_id) DO UPDATE SET hourly_rate = excluded.hourly_rate, updated_at = now()`,
+      [data.year, data.month, data.employeeId, data.rate]
+    );
+  }
+
+  const effectiveRate = data.rate ?? defaultRate;
+  const start = `${data.year}-${String(data.month).padStart(2, "0")}-01`;
+  // Пересчёт только почасовых смен месяца без роли-дня (role_override IS NULL).
+  const recompute = await query(
+    `UPDATE schedule_shifts
+     SET pay_amount = round(planned_hours * $3)::int, updated_at = now()
+     WHERE employee_id = $1
+       AND work_date >= $2::date AND work_date < ($2::date + interval '1 month')
+       AND pay_model = 'hourly' AND role_override IS NULL AND planned_hours IS NOT NULL`,
+    [data.employeeId, start, effectiveRate]
+  );
+  return { ok: true, recomputed: recompute.rowCount || 0, rate: data.rate };
 }
 
 async function ensureScheduleDay(workDate: string): Promise<void> {
