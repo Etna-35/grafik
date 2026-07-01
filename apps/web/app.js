@@ -4759,7 +4759,7 @@ function renderScheduleDay(day, employees, canSeeMoney){
     && date.getDate() === today.getDate();
   return `
     <tr class="${isWeekend ? "we" : ""} ${isToday ? "today" : ""}">
-      <td class="colDate markDate${day.eventTitle ? " hasEvent" : ""}" data-schedule-date="${escapeAttr(day.date)}"${day.eventTitle ? ` title="${escapeAttr(day.eventTitle)}"` : ""}>
+      <td class="colDate markDate" data-schedule-date="${escapeAttr(day.date)}">
         <div class="dcell">
           <span class="dnum">${date.getDate()}</span>
           <span class="dwd">${weekdayShort(date)}</span>
@@ -5257,24 +5257,24 @@ function renderEventPopup(){
   const day = state.schedule.days.find((d)=>d.date === state.selectedEventDate);
   if(!day || !day.eventTitle) return "";
   return `
-    <div class="panel editor-panel event-popup">
-      <div class="editor-head">
-        <span class="grow">
-          <span class="row-title">${escapeHtml(day.eventTitle)}</span>
-          <span class="row-sub">${formatDateHuman(day.date)} · корпоратив</span>
-        </span>
-        <button class="iconbtn small" data-event-action="close">×</button>
+    <div class="event-overlay" data-event-action="backdrop">
+      <div class="event-modal" role="dialog" aria-modal="true">
+        <button class="event-close" data-event-action="close" aria-label="Закрыть">×</button>
+        <div class="event-kicker">Корпоратив · ${escapeHtml(formatDateHuman(day.date))}</div>
+        <div class="event-modal-title">${escapeHtml(day.eventTitle)}</div>
+        ${day.eventNote ? `<div class="event-note">${escapeHtml(day.eventNote)}</div>` : `<div class="event-empty">Подробности уточняй у руководителя.</div>`}
       </div>
-      ${day.eventNote ? `<div class="event-note">${escapeHtml(day.eventNote)}</div>` : `<div class="hint hint-block-sm">Подробности уточняй у руководителя.</div>`}
     </div>
   `;
 }
 
 function bindEventPopup(){
   if(!state.selectedEventDate) return;
-  app.querySelector("[data-event-action='close']")?.addEventListener("click", ()=>{
-    state.selectedEventDate = null;
-    render();
+  const close = ()=>{ state.selectedEventDate = null; render(); };
+  app.querySelector("[data-event-action='close']")?.addEventListener("click", close);
+  // Клик по затемнённому фону (не по самой карточке) — закрыть.
+  app.querySelector("[data-event-action='backdrop']")?.addEventListener("click", (e)=>{
+    if(e.target === e.currentTarget) close();
   });
 }
 
@@ -5408,8 +5408,18 @@ function bindScheduleCells(service){
       return;
     }
 
-    // Замок закрыт: сотрудник может уточнить СВОИ отработанные часы (только своя строка,
-    // только почасовая смена, только сегодня/прошлое). Клик по своей ячейке со сменой.
+    // Замок закрыт. Тап по плашке «К» (корпоратив) — окно с инфо о мероприятии (любая ячейка-событие).
+    const ctx = scheduleContext(cell.dataset.date, cell.dataset.employee);
+    if(ctx?.shift?.payModel === "event"){
+      const day = state.schedule?.days.find((d)=>d.date === cell.dataset.date);
+      if(day?.eventTitle){
+        cell.classList.add("ev-clickable");
+        cell.addEventListener("click", ()=>{ state.selectedEventDate = cell.dataset.date; render(); });
+      }
+      return;
+    }
+
+    // Сотрудник может уточнить СВОИ отработанные часы (только своя строка, почасовая смена, сегодня/прошлое).
     if(cell.dataset.employee !== state.user?.id) return;
     if(!isSelfEditableCell(cell.dataset.date, cell.dataset.employee)) return;
     cell.classList.add("self-editable");
@@ -5439,21 +5449,9 @@ function openMyHoursEditor(cell){
 }
 
 function bindScheduleDates(service){
-  const unlocked = isScheduleEditingUnlocked(service);
+  if(!isScheduleEditingUnlocked(service)) return;
   app.querySelectorAll("[data-schedule-date]").forEach((cell)=>{
-    const date = cell.dataset.scheduleDate;
-    if(unlocked){
-      cell.addEventListener("click", ()=>openDateEditor(date));
-      return;
-    }
-    // Сотрудник (или замок закрыт): клик по дате с корпоративом — окно с инфо о мероприятии.
-    const day = state.schedule?.days.find((d)=>d.date === date);
-    if(day?.eventTitle){
-      cell.addEventListener("click", ()=>{
-        state.selectedEventDate = date;
-        render();
-      });
-    }
+    cell.addEventListener("click", ()=>openDateEditor(cell.dataset.scheduleDate));
   });
 }
 

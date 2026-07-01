@@ -236,7 +236,7 @@ a{color:inherit;text-decoration:none}
 .schedule-grid .dmarks{display:flex;gap:3px;align-items:center;margin-top:3px;min-height:11px}
 .markIcon{display:inline-flex;align-items:center;justify-content:center;min-width:13px;height:13px;padding:0 3px;color:var(--ink);font-size:10px;font-weight:600;line-height:1;border:1px solid var(--line-strong);border-radius:var(--r-sm);background:rgba(255,255,255,.05)}
 .markIcon.star{font-size:11px;font-weight:700}
-.schedule-grid .colDate.hasEvent{cursor:pointer}
+.schedule-grid td.cell.ev-clickable{cursor:pointer}
 .schedule-grid tr.we .colDate,.schedule-grid tr.we td.cell{background:var(--weekend)}
 .schedule-grid tr.we .dcell .dwd{color:var(--brand-bright)}
 .schedule-grid tr.today .colDate{box-shadow:inset 3px 0 0 var(--brand)}
@@ -253,7 +253,15 @@ a{color:inherit;text-decoration:none}
 .schedule-grid td.cell .h.dp-evening::before{content:"";position:absolute;left:0;right:0;top:0;height:58%;pointer-events:none;background:linear-gradient(to bottom,rgba(96,124,200,.9),rgba(96,124,200,0))}
 /* Корпоратив: золотая плашка с буквой «К» — выделяется среди цветов должностей. */
 .schedule-grid td.cell .h.ev{background:var(--brand);color:var(--brand-ink);font-weight:700;font-family:var(--font-display)}
-.event-note{font-size:13px;line-height:1.5;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere;margin-top:2px}
+/* Заглушка-окно корпоратива поверх всего экрана */
+.event-overlay{position:fixed;inset:0;z-index:120;display:flex;align-items:center;justify-content:center;padding:22px;background:rgba(0,0,0,.3);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.event-modal{position:relative;width:100%;max-width:400px;background:var(--card);border:1px solid var(--brand-line);border-radius:16px;padding:22px 20px;box-shadow:0 24px 70px rgba(0,0,0,.55)}
+.event-close{position:absolute;top:10px;right:10px;width:34px;height:34px;border-radius:50%;border:1px solid var(--line-strong);background:var(--card-2);color:var(--ink);font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.event-close:active{transform:scale(.94)}
+.event-kicker{font-family:var(--font-display);font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--brand-bright);margin:2px 40px 8px 0}
+.event-modal-title{font-family:var(--font-display);font-size:20px;font-weight:700;line-height:1.2;color:var(--ink);margin-bottom:12px;overflow-wrap:anywhere}
+.event-note{font-size:14px;line-height:1.55;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+.event-empty{font-size:13px;color:var(--ink-soft);line-height:1.5}
 .schedule-grid td.cell.payday::before{content:"";position:absolute;inset:1px;border:2px solid var(--payday);border-radius:5px;background:var(--brand-tint);pointer-events:none;z-index:0}
 .schedule-grid td.cell .scoreDots{position:absolute;left:50%;bottom:2px;transform:translateX(-50%);display:flex;gap:2px;align-items:center;justify-content:center;z-index:2;pointer-events:none}
 .scoreDot{display:inline-block;width:5px;height:5px;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.55)}
