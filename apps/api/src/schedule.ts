@@ -61,6 +61,11 @@ const dayEditSchema = z.object({
   isDeadline: z.boolean()
 });
 
+// «День зарплаты»: дата + сотрудник + планируемая сумма (null — день отмечен, сумма не задана).
+const plannedPaydaySchema = employeeDateSchema.extend({
+  amount: z.number().int().min(0).max(10000000).nullable().optional()
+});
+
 const monthRateSchema = z.object({
   year: z.coerce.number().int().min(2020).max(2100),
   month: z.coerce.number().int().min(1).max(12),
@@ -257,7 +262,7 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     const user = await requireManager(request, reply);
     if (!user) return;
 
-    const parsed = employeeDateSchema.safeParse(request.body);
+    const parsed = plannedPaydaySchema.safeParse(request.body);
     if (!parsed.success) {
       await reply.code(400).send({ error: "bad_planned_payday" });
       return;
@@ -266,13 +271,13 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     await ensureScheduleDay(parsed.data.workDate);
     await query(
       `
-        INSERT INTO payroll_planned_days (work_date, employee_id, created_by)
-        VALUES ($1::date, $2, $3)
-        ON CONFLICT (work_date, employee_id) DO NOTHING
+        INSERT INTO payroll_planned_days (work_date, employee_id, created_by, amount)
+        VALUES ($1::date, $2, $3, $4)
+        ON CONFLICT (work_date, employee_id) DO UPDATE SET amount = excluded.amount
       `,
-      [parsed.data.workDate, parsed.data.employeeId, user.id]
+      [parsed.data.workDate, parsed.data.employeeId, user.id, parsed.data.amount ?? null]
     );
-    await audit(request, "payroll_planned_day_set", user.id, "payroll_planned_day", `${parsed.data.workDate}:${parsed.data.employeeId}`);
+    await audit(request, "payroll_planned_day_set", user.id, "payroll_planned_day", `${parsed.data.workDate}:${parsed.data.employeeId}`, { amount: parsed.data.amount ?? null });
     return { ok: true };
   });
 
@@ -539,9 +544,9 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     [start]
   );
 
-  const plannedPayRows = await query<{ work_date: string; employee_id: string }>(
+  const plannedPayRows = await query<{ work_date: string; employee_id: string; amount: number | null }>(
     `
-      SELECT work_date::text, employee_id
+      SELECT work_date::text, employee_id, amount
       FROM payroll_planned_days
       WHERE work_date >= $1::date
         AND work_date < ($1::date + interval '1 month')
@@ -671,6 +676,10 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       plannedPayEmployeeIds: plannedPayRows.rows
         .filter((row) => row.work_date === date && (canSeeAllMoney || row.employee_id === user.id))
         .map((row) => row.employee_id),
+      // Планируемые выплаты дня с суммами (сотрудник видит только свою — фильтр тот же).
+      plannedPays: plannedPayRows.rows
+        .filter((row) => row.work_date === date && (canSeeAllMoney || row.employee_id === user.id))
+        .map((row) => ({ employeeId: row.employee_id, amount: row.amount ?? null })),
       payouts: payoutRows.rows
         .filter((row) => row.work_date === date)
         .map((row) => ({

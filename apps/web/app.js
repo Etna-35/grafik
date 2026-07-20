@@ -71,6 +71,7 @@ let state = {
   selectedMyHoursDate: null,
   selectedRosterEmployeeId: null,
   selectedEventDate: null,
+  selectedPaydayDate: null,
   editingPayoutId: null,
   scheduleSaving: false,
   scheduleEditUnlocked: false,
@@ -4583,6 +4584,7 @@ function renderSchedulePage(service){
         ${renderScheduleDateEditor(service)}
         ${renderRosterEditor(service)}
         ${renderEventPopup()}
+        ${renderPaydayPopup()}
         ${renderMyHoursEditor()}
         ${state.scheduleSaveError ? `<div class="panel save-error">${escapeHtml(state.scheduleSaveError)}</div>` : ""}
         ${body}
@@ -4623,6 +4625,7 @@ function renderSchedulePage(service){
       state.selectedMyHoursDate = null;
       state.selectedRosterEmployeeId = null;
       state.selectedEventDate = null;
+      state.selectedPaydayDate = null;
       state.schedule = null;
       loadSchedule(base.getFullYear(), base.getMonth() + 1);
     });
@@ -4632,6 +4635,7 @@ function renderSchedulePage(service){
   bindScheduleDateEditor();
   bindRosterEditor();
   bindEventPopup();
+  bindPaydayPopup();
   bindMyHoursEditor();
 
   // Клик по имени сотрудника в шапке (замок открыт) — ставка/состав на месяц.
@@ -5115,6 +5119,14 @@ function renderScheduleDateEditor(service){
           <span>День зарплаты</span>
         </label>
       </div>
+      ${day.plannedPayEmployeeIds.includes(employee.id) ? `
+        <div class="payday-amount-row">
+          <input id="datePaydayAmount" type="number" min="0" step="100" inputmode="numeric"
+            value="${escapeAttr(plannedPayAmountFor(day, employee.id) ?? "")}" placeholder="сумма выплаты, ₽">
+          <button class="ghost mini brand-action" data-date-action="save-payday-amount">Сохранить сумму</button>
+        </div>
+        <div class="hint hint-block-sm">Сотрудник увидит эту сумму, нажав на отмеченный день в графике.</div>
+      ` : ""}
 
       <div class="score-row">
         <span class="row-sub">Оценка</span>
@@ -5278,6 +5290,46 @@ function bindEventPopup(){
   });
 }
 
+// Окно «День выплаты» — сотрудник видит сумму ближайшей выплаты (тап по своей отмеченной ячейке).
+function renderPaydayPopup(){
+  if(!state.schedule || !state.selectedPaydayDate) return "";
+  const uid = state.user?.id;
+  const day = state.schedule.days.find((d)=>d.date === state.selectedPaydayDate);
+  if(!day || !uid || !(day.plannedPayEmployeeIds || []).includes(uid)) return "";
+  const amount = plannedPayAmountFor(day, uid);
+  const canFixHours = isSelfEditableCell(day.date, uid);
+  return `
+    <div class="event-overlay" data-payday-action="backdrop">
+      <div class="event-modal" role="dialog" aria-modal="true">
+        <button class="event-close" data-payday-action="close" aria-label="Закрыть">×</button>
+        <div class="event-kicker">День выплаты · ${escapeHtml(formatDateHuman(day.date))}</div>
+        ${amount != null
+          ? `<div class="payday-sum">${formatMoneyPlain(amount)} ₽</div>
+             <div class="event-note">Планируемая сумма выплаты в этот день.</div>`
+          : `<div class="event-modal-title">Выплата запланирована</div>
+             <div class="event-empty">Сумма пока не указана — уточни у руководителя.</div>`}
+        ${canFixHours ? `<button class="ghost payday-hours-btn" data-payday-action="fix-hours">Уточнить часы смены</button>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function bindPaydayPopup(){
+  if(!state.selectedPaydayDate) return;
+  const close = ()=>{ state.selectedPaydayDate = null; render(); };
+  app.querySelector("[data-payday-action='close']")?.addEventListener("click", close);
+  app.querySelector("[data-payday-action='backdrop']")?.addEventListener("click", (e)=>{
+    if(e.target === e.currentTarget) close();
+  });
+  // Если в этот же день есть своя почасовая смена — не терять доступ к правке часов.
+  app.querySelector("[data-payday-action='fix-hours']")?.addEventListener("click", ()=>{
+    const date = state.selectedPaydayDate;
+    state.selectedPaydayDate = null;
+    state.selectedMyHoursDate = date;
+    render();
+  });
+}
+
 function renderMyHoursEditor(){
   if(!state.schedule || !state.selectedMyHoursDate) return "";
   const context = scheduleContext(state.selectedMyHoursDate, state.user?.id);
@@ -5417,6 +5469,16 @@ function bindScheduleCells(service){
         cell.addEventListener("click", ()=>{ state.selectedEventDate = cell.dataset.date; render(); });
       }
       return;
+    }
+
+    // Свой «день зарплаты» — окно с суммой ближайшей выплаты (приоритет: это информация о деньгах).
+    if(cell.dataset.employee === state.user?.id){
+      const day = state.schedule?.days.find((d)=>d.date === cell.dataset.date);
+      if(day && (day.plannedPayEmployeeIds || []).includes(state.user.id)){
+        cell.classList.add("payday-clickable");
+        cell.addEventListener("click", ()=>{ state.selectedPaydayDate = cell.dataset.date; render(); });
+        return;
+      }
     }
 
     // Сотрудник может уточнить СВОИ отработанные часы (только своя строка, почасовая смена, сегодня/прошлое).
@@ -5577,6 +5639,10 @@ function bindScheduleDateEditor(){
     paydayToggle.addEventListener("change", ()=>setPayday(context.day.date, context.employee.id, paydayToggle.checked));
   }
 
+  app.querySelector("[data-date-action='save-payday-amount']")?.addEventListener("click", ()=>{
+    savePaydayAmount(context.day.date, context.employee.id);
+  });
+
   app.querySelectorAll("[data-date-score]").forEach((button)=>{
     button.addEventListener("click", ()=>setScore(context, button.dataset.dateScore));
   });
@@ -5722,6 +5788,23 @@ async function setPayday(workDate, employeeId, enabled){
     ? apiPut("/api/schedule/planned-paydays", body)
     : apiDelete("/api/schedule/planned-paydays", body)
   );
+}
+
+// Планируемая сумма выплаты сотрудника в этот день (null — день отмечен, сумма не задана).
+function plannedPayAmountFor(day, employeeId){
+  const row = (day?.plannedPays || []).find((p)=>p.employeeId === employeeId);
+  return row && row.amount != null ? Number(row.amount) : null;
+}
+
+async function savePaydayAmount(workDate, employeeId){
+  const raw = app.querySelector("#datePaydayAmount")?.value;
+  const amount = raw === "" || raw == null ? null : Math.round(Number(raw));
+  if(amount != null && (!Number.isFinite(amount) || amount < 0)){
+    state.scheduleSaveError = "Проверь сумму выплаты";
+    render();
+    return;
+  }
+  await saveAndReload(()=>apiPut("/api/schedule/planned-paydays", { workDate, employeeId, amount }));
 }
 
 async function setScore(context, score){
@@ -5878,6 +5961,7 @@ function clearSessionData(){
   state.selectedMyHoursDate = null;
   state.selectedRosterEmployeeId = null;
   state.selectedEventDate = null;
+  state.selectedPaydayDate = null;
   state.scheduleEditUnlocked = false;
   state.payroll = null;
   state.tasks = null;
