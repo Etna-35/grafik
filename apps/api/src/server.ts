@@ -34,6 +34,7 @@ import { registerQuizRoutes } from "./quiz.js";
 import { registerFinanceRoutes } from "./finance.js";
 import { registerTreasuryRoutes } from "./treasury.js";
 import { registerWeeklyStatsRoutes } from "./weeklyStats.js";
+import { registerFeatureRoutes, getAllFeatures } from "./features.js";
 import { getWaiterCashStats } from "./cashPlan.js";
 import { genitiveFirstName } from "./names.js";
 import { startCron } from "./cron.js";
@@ -91,7 +92,8 @@ export function buildServer() {
         displayName: employee.display_name,
         role: employee.role
       },
-      services
+      services,
+      features: await getAllFeatures()
     };
   });
 
@@ -115,7 +117,8 @@ export function buildServer() {
         displayName: user.display_name,
         role: user.role
       },
-      services
+      services,
+      features: await getAllFeatures()
     };
   });
 
@@ -258,6 +261,7 @@ export function buildServer() {
   registerFinanceRoutes(app);
   registerTreasuryRoutes(app);
   registerWeeklyStatsRoutes(app);
+  registerFeatureRoutes(app);
 
   app.register(fastifyStatic, {
     root: publicDir,

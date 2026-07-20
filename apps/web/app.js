@@ -56,6 +56,7 @@ let state = {
   loading: true,
   user: null,
   services: [],
+  features: {},
   summary: null,
   schedule: null,
   scheduleLoading: false,
@@ -158,6 +159,7 @@ async function init(){
     const session = await apiGet("/api/me");
     state.user = session.user;
     state.services = session.services;
+    state.features = session.features || {};
     state.summary = await apiGet("/api/summary");
   }catch{
     state.user = null;
@@ -263,6 +265,7 @@ async function login(){
     clearSessionData();
     state.user = session.user;
     state.services = session.services;
+    state.features = session.features || {};
     state.summary = await apiGet("/api/summary");
     state.pin = "";
     history.replaceState(null, "", allowedServicePath(requestedPath, session.services) ? requestedPath : "/");
