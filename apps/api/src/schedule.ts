@@ -671,7 +671,7 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
   const forecastByDate = new Map<string, number>();
   let monthForecastRevenue = 0;
   if (fotForecastEnabled) {
-    const forecast = await getDailyRevenueForecast(year, month);
+    const forecast = await getDailyRevenueForecast(year, month, { includeOtherIncome: true });
     for (const d of forecast) {
       forecastByDate.set(d.date, d.amount);
       monthForecastRevenue += d.amount;

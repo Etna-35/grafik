@@ -81,7 +81,11 @@ export interface DailyRevenueForecast {
 
 // Прогноз выручки по дням месяца: факт для прошедших дней (isActual=true), средние по дню недели —
 // для оставшихся. Общая основа для predictRevenue (месяц) и подсказки ФОТ/выручка по дням графика.
-export async function getDailyRevenueForecast(year: number, month: number): Promise<DailyRevenueForecast[]> {
+export async function getDailyRevenueForecast(
+  year: number,
+  month: number,
+  opts?: { includeOtherIncome?: boolean }
+): Promise<DailyRevenueForecast[]> {
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const today = mskToday();
   const dayRows = await query<{ work_date: string; revenue_total: number }>(
@@ -112,6 +116,27 @@ export async function getDailyRevenueForecast(year: number, month: number): Prom
       result.push({ date: iso, amount: 0, isActual: false });
     } else {
       result.push({ date: iso, amount: Math.round(weekdayAvg.get(dow) || 0), isActual: false });
+    }
+  }
+
+  // Прочие поступления (корпоратив/аренда мимо закрытия смены) — по запросу прибавляем к своему дню.
+  // ВАЖНО: в средние по дням недели (weekdayAvg выше) они НЕ входят никогда — иначе разовые
+  // деньги задрали бы прогноз всех будущих дней этой недели.
+  if (opts?.includeOtherIncome) {
+    const incRows = await query<{ entry_date: string; total: string }>(
+      `SELECT entry_date::text, SUM(amount)::text AS total FROM finance_income
+       WHERE entry_date >= $1::date AND entry_date < ($1::date + interval '1 month')
+       GROUP BY entry_date`,
+      [start]
+    );
+    const incByDate = new Map<string, number>();
+    for (const r of incRows.rows) incByDate.set(r.entry_date, Number(r.total || 0));
+    for (const d of result) {
+      const extra = incByDate.get(d.date) || 0;
+      if (extra > 0) {
+        d.amount += extra;
+        d.isActual = true; // реально полученные деньги
+      }
     }
   }
   return result;
