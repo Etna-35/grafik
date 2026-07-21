@@ -183,8 +183,10 @@ export function registerTaskRoutes(app: FastifyInstance): void {
       );
       const name = info.rows[0]?.name;
       if (name) {
+        // Точную сумму в общий чат НЕ раскрываем — показываем «уровень» премии значками $
+        // (видно, что за задачи платят деньги, но не сколько именно).
         const reward = task.reward_amount && task.reward_amount > 0
-          ? `\nПремия ${task.reward_amount.toLocaleString("ru-RU")} ₽ начислена 💰`
+          ? `\nПремия ${rewardMask(task.reward_amount)} начислена 💰`
           : "";
         void sendMessage(teamChatId(), `✅ ${tgEscape(name)} выполнил личную задачу «${tgEscape(task.title)}»${reward}`).catch(() => {});
       }
@@ -241,6 +243,13 @@ async function requireTaskManager(request: FastifyRequest, reply: FastifyReply):
 
 function canManageTasks(user: SessionUser): boolean {
   return user.role === "owner" || user.role === "manager";
+}
+
+// «Уровень» премии значками $ для общего чата — сумма скрыта, но видно, что платят деньги.
+function rewardMask(amount: number): string {
+  if (amount <= 1000) return "$$$";
+  if (amount <= 3000) return "$$$$";
+  return "$$$$$";
 }
 
 async function getOwnTasks(employeeId: string, role: string): Promise<TaskRow[]> {
