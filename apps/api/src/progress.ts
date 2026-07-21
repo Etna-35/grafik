@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
+import { isFeatureEnabled } from "./features.js";
 
 const POINTS_PER_LEVEL = 100;
 const TENURE_POINTS_PER_MONTH = 30;
@@ -210,6 +211,38 @@ export function registerProgressRoutes(app: FastifyInstance): void {
     }
 
     return { ...summary, history, team, totems };
+  });
+
+  // Неувиденные начисления опыта — для всплывающего окна «+N%». Пусто, если фича выключена.
+  app.get("/api/progress/unseen", async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    if (!(await isFeatureEnabled("xp_popup"))) return { items: [], total: 0 };
+
+    const rows = await query<{ kind: string; points: number; note: string | null }>(
+      `SELECT kind, points, note FROM progress_events
+       WHERE employee_id = $1 AND seen_at IS NULL
+       ORDER BY created_at
+       LIMIT 20`,
+      [user.id]
+    );
+    return {
+      items: rows.rows.map((r) => ({
+        kind: r.kind,
+        label: KIND_LABELS[r.kind] || "Очки",
+        note: r.note || "",
+        points: Number(r.points || 0)
+      })),
+      total: rows.rows.reduce((s, r) => s + Number(r.points || 0), 0)
+    };
+  });
+
+  // Пометить показанные начисления увиденными (после закрытия окна).
+  app.post("/api/progress/seen", async (request: FastifyRequest, reply: FastifyReply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return;
+    await query("UPDATE progress_events SET seen_at = now() WHERE employee_id = $1 AND seen_at IS NULL", [user.id]);
+    return { ok: true };
   });
 
   app.post("/api/progress/plan-met", async (request: FastifyRequest, reply: FastifyReply) => {

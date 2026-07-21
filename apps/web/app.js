@@ -80,6 +80,7 @@ let state = {
   payrollLoading: false,
   tips: null,
   tipsLoading: false,
+  xp: null,
   payrollError: "",
   tasks: null,
   salesGoalsData: null,
@@ -168,6 +169,7 @@ async function init(){
   }finally{
     state.loading = false;
     render();
+    checkXpPopup();
     maybeRegisterServiceWorker();
   }
 }
@@ -194,7 +196,16 @@ function preventMobileDoubleTapZoom(){
   }, { passive:false });
 }
 
+// Окно опыта рисуем ПОВЕРХ любого экрана — поэтому обёртка вокруг основного рендера.
 function render(){
+  renderScreen();
+  if(state.xp){
+    app.insertAdjacentHTML("beforeend", renderXpPopup());
+    bindXpPopup();
+  }
+}
+
+function renderScreen(){
   if(state.loading){
     app.innerHTML = `<div class="phone"><div class="loader">Etna</div></div>`;
     return;
@@ -767,6 +778,7 @@ async function submitPraise(form){
   }finally{
     state.praiseSaving = false;
     renderPraiseScreen();
+    checkXpPopup();
   }
 }
 
@@ -1732,6 +1744,7 @@ function renderQuizResult(){
 
 async function loadSummaryQuiet(){
   try{ state.summary = await apiGet("/api/summary"); }catch(error){ /* ignore */ }
+  checkXpPopup();
 }
 
 async function loadTraining(){
@@ -2236,6 +2249,7 @@ async function saveTasksAction(action){
   }finally{
     state.tasksSaving = false;
     render();
+    checkXpPopup();
   }
 }
 
@@ -3104,6 +3118,64 @@ function renderPayrollPage(service){
   app.querySelectorAll("[data-oblig-close]").forEach((button)=>{
     button.addEventListener("click", ()=>closeObligation(button.dataset.obligClose));
   });
+}
+
+// ОКНО «+N%» за начисленный опыт (флаг xp_popup).
+// Ловим начисления асинхронно: очки, полученные пока человека не было в приложении
+// (например, руководитель принял задачу), покажутся при следующем входе.
+// Закрытие — тап в любом месте окна. Никаких крестиков.
+async function checkXpPopup(){
+  if(!state.features?.xp_popup || !state.user || state.xp) return;
+  try{
+    const data = await apiGet("/api/progress/unseen");
+    if(data && data.total > 0 && (data.items || []).length){
+      state.xp = data;
+      render();
+    }
+  }catch{ /* тихо: окно опыта не должно ломать экран */ }
+}
+
+async function dismissXpPopup(){
+  state.xp = null;
+  render();
+  try{ await apiPost("/api/progress/seen", {}); }catch{ /* пометим при следующем заходе */ }
+  loadSummaryQuiet();
+}
+
+function renderXpPopup(){
+  const xp = state.xp;
+  if(!xp) return "";
+  const items = xp.items || [];
+  // Схлопываем одинаковые причины: «Спасибо от коллеги ×3».
+  const grouped = [];
+  for(const i of items){
+    const found = grouped.find((g)=>g.label === i.label);
+    if(found){ found.count += 1; found.points += i.points; }
+    else grouped.push({ label:i.label, note:i.note, count:1, points:i.points });
+  }
+  return `
+    <div class="xp-overlay" data-xp-close="1">
+      <div class="xp-card">
+        <div class="xp-kicker">Молодец!</div>
+        <div class="xp-amount">+${xp.total}%</div>
+        <div class="xp-sub">${items.length > 1 ? "твой прогресс вырос за" : "твой прогресс вырос за"}</div>
+        <div class="xp-list">
+          ${grouped.map((g)=>`
+            <div class="xp-item">
+              <span>${escapeHtml(g.label)}${g.count > 1 ? ` ×${g.count}` : ""}</span>
+              <b>+${g.points}%</b>
+            </div>
+          `).join("")}
+        </div>
+        <div class="xp-hint">нажми, чтобы закрыть</div>
+      </div>
+    </div>
+  `;
+}
+
+function bindXpPopup(){
+  if(!state.xp) return;
+  app.querySelector("[data-xp-close]")?.addEventListener("click", dismissXpPopup);
 }
 
 // ЧАЕВЫЕ (флаг tips): официант/бармен сам ведёт суммы по дням и ставит ЛИЧНУЮ цель на месяц.
@@ -6198,6 +6270,7 @@ function clearSessionData(){
   state.scheduleEditUnlocked = false;
   state.payroll = null;
   state.tips = null;
+  state.xp = null;
   state.tasks = null;
   state.salesGoalsData = null;
   state.handovers = null;
