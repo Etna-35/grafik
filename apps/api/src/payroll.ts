@@ -321,6 +321,18 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
   );
   const pastDebt = Number(debtRow.rows[0]?.debt || 0);
 
+  // Разбивка начислений по сменам для наглядной расшифровки дохода в ЛК:
+  // почасовые / фикс-ставка / корпоративы (разовые выплаты за спецмероприятия).
+  const kindOf = (m: string | null) => (m === "event" ? "event" : m === "fixed" ? "fixed" : "hourly");
+  const sumPay = (rows: ShiftRow[]) => rows.reduce((s, r) => s + Number(r.pay_amount || 0), 0);
+  const hourlyRows = shiftRows.rows.filter((r) => kindOf(r.pay_model) === "hourly");
+  const fixedRows = shiftRows.rows.filter((r) => kindOf(r.pay_model) === "fixed");
+  const eventRows = shiftRows.rows.filter((r) => kindOf(r.pay_model) === "event");
+  const hourlyAccrued = sumPay(hourlyRows);
+  const fixedAccrued = sumPay(fixedRows);
+  const eventAccrued = sumPay(eventRows);
+  const hourlyHours = hourlyRows.reduce((s, r) => s + Number(r.planned_hours || 0), 0);
+
   const salaryAccruedTotal = shiftRows.rows.reduce((sum, row) => sum + Number(row.pay_amount || 0), 0) + histAccrued;
   const salaryPaidTotal = payoutRows.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
   const hookahAccruedTotal = hookahRows.rows.reduce((sum, row) => sum + Number(row.hookah_payout || 0), 0);
@@ -416,6 +428,15 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       remaining: Math.max(0, salaryAccruedTotal + taskRewardTotal + goalRewardTotal + streakRewardTotal - salaryPaidTotal),
       salaryAccrued: salaryAccruedTotal,
       salaryPaid: salaryPaidTotal,
+      // Расшифровка начислений по сменам (для блока «из чего сложился доход»).
+      hourlyAccrued,
+      hourlyShifts: hourlyRows.length,
+      hourlyHours: Math.round(hourlyHours * 100) / 100,
+      fixedAccrued,
+      fixedShifts: fixedRows.length,
+      eventAccrued,
+      eventShifts: eventRows.length,
+      historyAccrued: histAccrued,
       taskRewardAccrued: taskRewardTotal,
       taskRewardCount: taskRewardRows.rows.length,
       goalRewardAccrued: goalRewardTotal,

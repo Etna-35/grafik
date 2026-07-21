@@ -3101,6 +3101,45 @@ function renderPayrollPage(service){
   });
 }
 
+// Наглядная расшифровка: из чего именно сложился доход за месяц.
+// Показываем только ненулевые статьи, чтобы не засорять экран.
+function renderIncomeBreakdown(s){
+  const items = [
+    { label:"Почасовая оплата", amount:s.hourlyAccrued,
+      note:s.hourlyShifts ? `${s.hourlyShifts} ${pluralize(s.hourlyShifts,"смена","смены","смен")} · ${formatHours(s.hourlyHours||0)} ч` : "" },
+    { label:"Смены по фикс-ставке", amount:s.fixedAccrued,
+      note:s.fixedShifts ? `${s.fixedShifts} ${pluralize(s.fixedShifts,"смена","смены","смен")}` : "" },
+    { label:"Корпоративы", amount:s.eventAccrued,
+      note:s.eventShifts ? `${s.eventShifts} ${pluralize(s.eventShifts,"мероприятие","мероприятия","мероприятий")}` : "" },
+    { label:"Премии за задачи", amount:s.taskRewardAccrued,
+      note:s.taskRewardCount ? `${s.taskRewardCount} ${pluralize(s.taskRewardCount,"задача","задачи","задач")}` : "" },
+    { label:"Цели по продажам", amount:s.goalRewardAccrued,
+      note:s.goalRewardCount ? `${s.goalRewardCount} ${pluralize(s.goalRewardCount,"цель","цели","целей")}` : "" },
+    { label:"Наличный план", amount:s.streakRewardAccrued,
+      note:s.streakRewardCount ? `${s.streakRewardCount} ${pluralize(s.streakRewardCount,"серия","серии","серий")} · бонус 1,5%` : "" },
+    { label:"Кальяны", amount:s.hookahAccrued, paidNow:true,
+      note:s.hookahCount ? `${s.hookahCount} шт · выдаётся сразу` : "выдаётся сразу" },
+    { label:"Начислено за прошлые месяцы", amount:s.historyAccrued, note:"ручная история" }
+  ].filter((i)=>Number(i.amount || 0) > 0);
+
+  if(!items.length) return "";
+  return `
+    <div class="income-breakdown">
+      <div class="ib-title">Из чего сложился доход</div>
+      ${items.map((i)=>`
+        <div class="ib-row${i.paidNow ? " paid-now" : ""}">
+          <span class="ib-label">${escapeHtml(i.label)}${i.note ? `<small>${escapeHtml(i.note)}</small>` : ""}</span>
+          <b class="ib-amount">${formatMoneyPlain(i.amount)} ₽</b>
+        </div>
+      `).join("")}
+      <div class="ib-row ib-total">
+        <span class="ib-label">Итого начислено</span>
+        <b class="ib-amount">${formatMoneyPlain(s.accrued || 0)} ₽</b>
+      </div>
+    </div>
+  `;
+}
+
 function renderPayrollContent(payroll){
   const summary = payroll.summary || {};
   const hookahRows = payroll.hookah || [];
@@ -3125,6 +3164,8 @@ function renderPayrollContent(payroll){
         <b>${summary.upcomingPayday ? escapeHtml(formatDateHuman(summary.upcomingPayday)) : "не назначена"}</b>
       </div>
     </div>
+
+    ${renderIncomeBreakdown(summary)}
 
     <div class="payroll-metrics two">
       <div class="pay-metric pair">
