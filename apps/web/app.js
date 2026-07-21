@@ -166,7 +166,16 @@ async function init(){
   }finally{
     state.loading = false;
     render();
+    maybeRegisterServiceWorker();
   }
+}
+
+// PWA (устанавливаемый кабинет): регистрация строго за фич-флагом "pwa" (feature_flags, см. features.ts).
+// Флаг выключен по умолчанию — при выключенном флаге поведение сайта не меняется вообще (SW не регистрируется).
+function maybeRegisterServiceWorker(){
+  if(!state.features?.pwa) return;
+  if(!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.register("/sw.js").catch(()=>{});
 }
 
 function preventMobileDoubleTapZoom(){

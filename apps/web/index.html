@@ -6,6 +6,12 @@
   <title>Etna · Личный кабинет</title>
   <meta name="theme-color" content="#0e0e0e">
   <link rel="icon" href="/assets/logo.png" type="image/png">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <!-- iOS не читает manifest.webmanifest для "домашнего экрана" — нужны отдельные мета-теги и apple-touch-icon. -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Etna">
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;600;700&family=Golos+Text:wght@400;500;600;700&display=swap" rel="stylesheet">
