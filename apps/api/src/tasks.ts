@@ -188,7 +188,7 @@ export function registerTaskRoutes(app: FastifyInstance): void {
         const reward = task.reward_amount && task.reward_amount > 0
           ? `\nПремия ${rewardMask(task.reward_amount)} начислена 💰`
           : "";
-        void sendMessage(teamChatId(), `✅ ${tgEscape(name)} выполнил личную задачу «${tgEscape(task.title)}»${reward}`).catch(() => {});
+        void sendMessage(teamChatId(), `✅ ${tgEscape(name)} выполнил личную задачу, отличная работа!${reward}`).catch(() => {});
       }
     }
     return { ok: true };
