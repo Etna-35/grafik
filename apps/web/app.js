@@ -78,6 +78,8 @@ let state = {
   scheduleEditUnlocked: false,
   payroll: null,
   payrollLoading: false,
+  tips: null,
+  tipsLoading: false,
   payrollError: "",
   tasks: null,
   salesGoalsData: null,
@@ -3087,9 +3089,12 @@ function renderPayrollPage(service){
       const direction = button.dataset.payrollMonth === "next" ? 1 : -1;
       const base = new Date((state.payroll?.year || year), (state.payroll?.month || month) - 1 + direction, 1);
       state.payroll = null;
+      state.tips = null;
       loadPayroll(base.getFullYear(), base.getMonth() + 1);
     });
   });
+
+  bindTipsCard();
 
   const obligForm = app.querySelector("#obligForm");
   obligForm?.addEventListener("submit", (event)=>{ event.preventDefault(); submitObligation(obligForm); });
@@ -3098,6 +3103,128 @@ function renderPayrollPage(service){
   });
   app.querySelectorAll("[data-oblig-close]").forEach((button)=>{
     button.addEventListener("click", ()=>closeObligation(button.dataset.obligClose));
+  });
+}
+
+// ЧАЕВЫЕ (флаг tips): официант/бармен сам ведёт суммы по дням и ставит ЛИЧНУЮ цель на месяц.
+// Цель видит только сам сотрудник; суммы видны и руководителю (блок «Чаевые команды»).
+function renderTipsCard(){
+  const t = state.tips;
+  if(!state.features?.tips || !t || !t.enabled) return "";
+  const goal = t.goal;
+  const pct = t.progressPct || 0;
+  const today = todayIsoDate();
+  return `
+    <div class="tips-card">
+      <div class="tips-head">
+        <div>
+          <div class="mslabel">Чаевые за месяц</div>
+          <div class="tips-sum">${formatMoneyPlain(t.collected || 0)} ₽</div>
+        </div>
+        <div class="tips-avg">
+          <span>В среднем за смену</span>
+          <b>${formatMoneyPlain(t.avgPerShift || 0)} ₽</b>
+        </div>
+      </div>
+
+      ${goal ? `
+        <div class="tips-goal-bar meter thin ${t.goalReached ? "ok" : ""}"><i style="width:${pct}%"></i></div>
+        <div class="tips-goal-sub">
+          ${t.goalReached
+            ? `<b class="tips-done">Цель ${formatMoneyPlain(goal)} ₽ достигнута!</b>`
+            : `Цель ${formatMoneyPlain(goal)} ₽ · осталось ${formatMoneyPlain(t.left || 0)} ₽${
+                t.avgNeeded != null
+                  ? ` · нужно ~${formatMoneyPlain(t.avgNeeded)} ₽ за смену (впереди ${t.shiftsRemaining} ${pluralize(t.shiftsRemaining,"смена","смены","смен")})`
+                  : t.shiftsRemaining === 0 ? " · смен в этом месяце больше нет" : ""}`}
+        </div>
+      ` : `<div class="hint hint-block-sm">Поставь личную цель на месяц — покажу прогресс и сколько нужно за смену.</div>`}
+
+      <div class="tips-actions">
+        <input id="tipsAmount" type="number" min="0" step="100" inputmode="numeric" placeholder="чай за смену, ₽">
+        <input id="tipsDate" type="date" value="${escapeAttr(today)}" max="${escapeAttr(today)}">
+        <button class="ghost brand-action" data-tips-action="save">Внести</button>
+      </div>
+
+      <div class="tips-goal-row">
+        <input id="tipsGoal" type="number" min="0" step="1000" inputmode="numeric" value="${escapeAttr(goal ?? "")}" placeholder="цель на месяц, ₽">
+        <button class="ghost mini" data-tips-action="goal">${goal ? "Изменить цель" : "Поставить цель"}</button>
+        ${goal ? `<button class="ghost mini" data-tips-action="goal-clear">Снять</button>` : ""}
+      </div>
+      <div class="hint hint-block-sm">Цель видишь только ты. ${t.prevMonthTotal ? `В прошлом месяце: ${formatMoneyPlain(t.prevMonthTotal)} ₽.` : ""}</div>
+
+      ${(t.entries || []).length ? `
+        <details class="payroll-history tips-history">
+          <summary><span>Мои записи</span><b>${t.entries.length} ${pluralize(t.entries.length,"день","дня","дней")}</b></summary>
+          <div class="payroll-list">
+            ${t.entries.map((e)=>`
+              <div class="payroll-row">
+                <span><b>${formatMoneyPlain(e.amount)} ₽</b><small>${escapeHtml(formatDateHuman(e.workDate))}</small></span>
+                <button class="ghost mini danger-action" data-tips-del="${escapeAttr(e.workDate)}">Удалить</button>
+              </div>
+            `).join("")}
+          </div>
+        </details>
+      ` : ""}
+
+      ${(t.team || []).length ? `
+        <details class="payroll-history tips-team">
+          <summary><span>Чаевые команды</span><b>${formatMoneyPlain((t.team).reduce((s,x)=>s+Number(x.total||0),0))} ₽</b></summary>
+          <div class="payroll-list">
+            ${t.team.map((x)=>`
+              <div class="payroll-row">
+                <span><b>${formatMoneyPlain(x.total)} ₽</b><small>${escapeHtml(x.name)}${x.avgPerShift ? ` · ~${formatMoneyPlain(x.avgPerShift)} ₽ за смену` : ""}</small></span>
+                <i>${x.entries} ${pluralize(x.entries,"запись","записи","записей")}</i>
+              </div>
+            `).join("")}
+          </div>
+        </details>
+      ` : ""}
+    </div>
+  `;
+}
+
+async function loadTips(year, month){
+  if(!state.features?.tips) return;
+  state.tipsLoading = true;
+  try{
+    state.tips = await apiGet(`/api/tips?year=${year}&month=${month}`);
+  }catch{
+    state.tips = null;
+  }finally{
+    state.tipsLoading = false;
+    render();
+  }
+}
+
+async function saveTipsAction(action){
+  try{
+    await action();
+    const p = state.payroll;
+    state.tips = await apiGet(`/api/tips?year=${p.year}&month=${p.month}`);
+    state.payroll = await apiGet(`/api/payroll?year=${p.year}&month=${p.month}`);
+  }catch{ /* тихо: карточка перерисуется с прежними данными */ }
+  render();
+}
+
+function bindTipsCard(){
+  if(!state.tips?.enabled) return;
+  const p = state.payroll || {};
+  app.querySelector("[data-tips-action='save']")?.addEventListener("click", ()=>{
+    const amount = Number(app.querySelector("#tipsAmount")?.value);
+    const workDate = app.querySelector("#tipsDate")?.value;
+    if(!Number.isFinite(amount) || amount < 0 || !workDate) return;
+    saveTipsAction(()=>apiPut("/api/tips", { workDate, amount: Math.round(amount) }));
+  });
+  app.querySelector("[data-tips-action='goal']")?.addEventListener("click", ()=>{
+    const amount = Number(app.querySelector("#tipsGoal")?.value);
+    if(!Number.isFinite(amount) || amount <= 0) return;
+    saveTipsAction(()=>apiPut("/api/tips/goal", { year:p.year, month:p.month, amount: Math.round(amount) }));
+  });
+  app.querySelector("[data-tips-action='goal-clear']")?.addEventListener("click", ()=>{
+    saveTipsAction(()=>apiPut("/api/tips/goal", { year:p.year, month:p.month, amount: null }));
+  });
+  app.querySelectorAll("[data-tips-del]").forEach((b)=>{
+    b.addEventListener("click", ()=>saveTipsAction(()=>apiDelete("/api/tips", { workDate: b.dataset.tipsDel })));
   });
 }
 
@@ -3119,6 +3246,7 @@ function renderIncomeBreakdown(s){
       note:s.streakRewardCount ? `${s.streakRewardCount} ${pluralize(s.streakRewardCount,"серия","серии","серий")} · бонус 1,5%` : "" },
     { label:"Кальяны", amount:s.hookahAccrued, paidNow:true,
       note:s.hookahCount ? `${s.hookahCount} шт · выдаётся сразу` : "выдаётся сразу" },
+    { label:"Чаевые", amount:s.tipsAccrued, paidNow:true, note:"от гостей · на руки сразу" },
     { label:"Начислено за прошлые месяцы", amount:s.historyAccrued, note:"ручная история" }
   ].filter((i)=>Number(i.amount || 0) > 0);
 
@@ -3177,6 +3305,8 @@ function renderPayrollContent(payroll){
         <div><span>Часы</span><b>${formatHours(summary.hours || 0)}</b></div>
       </div>
     </div>
+
+    ${renderTipsCard()}
 
     ${renderObligations(payroll)}
 
@@ -3396,6 +3526,9 @@ async function loadPayroll(year, month){
   render();
   try{
     state.payroll = await apiGet(`/api/payroll?year=${year}&month=${month}`);
+    if(state.features?.tips){
+      try{ state.tips = await apiGet(`/api/tips?year=${year}&month=${month}`); }catch{ state.tips = null; }
+    }
   }catch(error){
     state.payrollError = error.status === 403 ? "Нет доступа к выплатам" : "Проверь соединение и попробуй ещё раз";
   }finally{
@@ -6064,6 +6197,7 @@ function clearSessionData(){
   state.selectedPaydayDate = null;
   state.scheduleEditUnlocked = false;
   state.payroll = null;
+  state.tips = null;
   state.tasks = null;
   state.salesGoalsData = null;
   state.handovers = null;

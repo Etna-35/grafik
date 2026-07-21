@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
+import { getTipsTotalForMonth } from "./tips.js";
 import { streakRewardsForMonth } from "./cashPlan.js";
 
 const payrollQuerySchema = z.object({
@@ -339,6 +340,9 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
   const hookahCountTotal = hookahRows.rows.reduce((sum, row) => sum + Number(row.hookah_count || 0), 0);
   const taskRewardTotal = taskRewardRows.rows.reduce((sum, row) => sum + Number(row.reward_amount || 0), 0);
   const goalRewardTotal = goalRewardRows.rows.reduce((sum, row) => sum + Number(row.reward_amount || 0), 0);
+  // Чаевые: деньги гостя. Идут в «доход» и считаются полученными сразу (как кальяны),
+  // но НИКОГДА не входят в «остаток к выплате» — ресторан их не должен.
+  const tipsTotal = await getTipsTotalForMonth(user.id, start);
   const streakReward = await streakRewardsForMonth(user.id, start);
   const streakRewardTotal = streakReward.total;
   const hoursTotal = shiftRows.rows.reduce((sum, row) => sum + Number(row.planned_hours || 0), 0) + histHours;
@@ -482,8 +486,8 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       shifts: shiftRows.rows.length + histShifts,
       hours: Math.round(hoursTotal * 100) / 100,
       pastDebt,
-      accrued: salaryAccruedTotal + hookahAccruedTotal + taskRewardTotal + goalRewardTotal + streakRewardTotal,
-      paid: salaryPaidTotal + hookahAccruedTotal,
+      accrued: salaryAccruedTotal + hookahAccruedTotal + taskRewardTotal + goalRewardTotal + streakRewardTotal + tipsTotal,
+      paid: salaryPaidTotal + hookahAccruedTotal + tipsTotal,
       remaining: Math.max(0, salaryAccruedTotal + taskRewardTotal + goalRewardTotal + streakRewardTotal - salaryPaidTotal),
       salaryAccrued: salaryAccruedTotal,
       salaryPaid: salaryPaidTotal,
@@ -502,6 +506,7 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       goalRewardCount: goalRewardRows.rows.length,
       streakRewardAccrued: streakRewardTotal,
       streakRewardCount: streakReward.count,
+      tipsAccrued: tipsTotal,
       hookahAccrued: hookahAccruedTotal,
       hookahPaid: hookahAccruedTotal,
       hookahCount: hookahCountTotal,

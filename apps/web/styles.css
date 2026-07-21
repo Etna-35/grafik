@@ -263,6 +263,23 @@ a{color:inherit;text-decoration:none}
 .event-note{font-size:14px;line-height:1.55;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
 .event-empty{font-size:13px;color:var(--ink-soft);line-height:1.5}
 /* День выплаты: крупная сумма в окне + кликабельная отмеченная ячейка + поле суммы у руководителя */
+/* Чаевые: личная цель, прогресс, быстрый ввод */
+.tips-card{background:linear-gradient(135deg,var(--card-2),var(--card));border:1px solid var(--brand-line);border-radius:var(--r-lg);padding:14px;margin:0 2px 14px}
+.tips-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}
+.tips-sum{font-family:var(--font-display);font-size:26px;font-weight:700;line-height:1.1;color:var(--brand-bright);margin-top:2px}
+.tips-avg{text-align:right;flex:none}
+.tips-avg span{display:block;font-size:11px;color:var(--ink-soft)}
+.tips-avg b{font-size:15px;color:var(--ink)}
+.tips-goal-bar{margin:2px 0 8px}
+.tips-goal-sub{font-size:11px;color:var(--ink-soft);line-height:1.45;margin-bottom:4px}
+.tips-done{color:var(--green)}
+.tips-actions{display:flex;gap:8px;margin-top:12px}
+.tips-actions input,.tips-goal-row input{flex:1;min-width:0;border:1px solid var(--line-strong);background:var(--card);border-radius:var(--r-sm);padding:10px 11px;color:var(--ink);font:inherit;font-size:14px;font-weight:500}
+.tips-actions input[type=date]{max-width:150px}
+.tips-actions button{flex:none}
+.tips-goal-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+.tips-goal-row button{flex:none}
+
 /* История обязательств (закрытые/снятые) */
 .oblig-hist-list{display:grid;gap:8px;padding:4px 0}
 .oblig-hist-item{border:1px solid var(--line);border-radius:var(--r-md);padding:10px 12px;background:var(--card)}
