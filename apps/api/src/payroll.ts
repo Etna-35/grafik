@@ -370,8 +370,30 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
     arr.push({ workDate: r.work_date, amount: Number(r.amount) });
     oblPaymentsById.set(r.obligation_id, arr);
   }
+  // ИСТОРИЯ обязательств (включая закрытые) — чтобы было видно, что уже погашено, а что снято.
+  // Статус: active — в работе; paid — погашено выплатами; cancelled — снято вручную (выплат не было).
+  const obligationStatus = (isActive: boolean, total: number, paid: number) =>
+    isActive ? "active" : paid >= total ? "paid" : "cancelled";
+  const ownHistoryRows = await query<ObligationRow & { is_active: boolean; created_at: string }>(
+    `SELECT id::text, title, amount_total, amount_paid, note, is_active, created_at::text, updated_at::text
+     FROM employee_obligations WHERE employee_id = $1 ORDER BY created_at DESC`,
+    [user.id]
+  );
+  const obligationHistory = ownHistoryRows.rows.map((row) => ({
+    id: row.id,
+    title: row.title,
+    amountTotal: row.amount_total,
+    amountPaid: row.amount_paid,
+    remaining: Math.max(0, row.amount_total - row.amount_paid),
+    note: row.note || "",
+    status: obligationStatus(row.is_active, row.amount_total, row.amount_paid),
+    closedAt: row.is_active ? "" : row.updated_at,
+    payments: oblPaymentsById.get(row.id) || []
+  }));
+
   let manageEmployees: Array<{ id: string; name: string }> = [];
   let allObligations: Array<Record<string, unknown>> = [];
+  let allObligationHistory: Array<Record<string, unknown>> = [];
   if (manager) {
     const emps = await query<{ id: string; display_name: string }>(
       `SELECT id::text, display_name FROM employees WHERE is_active = true AND archived_at IS NULL ORDER BY display_name`
@@ -397,6 +419,41 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       remaining: row.amount_total - row.amount_paid,
       note: row.note || ""
     }));
+
+    // Полная история обязательств по всем сотрудникам (включая закрытые и снятые) + платежи по ним.
+    const allHist = await query<ManageObligationRow & { is_active: boolean; created_at: string }>(
+      `
+        SELECT o.id::text, o.employee_id::text, e.display_name AS employee_name,
+               o.title, o.amount_total, o.amount_paid, o.note, o.is_active,
+               o.created_at::text, o.updated_at::text
+        FROM employee_obligations o
+        JOIN employees e ON e.id = o.employee_id
+        ORDER BY o.created_at DESC
+      `
+    );
+    const allPays = await query<{ obligation_id: string; work_date: string; amount: number }>(
+      `SELECT obligation_id::text, work_date::text, amount FROM payroll_payouts
+       WHERE obligation_id IS NOT NULL ORDER BY work_date DESC, created_at DESC`
+    );
+    const paysById = new Map<string, Array<{ workDate: string; amount: number }>>();
+    for (const p of allPays.rows) {
+      const arr = paysById.get(p.obligation_id) || [];
+      arr.push({ workDate: p.work_date, amount: Number(p.amount) });
+      paysById.set(p.obligation_id, arr);
+    }
+    allObligationHistory = allHist.rows.map((row) => ({
+      id: row.id,
+      employeeId: row.employee_id,
+      employeeName: row.employee_name,
+      title: row.title,
+      amountTotal: row.amount_total,
+      amountPaid: row.amount_paid,
+      remaining: Math.max(0, row.amount_total - row.amount_paid),
+      note: row.note || "",
+      status: obligationStatus(row.is_active, row.amount_total, row.amount_paid),
+      closedAt: row.is_active ? "" : row.updated_at,
+      payments: paysById.get(row.id) || []
+    }));
   }
 
   return {
@@ -410,8 +467,10 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       note: row.note || "",
       payments: oblPaymentsById.get(row.id) || []
     })),
+    obligationHistory,
     manageEmployees,
     allObligations,
+    allObligationHistory,
     year,
     month,
     employee: {

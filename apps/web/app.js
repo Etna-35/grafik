@@ -3180,6 +3180,8 @@ function renderPayrollContent(payroll){
 
     ${renderObligations(payroll)}
 
+    ${renderObligationHistory(payroll)}
+
     ${showHookah ? `
       <details class="payroll-history hookah-history"${hookahRows.length ? " open" : ""}>
         <summary><span>Кальяны за месяц</span><b>${formatMoneyPlain(hookahTotal)} ₽${hookahCount ? ` · ${hookahCount} шт` : ""}</b></summary>
@@ -3268,6 +3270,51 @@ function renderObligations(payroll){
         `;
       }).join("")}
     </div>
+  `;
+}
+
+// История обязательств: закрытые (погашенные и снятые) — чтобы не терялись из виду.
+// status: active — в работе, paid — погашено выплатами, cancelled — снято вручную.
+const OBLIG_STATUS = {
+  paid: { label:"погашено", cls:"ok" },
+  cancelled: { label:"снято", cls:"muted" },
+  active: { label:"в работе", cls:"active" }
+};
+
+function renderObligationHistory(payroll){
+  // Сотруднику — своя история, руководителю — по всем (с именами).
+  const isManager = Boolean(payroll.canManage);
+  const list = (isManager ? payroll.allObligationHistory : payroll.obligationHistory) || [];
+  const closed = list.filter((o)=>o.status !== "active");
+  if(!closed.length) return "";
+  const paidSum = closed.filter((o)=>o.status === "paid").reduce((s,o)=>s + Number(o.amountPaid || 0), 0);
+  return `
+    <details class="payroll-history oblig-history">
+      <summary>
+        <span>История обязательств</span>
+        <b>${closed.length} ${pluralize(closed.length,"закрыто","закрыто","закрыто")}${paidSum ? ` · выплачено ${formatMoneyPlain(paidSum)} ₽` : ""}</b>
+      </summary>
+      <div class="oblig-hist-list">
+        ${closed.map((o)=>{
+          const st = OBLIG_STATUS[o.status] || OBLIG_STATUS.cancelled;
+          return `
+            <div class="oblig-hist-item">
+              <div class="ohi-top">
+                <span class="ohi-title">${isManager && o.employeeName ? `<i>${escapeHtml(o.employeeName)}</i> · ` : ""}${escapeHtml(o.title)}</span>
+                <span class="ohi-badge ${st.cls}">${st.label}</span>
+              </div>
+              <div class="ohi-sub">
+                ${o.status === "paid"
+                  ? `Выплачено ${formatMoneyPlain(o.amountPaid)} из ${formatMoneyPlain(o.amountTotal)} ₽`
+                  : `Было ${formatMoneyPlain(o.amountTotal)} ₽${o.amountPaid ? ` · выплачено ${formatMoneyPlain(o.amountPaid)} ₽` : " · выплат не было"}`}
+                ${o.closedAt ? ` · закрыто ${escapeHtml(formatDateHuman(o.closedAt.slice(0,10)))}` : ""}
+              </div>
+              ${(o.payments || []).length ? `<div class="oblig-pays">${o.payments.map((p)=>`<div class="oblig-pay"><span>${escapeHtml(formatDateHuman(p.workDate))}</span><b>+${formatMoneyPlain(p.amount)} ₽</b></div>`).join("")}</div>` : ""}
+            </div>
+          `;
+        }).join("")}
+      </div>
+    </details>
   `;
 }
 
