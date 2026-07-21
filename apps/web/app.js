@@ -4133,6 +4133,7 @@ function renderFinanceContent(f){
         <div class="mslabel">Выручка ${rev.isForecast ? "(прогноз месяца)" : "за месяц"}</div>
         <div class="payroll-balance">${formatMoneyPlain(rev.predicted || 0)} ₽</div>
         ${rev.isForecast ? `<div class="fin-sub">факт на сегодня: ${formatMoneyPlain(rev.actualSoFar || 0)} ₽ · ${rev.daysPassed || 0} дн</div>` : ""}
+        ${rev.otherIncome ? `<div class="fin-sub">смены: ${formatMoneyPlain(rev.shiftsRevenue || 0)} ₽ · прочие поступления: <b class="fin-ok">${formatMoneyPlain(rev.otherIncome)} ₽</b></div>` : ""}
       </div>
       <div class="payroll-next">
         <span>EBITDA</span>
@@ -4148,6 +4149,34 @@ function renderFinanceContent(f){
       </div>
       ${state.financeNotice ? `<div class="fin-notice">${escapeHtml(state.financeNotice)}</div>` : ""}
     </div>
+
+    <div class="fin-entry fin-income">
+      <div class="row-title">Внести прочий доход</div>
+      <div class="row-sub">Деньги мимо закрытия смены: корпоратив в закрытый день, аренда зала под съёмку и т.п.</div>
+      <div class="fin-income-grid">
+        <input id="finIncAmount" type="number" min="1" step="1" inputmode="numeric" placeholder="сумма, ₽">
+        <input id="finIncDate" type="date" value="${escapeAttr(todayIsoDate())}">
+      </div>
+      <input id="finIncSource" type="text" maxlength="60" placeholder="источник: корпоратив / аренда / прочее">
+      <input id="finIncComment" type="text" maxlength="300" placeholder="комментарий (необязательно)">
+      <div class="fin-income-row">
+        <label class="checkrow"><input id="finIncCash" type="checkbox" checked><span>наличные</span></label>
+        <button class="ghost brand-action" type="button" data-fin-income-add>Внести доход</button>
+      </div>
+    </div>
+
+    ${(f.recentIncome || []).length ? `
+    <details class="fin-recent" open>
+      <summary>Прочие поступления месяца (${f.recentIncome.length}) · ${formatMoneyPlain((f.recentIncome).reduce((s,i)=>s+Number(i.amount||0),0))} ₽</summary>
+      <div class="payroll-list">
+        ${f.recentIncome.map((i)=>`
+          <div class="payroll-row">
+            <span><b>${formatMoneyPlain(i.amount)} ₽</b><small>${escapeHtml(i.source)} · ${escapeHtml(formatDateHuman(i.date))} · ${i.isCash ? "наличные" : "безнал"}${i.comment ? ` · ${escapeHtml(i.comment)}` : ""}</small></span>
+            <button class="ghost mini danger-action" type="button" data-fin-inc-del="${escapeAttr(i.id)}">Удалить</button>
+          </div>
+        `).join("")}
+      </div>
+    </details>` : ""}
 
     ${(f.recentExpenses || []).length ? `
     <details class="fin-recent">
@@ -4193,6 +4222,10 @@ function bindFinancePage(){
   app.querySelectorAll("[data-fin-cat]").forEach((button)=>{
     button.addEventListener("click", ()=>addFinanceExpense(button.dataset.finCat));
   });
+  app.querySelector("[data-fin-income-add]")?.addEventListener("click", addFinanceIncome);
+  app.querySelectorAll("[data-fin-inc-del]").forEach((button)=>{
+    button.addEventListener("click", ()=>deleteFinanceIncome(button.dataset.finIncDel));
+  });
   app.querySelectorAll("[data-fin-del]").forEach((button)=>{
     button.addEventListener("click", ()=>deleteFinanceExpense(button.dataset.finDel));
   });
@@ -4200,6 +4233,38 @@ function bindFinancePage(){
   fixedForm?.addEventListener("submit", (event)=>{ event.preventDefault(); saveFinanceFixed(fixedForm); });
   const fixedDetails = app.querySelector(".fin-fixed");
   fixedDetails?.addEventListener("toggle", ()=>{ state.financeFixedOpen = fixedDetails.open; });
+}
+
+// Прочий доход мимо закрытия смены. Входит в выручку месяца, но не в прогноз/Кассу.
+async function addFinanceIncome(){
+  const amount = Number(app.querySelector("#finIncAmount")?.value);
+  const source = (app.querySelector("#finIncSource")?.value || "").trim();
+  const entryDate = app.querySelector("#finIncDate")?.value || undefined;
+  const comment = (app.querySelector("#finIncComment")?.value || "").trim();
+  const isCash = Boolean(app.querySelector("#finIncCash")?.checked);
+  if(!(amount > 0)){ state.financeNotice = "Укажи сумму дохода"; render(); return; }
+  if(!source){ state.financeNotice = "Укажи источник дохода"; render(); return; }
+  try{
+    await apiPost("/api/finance/income", { source, amount: Math.round(amount), isCash, entryDate, comment });
+    state.financeNotice = `Доход записан: ${source} · ${formatMoneyPlain(Math.round(amount))} ₽`;
+    state.finance = null;
+    await loadFinance();
+  }catch(error){
+    state.financeNotice = "Не удалось записать доход";
+    render();
+  }
+}
+
+async function deleteFinanceIncome(id){
+  if(!id) return;
+  try{
+    await apiDelete(`/api/finance/income/${encodeURIComponent(id)}`);
+    state.finance = null;
+    await loadFinance();
+  }catch(error){
+    state.financeNotice = "Не удалось удалить";
+    render();
+  }
 }
 
 async function addFinanceExpense(article){

@@ -34,6 +34,14 @@ const fixedSchema = z.object({
     comment: z.string().trim().max(200).optional().default("")
   })).max(50)
 });
+const incomeSchema = z.object({
+  source: z.string().trim().min(1).max(60),
+  amount: z.coerce.number().int().positive().max(100000000),
+  isCash: z.boolean().optional().default(true),
+  entryDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  comment: z.string().trim().max(300).optional().default("")
+});
+
 const idParamSchema = z.object({ id: z.string().uuid() });
 
 function isFinanceManager(user: SessionUser): boolean {
@@ -142,7 +150,19 @@ export const PURCHASE_NORMS: Record<string, { label: string; norm: number }> = {
 async function getFinance(year: number, month: number) {
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const rev = await predictRevenue(year, month);
-  const revenue = rev.predicted;
+  // Прочие поступления (корпоратив/аренда мимо закрытия смены) входят в выручку МЕСЯЦА:
+  // от неё считаются нормы P&L и фудкост. В прогноз по дням недели они НЕ попадают —
+  // это разовые деньги, они не должны задирать средние (см. миграцию 048).
+  const incomeRow = await query<{ total: string; cash: string }>(
+    `SELECT COALESCE(SUM(amount),0)::text AS total,
+            COALESCE(SUM(amount) FILTER (WHERE is_cash), 0)::text AS cash
+     FROM finance_income
+     WHERE entry_date >= $1::date AND entry_date < ($1::date + interval '1 month')`,
+    [start]
+  );
+  const otherIncome = Number(incomeRow.rows[0]?.total || 0);
+  const otherIncomeCash = Number(incomeRow.rows[0]?.cash || 0);
+  const revenue = rev.predicted + otherIncome;
 
   // ФОТ из графика (план по сменам месяца).
   const fotRow = await query<{ fot: string }>(
@@ -191,7 +211,10 @@ async function getFinance(year: number, month: number) {
     month,
     revenue: {
       predicted: revenue,
-      actualSoFar: rev.actualSoFar,
+      shiftsRevenue: rev.predicted,
+      otherIncome,
+      otherIncomeCash,
+      actualSoFar: rev.actualSoFar + otherIncome,
       daysPassed: rev.daysPassed,
       daysInMonth: rev.daysInMonth,
       isForecast: rev.isForecast
@@ -227,10 +250,24 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
        ORDER BY entry_date DESC, created_at DESC LIMIT 100`,
       [`${year}-${String(month).padStart(2, "0")}-01`]
     );
+    const incomeList = await query<{ id: string; entry_date: string; source: string; amount: number; is_cash: boolean; comment: string | null }>(
+      `SELECT id::text, entry_date::text, source, amount, is_cash, comment FROM finance_income
+       WHERE entry_date >= $1::date AND entry_date < ($1::date + interval '1 month')
+       ORDER BY entry_date DESC, created_at DESC LIMIT 100`,
+      [`${year}-${String(month).padStart(2, "0")}-01`]
+    );
     return {
       ...data,
       articleLabels: Object.fromEntries(ARTICLES.map((a) => [a.key, a.label])),
       expenseArticles: ARTICLES.filter((a) => a.source === "expense").map((a) => ({ key: a.key, label: a.label })),
+      recentIncome: incomeList.rows.map((r) => ({
+        id: r.id,
+        date: r.entry_date,
+        source: r.source,
+        amount: r.amount,
+        isCash: r.is_cash,
+        comment: r.comment || ""
+      })),
       recentExpenses: recent.rows.map((r) => ({
         id: r.id,
         date: r.entry_date,
@@ -239,6 +276,35 @@ export function registerFinanceRoutes(app: FastifyInstance): void {
         comment: r.comment || ""
       }))
     };
+  });
+
+  // Прочие поступления: доход мимо закрытия смены (корпоратив, аренда под съёмку и т.п.).
+  app.post("/api/finance/income", async (request, reply) => {
+    const user = await requireFinanceManager(request, reply);
+    if (!user) return;
+    const parsed = incomeSchema.safeParse(request.body);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_income" });
+      return;
+    }
+    await query(
+      `INSERT INTO finance_income (source, amount, is_cash, comment, created_by, entry_date)
+       VALUES ($1, $2, $3, $4, $5, COALESCE($6::date, (now() AT TIME ZONE 'Europe/Moscow')::date))`,
+      [parsed.data.source, parsed.data.amount, parsed.data.isCash, parsed.data.comment || null, user.id, parsed.data.entryDate || null]
+    );
+    return { ok: true };
+  });
+
+  app.delete("/api/finance/income/:id", async (request, reply) => {
+    const user = await requireFinanceManager(request, reply);
+    if (!user) return;
+    const parsed = idParamSchema.safeParse(request.params);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_income" });
+      return;
+    }
+    await query("DELETE FROM finance_income WHERE id = $1", [parsed.data.id]);
+    return { ok: true };
   });
 
   app.post("/api/finance/expenses", async (request, reply) => {

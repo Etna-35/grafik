@@ -263,6 +263,15 @@ a{color:inherit;text-decoration:none}
 .event-note{font-size:14px;line-height:1.55;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
 .event-empty{font-size:13px;color:var(--ink-soft);line-height:1.5}
 /* День выплаты: крупная сумма в окне + кликабельная отмеченная ячейка + поле суммы у руководителя */
+/* Прочий доход в Финансах (мимо закрытия смены) */
+.fin-income{border-color:var(--brand-line)}
+.fin-income .row-sub{margin:2px 0 10px}
+.fin-income input[type=text],.fin-income input[type=number],.fin-income input[type=date]{width:100%;border:1px solid var(--line-strong);background:var(--card);border-radius:var(--r-sm);padding:10px 11px;color:var(--ink);font:inherit;font-size:14px;font-weight:500;margin-bottom:8px}
+.fin-income-grid{display:flex;gap:8px}
+.fin-income-grid input[type=number]{flex:1;min-width:0}
+.fin-income-grid input[type=date]{max-width:150px;flex:none}
+.fin-income-row{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:2px}
+
 /* ФОТ дня как % от прогноза выручки (фича fot_forecast). Норма 23–28%. */
 .schedule-grid td.colMoney .fotPct{display:block;margin-top:2px;font-size:10px;font-weight:600;line-height:1;letter-spacing:.2px}
 .fotPct.fp-ok{color:var(--green)}
