@@ -314,7 +314,7 @@ function renderHub(){
           <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}</div>
         </div>
         ${renderBirthday()}
-        ${renderDayPanel()}
+        ${state.features?.day_plan ? renderDayPanel() : ""}
         ${renderSalesGoals()}
         ${renderMerits()}
         ${renderWeeklyStats()}
@@ -681,6 +681,10 @@ async function adjustSalesGoal(id, delta){
   }
 }
 
+// Блок «цель дня» (план выручки / наличный план / план от коллег).
+// СКРЫТ за флагом `day_plan` (по умолчанию выключен): эта информация уже приходит
+// в общий чат в 11:11, а в ЛК блок только занимал место. Код сохранён —
+// включается обратно одной командой, когда будем его модернизировать.
 function renderDayPanel(){
   const s = state.summary || {};
   const goalDate = new Intl.DateTimeFormat("ru-RU", { weekday:"long", day:"numeric", month:"long" }).format(new Date());
