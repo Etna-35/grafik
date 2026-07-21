@@ -263,6 +263,15 @@ a{color:inherit;text-decoration:none}
 .event-note{font-size:14px;line-height:1.55;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
 .event-empty{font-size:13px;color:var(--ink-soft);line-height:1.5}
 /* День выплаты: крупная сумма в окне + кликабельная отмеченная ячейка + поле суммы у руководителя */
+/* ФОТ дня как % от прогноза выручки (фича fot_forecast). Норма 23–28%. */
+.schedule-grid td.colMoney .fotPct{display:block;margin-top:2px;font-size:10px;font-weight:600;line-height:1;letter-spacing:.2px}
+.fotPct.fp-ok{color:var(--green)}
+.fotPct.fp-over{color:var(--danger)}
+.fotPct.fp-low{color:var(--ink-soft)}
+.moneySummary .fp-ok{color:var(--green)}
+.moneySummary .fp-over{color:var(--danger)}
+.moneySummary .fp-low{color:var(--ink-soft)}
+
 /* Окно «+N%» за опыт: во весь экран, блюр, закрытие тапом в любом месте */
 .xp-overlay{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:26px;cursor:pointer;
   background:rgba(0,0,0,.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);animation:xpFade .18s ease-out}

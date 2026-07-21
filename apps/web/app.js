@@ -5077,9 +5077,24 @@ function renderScheduleDay(day, employees, canSeeMoney){
       </td>
       ${employees.map((employee)=>renderShiftCell(day, employee, canSeeMoney)).join("")}
       <td class="colSum"><span class="cv">${day.coverage || ""}</span></td>
-      ${canSeeMoney ? `<td class="colMoney"><span class="mv">${day.fot ? formatMoneyPlain(day.fot) : ""}</span></td><td class="colPlan"><span class="pv">${day.fot ? escapeHtml(day.revenuePlan) : ""}</span></td>` : ""}
+      ${canSeeMoney ? `<td class="colMoney"><span class="mv">${day.fot ? formatMoneyPlain(day.fot) : ""}</span>${fotPctBadge(day)}</td><td class="colPlan"><span class="pv">${day.fot ? escapeHtml(day.revenuePlan) : ""}</span></td>` : ""}
     </tr>
   `;
+}
+
+// Фича `fot_forecast`: ФОТ дня как % от прогнозной выручки.
+// Коридор нормы — 23–28%. Выше 28% — дорогой день, ниже 23% — возможно, не вывезем зал.
+function fotPctClass(pct){
+  if(pct == null) return "";
+  if(pct > 28) return "fp-over";
+  if(pct >= 23) return "fp-ok";
+  return "fp-low";
+}
+
+function fotPctBadge(day){
+  if(day.fotPct == null || !day.fot) return "";
+  const title = `ФОТ ${formatMoneyPlain(day.fot)} ₽ от прогноза выручки ${formatMoneyPlain(day.forecastRevenue || 0)} ₽`;
+  return `<span class="fotPct ${fotPctClass(day.fotPct)}" title="${escapeAttr(title)}">${day.fotPct}%</span>`;
 }
 
 function renderShiftCell(day, employee, canSeeMoney){
@@ -5180,6 +5195,7 @@ function renderMoneySummary(schedule){
       <div class="msrow">
         <span>Дней с сменами: <b>${schedule.summary.workingDays || 0}</b></span>
         <span>План выручки при ФОТ 23-28%: <b>${escapeHtml(schedule.summary.revenuePlan || "0")}</b></span>
+        ${schedule.summary.forecastRevenue ? `<span>Прогноз выручки месяца: <b>${formatMoneyPlain(schedule.summary.forecastRevenue)} ₽</b>${schedule.summary.avgFotPct != null ? ` · ФОТ <b class="${fotPctClass(schedule.summary.avgFotPct)}">${schedule.summary.avgFotPct}%</b>` : ""}</span>` : ""}
         <span>Выдано: <b>${formatMoneyPlain(schedule.summary.totalPaid)} ₽</b></span>
         <span>Остаток: <b>${formatMoneyPlain(schedule.summary.totalRemaining)} ₽</b></span>
       </div>

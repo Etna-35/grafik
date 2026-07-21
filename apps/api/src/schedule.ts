@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
+import { isFeatureEnabled } from "./features.js";
+import { getDailyRevenueForecast } from "./finance.js";
 
 const roleLabels: Record<string, string> = {
   cook: "Повар",
@@ -664,10 +666,24 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
   for (const r of streakByEmp.rows) extrasByEmp.set(r.employee_id, (extrasByEmp.get(r.employee_id) || 0) + Number(r.v || 0));
   for (const r of hookahByEmp.rows) hookahMap.set(r.employee_id, Number(r.v || 0));
 
+  // Фича `fot_forecast`: подсказка «ФОТ дня как % от прогнозной выручки» — только владельцу/руководителю.
+  const fotForecastEnabled = canSeeAllMoney && (await isFeatureEnabled("fot_forecast"));
+  const forecastByDate = new Map<string, number>();
+  let monthForecastRevenue = 0;
+  if (fotForecastEnabled) {
+    const forecast = await getDailyRevenueForecast(year, month);
+    for (const d of forecast) {
+      forecastByDate.set(d.date, d.amount);
+      monthForecastRevenue += d.amount;
+    }
+  }
+
   const days = buildMonthDays(year, month).map((date) => {
     const shifts = (shiftsByDate.get(date) || {}) as Record<string, { payAmount?: number }>;
     const dayFot = Object.values(shifts).reduce<number>((sum, value) => sum + Number(value.payAmount || 0), 0);
     const dayMeta = dayRows.rows.find((row) => row.work_date === date);
+    const forecastRevenue = fotForecastEnabled ? (forecastByDate.get(date) ?? 0) : 0;
+    const fotPct = fotForecastEnabled && forecastRevenue > 0 ? Math.round((dayFot / forecastRevenue) * 100) : null;
     return {
       date,
       isDeadline: dayMeta?.is_deadline || false,
@@ -695,7 +711,8 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       shifts,
       coverage: Object.keys(shifts).length,
       fot: canSeeAllMoney ? dayFot : null,
-      revenuePlan: canSeeAllMoney ? planRange(dayFot) : null
+      revenuePlan: canSeeAllMoney ? planRange(dayFot) : null,
+      ...(fotForecastEnabled ? { forecastRevenue, fotPct } : {})
     };
   });
 
@@ -776,7 +793,13 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
       totalPaid,
       totalRemaining,
       workingDays: daysWithShifts.size,
-      revenuePlan: canSeeAllMoney ? planRange(totalFot) : null
+      revenuePlan: canSeeAllMoney ? planRange(totalFot) : null,
+      ...(fotForecastEnabled
+        ? {
+            forecastRevenue: Math.round(monthForecastRevenue),
+            avgFotPct: monthForecastRevenue > 0 ? Math.round((totalFot / monthForecastRevenue) * 100) : null
+          }
+        : {})
     }
   };
 }

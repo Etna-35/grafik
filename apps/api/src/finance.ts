@@ -65,8 +65,15 @@ function resolveMonth(month?: string): { year: number; month: number } {
   return { year: y, month: m };
 }
 
-// Прогноз выручки месяца: факт прошедших дней + средние по дням недели на оставшиеся.
-export async function predictRevenue(year: number, month: number): Promise<{ predicted: number; actualSoFar: number; daysPassed: number; daysInMonth: number; isForecast: boolean }> {
+export interface DailyRevenueForecast {
+  date: string;
+  amount: number;
+  isActual: boolean;
+}
+
+// Прогноз выручки по дням месяца: факт для прошедших дней (isActual=true), средние по дню недели —
+// для оставшихся. Общая основа для predictRevenue (месяц) и подсказки ФОТ/выручка по дням графика.
+export async function getDailyRevenueForecast(year: number, month: number): Promise<DailyRevenueForecast[]> {
   const start = `${year}-${String(month).padStart(2, "0")}-01`;
   const today = mskToday();
   const dayRows = await query<{ work_date: string; revenue_total: number }>(
@@ -86,26 +93,41 @@ export async function predictRevenue(year: number, month: number): Promise<{ pre
   for (const r of wdRows.rows) weekdayAvg.set(r.dow, Number(r.avg || 0));
 
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-  let actualSoFar = 0;
-  let predicted = 0;
-  let daysPassed = 0;
+  const result: DailyRevenueForecast[] = [];
   for (let d = 1; d <= daysInMonth; d++) {
     const iso = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
     const dow = new Date(Date.UTC(year, month - 1, d)).getUTCDay();
-    if (iso <= today) {
-      const actual = actualByDate.get(iso) || 0;
-      actualSoFar += actual;
-      predicted += actual;
-      if (actualByDate.has(iso)) daysPassed++;
+    if (iso <= today && actualByDate.has(iso)) {
+      result.push({ date: iso, amount: Math.round(actualByDate.get(iso) || 0), isActual: true });
+    } else if (iso <= today) {
+      // Прошедший день без закрытия смены — данных нет, не считаем ни фактом, ни прогнозом.
+      result.push({ date: iso, amount: 0, isActual: false });
     } else {
-      predicted += Math.round(weekdayAvg.get(dow) || 0);
+      result.push({ date: iso, amount: Math.round(weekdayAvg.get(dow) || 0), isActual: false });
+    }
+  }
+  return result;
+}
+
+// Прогноз выручки месяца: факт прошедших дней + средние по дням недели на оставшиеся.
+export async function predictRevenue(year: number, month: number): Promise<{ predicted: number; actualSoFar: number; daysPassed: number; daysInMonth: number; isForecast: boolean }> {
+  const today = mskToday();
+  const days = await getDailyRevenueForecast(year, month);
+  let actualSoFar = 0;
+  let predicted = 0;
+  let daysPassed = 0;
+  for (const d of days) {
+    predicted += d.amount;
+    if (d.isActual) {
+      actualSoFar += d.amount;
+      daysPassed++;
     }
   }
   return {
     predicted: Math.round(predicted),
     actualSoFar: Math.round(actualSoFar),
     daysPassed,
-    daysInMonth,
+    daysInMonth: days.length,
     isForecast: `${year}-${String(month).padStart(2, "0")}` === today.slice(0, 7)
   };
 }
