@@ -263,6 +263,19 @@ a{color:inherit;text-decoration:none}
 .event-note{font-size:14px;line-height:1.55;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
 .event-empty{font-size:13px;color:var(--ink-soft);line-height:1.5}
 /* День выплаты: крупная сумма в окне + кликабельная отмеченная ячейка + поле суммы у руководителя */
+/* Мини-расшифровка остатка к выплате */
+.rem-break{margin:0 2px 12px;border:1px solid var(--line);border-radius:var(--r-md);background:var(--card)}
+.rem-break summary{padding:11px 12px;cursor:pointer;font-size:13px;color:var(--ink-soft);font-weight:600;display:flex;justify-content:space-between;gap:10px;list-style:none}
+.rem-break summary::-webkit-details-marker{display:none}
+.rem-break summary b{color:var(--brand-bright)}
+.rem-list{padding:2px 12px 12px}
+.rem-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:13px;color:var(--ink);border-top:1px solid var(--line)}
+.rem-row b{flex:none}
+.rem-minus{color:var(--danger)}
+.rem-row.rem-total{border-top:1px solid var(--line-strong);margin-top:2px;padding-top:8px;font-weight:600}
+.rem-row.rem-total b{color:var(--brand-bright)}
+.rem-note{margin-top:8px;font-size:11px;color:var(--ink-soft);line-height:1.45}
+
 /* Прочий доход в Финансах (мимо закрытия смены) */
 .fin-income{border-color:var(--brand-line)}
 .fin-income .row-sub{margin:2px 0 10px}

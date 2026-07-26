@@ -3182,6 +3182,40 @@ function bindXpPopup(){
   app.querySelector("[data-xp-close]")?.addEventListener("click", dismissXpPopup);
 }
 
+// Мини-расшифровка «как считается остаток к выплате»: начислено к выплате − выплачено зарплатой = остаток.
+// Кальяны/чаевые сюда не входят (выдаются сразу), обязательства — отдельной строкой (гасят долг, не зарплату).
+function renderRemainingBreakdown(s){
+  const salary = Number(s.salaryAccrued || 0);
+  const rewards = Number(s.taskRewardAccrued || 0) + Number(s.goalRewardAccrued || 0) + Number(s.streakRewardAccrued || 0);
+  const toPay = salary + rewards;
+  const paidSalary = Number(s.salaryPaid || 0);
+  const oblPaid = Number(s.obligationPaid || 0);
+  if(toPay <= 0 && paidSalary <= 0) return "";
+  const rows = [
+    { label:"Начислено за смены", amount:salary },
+    { label:"Премии (задачи · цели · план)", amount:rewards },
+    { label:"Выплачено зарплатой", amount:-paidSalary }
+  ].filter((r)=>r.amount !== 0);
+  return `
+    <details class="rem-break">
+      <summary>Как считается остаток <b>${formatMoneyPlain(s.remaining || 0)} ₽</b></summary>
+      <div class="rem-list">
+        ${rows.map((r)=>`
+          <div class="rem-row">
+            <span>${escapeHtml(r.label)}</span>
+            <b class="${r.amount < 0 ? "rem-minus" : ""}">${r.amount < 0 ? "−" : ""}${formatMoneyPlain(Math.abs(r.amount))} ₽</b>
+          </div>
+        `).join("")}
+        <div class="rem-row rem-total">
+          <span>Осталось выплатить</span>
+          <b>${formatMoneyPlain(s.remaining || 0)} ₽</b>
+        </div>
+        ${oblPaid > 0 ? `<div class="rem-note">Отдельно выдано по обязательствам: ${formatMoneyPlain(oblPaid)} ₽ — гасит личный долг, на зарплатный остаток не влияет.</div>` : ""}
+      </div>
+    </details>
+  `;
+}
+
 // ЧАЕВЫЕ (флаг tips): официант/бармен сам ведёт суммы по дням и ставит ЛИЧНУЮ цель на месяц.
 // Цель видит только сам сотрудник; суммы видны и руководителю (блок «Чаевые команды»).
 function renderTipsCard(){
@@ -3381,6 +3415,8 @@ function renderPayrollContent(payroll){
         <div><span>Часы</span><b>${formatHours(summary.hours || 0)}</b></div>
       </div>
     </div>
+
+    ${renderRemainingBreakdown(summary)}
 
     ${renderTipsCard()}
 
