@@ -335,7 +335,11 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
   const hourlyHours = hourlyRows.reduce((s, r) => s + Number(r.planned_hours || 0), 0);
 
   const salaryAccruedTotal = shiftRows.rows.reduce((sum, row) => sum + Number(row.pay_amount || 0), 0) + histAccrued;
-  const salaryPaidTotal = payoutRows.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  // Платежи по ОБЯЗАТЕЛЬСТВАМ (obligation_title не пуст) — это гашение отдельного долга, а НЕ зарплата.
+  // Они уменьшают остаток обязательства (свой счёт), но не должны уменьшать «остаток по зарплате»,
+  // иначе одни и те же деньги вычитаются дважды. В «Выплачено» (реальный кэш) они по-прежнему входят.
+  const salaryPaidTotal = payoutRows.rows.reduce((sum, row) => sum + (row.obligation_title ? 0 : Number(row.amount || 0)), 0);
+  const obligationPaidTotal = payoutRows.rows.reduce((sum, row) => sum + (row.obligation_title ? Number(row.amount || 0) : 0), 0);
   const hookahAccruedTotal = hookahRows.rows.reduce((sum, row) => sum + Number(row.hookah_payout || 0), 0);
   const hookahCountTotal = hookahRows.rows.reduce((sum, row) => sum + Number(row.hookah_count || 0), 0);
   const taskRewardTotal = taskRewardRows.rows.reduce((sum, row) => sum + Number(row.reward_amount || 0), 0);
@@ -487,10 +491,13 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       hours: Math.round(hoursTotal * 100) / 100,
       pastDebt,
       accrued: salaryAccruedTotal + hookahAccruedTotal + taskRewardTotal + goalRewardTotal + streakRewardTotal + tipsTotal,
-      paid: salaryPaidTotal + hookahAccruedTotal + tipsTotal,
+      // «Выплачено» — весь реальный кэш за месяц, включая гашение обязательств.
+      paid: salaryPaidTotal + obligationPaidTotal + hookahAccruedTotal + tipsTotal,
+      // «Осталось выплатить» — только по зарплате: платежи по обязательствам НЕ вычитаем (у них свой остаток).
       remaining: Math.max(0, salaryAccruedTotal + taskRewardTotal + goalRewardTotal + streakRewardTotal - salaryPaidTotal),
       salaryAccrued: salaryAccruedTotal,
       salaryPaid: salaryPaidTotal,
+      obligationPaid: obligationPaidTotal,
       // Расшифровка начислений по сменам (для блока «из чего сложился доход»).
       hourlyAccrued,
       hourlyShifts: hourlyRows.length,
