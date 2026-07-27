@@ -111,9 +111,56 @@
 
 8. Убрать временный файл: `sudo docker compose exec -T postgres rm -f /tmp/restore.dump`.
 
-## Вывоз бэкапов за пределы сервера (offsite)
+## Вывоз бэкапов за пределы сервера (offsite) — S3 Cloud.ru через rclone
 
-Пока не настроено — если сгорит сама VM SberCloud, локальные бэкапы в `/opt/etna/backups`
-пропадут вместе с ней. В `backup-postgres-sber.sh` внизу файла есть закомментированный блок
-с тремя вариантами (scp на другой хост / s3cmd / rclone) и TODO-переменными — раскомментировать
-и заполнить нужный вариант, когда решим, какое хранилище использовать.
+Зачем: локальные дампы лежат на той же VM, что и БД. Сгорит/пропадёт VM — пропадут и они.
+Решение (владелец, 2026-07-27): объектное хранилище **Cloud.ru S3**, заливка через `rclone`,
+**каждый** дамп, ретенция в хранилище **30 дней** (как локально).
+
+Код уже в `backup-postgres-sber.sh` (блок `offsite_upload`) и приезжает **выключенным**:
+пока на сервере нет `/opt/etna/deploy/backup-offsite.env` с `OFFSITE_ENABLED=1`, скрипт
+пишет в лог «Offsite: выключен» и работает как раньше. Ошибка вывоза не роняет бэкап —
+локальный дамп всё равно сделан, в лог падает строка `!! Offsite НЕ ВЫПОЛНЕН`.
+
+### Что настроено заранее (сделано агентом)
+- `rclone` установлен на VM (`rclone version`).
+- `/opt/etna/deploy/backup-offsite.env` создан с `OFFSITE_ENABLED=0` (права 600, root) —
+  шаблон с комментариями, в git его нет.
+
+### Что делает владелец (ключи доступа агенту не передавать)
+1. В панели Cloud.ru: создать бакет объектного хранилища (например `etna-backups`) и
+   пару ключей S3 (Access Key / Secret Key). Регион/эндпоинт записать.
+2. Прописать remote в rclone — интерактивно, ключи вводятся только на сервере:
+   ```
+   ssh -i ~/.ssh/etna_sber_rsa rio35@213.171.28.138
+   sudo rclone config
+   ```
+   Ответы: `n` (new remote) → имя `etna-s3` → тип `s3` → провайдер `Other` →
+   `env_auth = false` → вставить Access Key и Secret Key → region оставить пустым →
+   endpoint — из панели Cloud.ru (обычно `https://s3.cloud.ru`) → остальное по умолчанию →
+   `q` (выход). Конфиг ляжет в `/root/.config/rclone/rclone.conf`.
+3. Проверить, что remote виден:
+   ```
+   sudo rclone lsd etna-s3:
+   ```
+4. Включить вывоз — в `/opt/etna/deploy/backup-offsite.env` поставить `OFFSITE_ENABLED=1`
+   и указать свой бакет:
+   ```
+   sudo nano /opt/etna/deploy/backup-offsite.env
+   # OFFSITE_ENABLED=1
+   # RCLONE_REMOTE="etna-s3:etna-backups/postgres"
+   # OFFSITE_RETENTION_DAYS=30
+   ```
+5. Прогнать бэкап вручную и посмотреть лог:
+   ```
+   sudo /opt/etna/deploy/scripts/backup-postgres-sber.sh
+   tail -20 /opt/etna/backups/postgres/backup.log
+   sudo rclone lsl etna-s3:etna-backups/postgres | tail
+   ```
+   Ожидаемая строка в логе: `Offsite: OK, etna_YYYY-MM-DD_HHMM.dump лежит в ...`.
+
+### Проверка потом
+- Раз в месяц: `sudo rclone lsl etna-s3:etna-backups/postgres | tail` — должны быть свежие файлы,
+  и не больше ~30 штук (ретенция чистит старые).
+- Если в `backup.log` появилась строка `!! Offsite НЕ ВЫПОЛНЕН` — смотреть строки `Offsite:` выше
+  (обычно: истёк ключ, сменился эндпоинт, нет сети).
