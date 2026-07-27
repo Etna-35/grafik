@@ -128,8 +128,31 @@ export async function getServices(employeeId: string): Promise<Service[]> {
     }
   }
 
-  // Касса — планировщик cash-flow, строго для собственника.
-  if (role === "owner" && !rows.some((service) => service.code === "treasury")) {
+  // «Деньги» — владельческий экран (замена «Кассы»), за флагом money_page.
+  // Пока флаг выключен — всё как было: показывается старая «Касса».
+  // Флаг читаем запросом, а не через features.ts — тот импортирует auth.ts (циклический импорт).
+  const moneyPage = role === "owner"
+    ? Boolean(
+        (await query<{ enabled: boolean }>("SELECT enabled FROM feature_flags WHERE code = 'money_page'")).rows[0]?.enabled
+      )
+    : false;
+  if (moneyPage) {
+    const money: Service = {
+      id: "money",
+      code: "money",
+      title: "Деньги",
+      url: "/money",
+      is_active: true,
+      can_view: true,
+      can_edit: true
+    };
+    const idx = rows.findIndex((service) => ["payroll", "admin"].includes(service.code));
+    if (idx === -1) rows.push(money);
+    else rows.splice(idx, 0, money);
+  }
+
+  // Касса — планировщик cash-flow, строго для собственника. Скрывается, когда включены «Деньги».
+  if (role === "owner" && !moneyPage && !rows.some((service) => service.code === "treasury")) {
     const treasury: Service = {
       id: "treasury",
       code: "treasury",

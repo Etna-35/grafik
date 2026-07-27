@@ -33,6 +33,7 @@ import { registerProgressRoutes, getProgressSummary } from "./progress.js";
 import { registerQuizRoutes } from "./quiz.js";
 import { registerFinanceRoutes } from "./finance.js";
 import { registerTreasuryRoutes } from "./treasury.js";
+import { registerMoneyRoutes } from "./money.js";
 import { registerWeeklyStatsRoutes } from "./weeklyStats.js";
 import { registerFeatureRoutes, getAllFeatures } from "./features.js";
 import { registerTipsRoutes } from "./tips.js";
@@ -261,6 +262,7 @@ export function buildServer() {
   registerQuizRoutes(app);
   registerFinanceRoutes(app);
   registerTreasuryRoutes(app);
+  registerMoneyRoutes(app);
   registerWeeklyStatsRoutes(app);
   registerFeatureRoutes(app);
   registerTipsRoutes(app);

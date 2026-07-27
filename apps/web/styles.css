@@ -1094,3 +1094,37 @@ button.day-block{cursor:pointer;font:inherit}
 .oblig-pay{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--ink-soft)}
 .oblig-pay b{color:var(--green);font-weight:600}
 .editor-grid-2{grid-template-columns:1fr 1fr}
+
+/* Деньги (money) — владельческий экран вместо «Кассы». Ноль ежедневного ввода. */
+.mn-month{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 0 12px}
+.mn-month-title{font-family:var(--font-display);font-weight:700;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--brand)}
+.mn-card{background:var(--card);border:1px solid var(--line);border-radius:var(--r-lg);padding:14px 15px;margin:0 0 12px}
+.mn-card .sec{margin:0 0 8px}
+.mn-big{font-family:var(--font-display);font-weight:700;font-size:26px;line-height:1.15;color:var(--brand-bright)}
+.mn-big.mn-good{color:var(--green)}
+.mn-big.mn-bad{color:var(--danger)}
+.mn-sub{font-size:12px;color:var(--ink-soft);margin-top:4px}
+.mn-pace{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:10px}
+.mn-pace-now{font-family:var(--font-display);font-weight:500;font-size:14px;color:var(--ink)}
+.mn-pace-prev{font-size:11px;color:var(--ink-soft)}
+.mn-delta{font-size:11px;font-weight:600;border-radius:var(--r-pill);padding:2px 9px}
+.mn-delta.mn-good{color:var(--green);background:var(--ok-bg);border:1px solid var(--ok-line)}
+.mn-delta.mn-bad{color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger-line)}
+.mn-forecast{font-size:11.5px;color:var(--ink-soft);margin-top:9px;padding-top:9px;border-top:1px solid var(--line)}
+.mn-costs{margin-top:10px;display:flex;flex-direction:column;gap:6px}
+.mn-cost-row{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--ink-soft)}
+.mn-cost-row b{font-family:var(--font-display);font-weight:500;font-size:12.5px;color:var(--ink)}
+.mn-purchase{margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+.mn-purchase-label{display:block;font-size:12px;color:var(--ink-soft)}
+.mn-pay{border-bottom:1px solid var(--line);padding:9px 0}
+.mn-pay:last-of-type{border-bottom:0}
+.mn-pay-main{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.mn-pay-title{font-size:13.5px;color:var(--ink)}
+.mn-pay-amount{font-family:var(--font-display);font-weight:500;font-size:14px;color:var(--ink)}
+.mn-pay-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:3px}
+.mn-pay-date{font-size:11px;color:var(--ink-soft)}
+.mn-pay-late .mn-pay-date{color:var(--danger)}
+.mn-pay-late .mn-pay-amount{color:var(--danger)}
+.mn-verdict{margin-top:12px;font-size:12.5px;line-height:1.45;border-radius:var(--r-md);padding:10px 12px}
+.mn-v-ok{color:var(--green);background:var(--ok-bg);border:1px solid var(--ok-line)}
+.mn-v-bad{color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger-line)}

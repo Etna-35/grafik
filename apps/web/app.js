@@ -45,6 +45,11 @@ const serviceMeta = {
     accent: "var(--brand-bright)",
     description: "Планирование и резервы",
     icon: walletIcon
+  },
+  money: {
+    accent: "var(--brand-bright)",
+    description: "Прибыль, темп и платежи",
+    icon: walletIcon
   }
 };
 
@@ -135,6 +140,13 @@ let state = {
   treasuryAddOpen: false,
   treasuryCalOpen: false,
   treasuryNotice: "",
+  money: null,
+  moneyLoading: false,
+  moneyError: "",
+  moneyMonth: null,
+  moneyNotice: "",
+  moneyAddOpen: false,
+  moneyFixedOpen: false,
   shiftClosingInit: null,
   shiftClosingDate: null,
   shiftClosingRecord: null,
@@ -843,6 +855,10 @@ function renderServicePage(path){
     renderTreasuryPage(service);
     return;
   }
+  if(service.code === "money"){
+    renderMoneyPage(service);
+    return;
+  }
 
   const statusText = "готовится";
   const extra = "";
@@ -1260,6 +1276,253 @@ function treasurySplitPayment(id){
   treasuryAction(apiPost(`/api/treasury/payments/${id}/split`, {
     nowAmount: s.splitNow, laterAmount: s.splitLater, laterDate: s.splitLaterDate
   }), `Разбит: ${formatMoneyPlain(s.splitNow)} к сроку + ${formatMoneyPlain(s.splitLater)} позже`);
+}
+
+// ===== Деньги (money) — владельческий экран вместо «Кассы». За флагом money_page.
+// Правило раздела: ничего не требовать от владельца каждый день. Руками — только закуп
+// раз в месяц и список обязательных платежей. Всё остальное считается само.
+const MN_MONTHS_FULL = ["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+
+function mnThousands(value){
+  const v = Math.round(Number(value || 0) / 100) / 10;
+  return `${String(v).replace(".", ",")} тыс`;
+}
+
+function renderMoneyPage(service){
+  if(!state.money && !state.moneyLoading && !state.moneyError){ loadMoney(); }
+  const body = state.moneyLoading && !state.money
+    ? `<div class="panel"><div class="loader compact">Считаю</div></div>`
+    : state.moneyError && !state.money
+      ? `<div class="panel"><div class="row-title">Не удалось загрузить</div><div class="row-sub">${escapeHtml(state.moneyError)}</div></div>`
+      : state.money ? renderMoneyContent(state.money) : "";
+  app.innerHTML = `
+    <div class="phone wide">
+      <section class="screen service-page">
+        <div class="backrow">
+          <button class="iconbtn" aria-label="Назад" data-action="back">${arrowLeftIcon()}</button>
+          <h1 class="page-title">${escapeHtml(service.title)}</h1>
+        </div>
+        ${state.moneyNotice ? `<div class="fin-notice">${escapeHtml(state.moneyNotice)}</div>` : ""}
+        ${body}
+      </section>
+    </div>
+  `;
+  app.querySelector("[data-action='back']").addEventListener("click", ()=>{
+    history.pushState(null, "", "/");
+    render();
+  });
+  bindMoney();
+}
+
+async function loadMoney(){
+  state.moneyLoading = true;
+  state.moneyError = "";
+  render();
+  try{
+    const q = state.moneyMonth ? `?year=${state.moneyMonth.year}&month=${state.moneyMonth.month}` : "";
+    state.money = await apiGet(`/api/money${q}`);
+  }catch(error){
+    state.moneyError = error.status === 403 ? "Раздел только для собственника" : "Проверь соединение и попробуй ещё раз";
+  }finally{
+    state.moneyLoading = false;
+    render();
+  }
+}
+
+function renderMoneyContent(m){
+  return `
+    ${mnMonthSwitch(m)}
+    ${mnRevenueCard(m)}
+    ${mnProfitCard(m)}
+    ${mnPaymentsCard(m)}
+  `;
+}
+
+function mnMonthSwitch(m){
+  return `
+    <div class="mn-month">
+      <button class="iconbtn small" data-mn-month="-1" aria-label="Предыдущий месяц">‹</button>
+      <span class="mn-month-title">${MN_MONTHS_FULL[m.month - 1]} ${m.year}</span>
+      <button class="iconbtn small" data-mn-month="1" aria-label="Следующий месяц" ${m.isCurrentMonth ? "disabled" : ""}>›</button>
+    </div>
+  `;
+}
+
+// Карточка выручки. Главное здесь — не сумма, а ТЕМП ₽/день против прошлого месяца:
+// сумма месяца обманчива (разное число рабочих дней), темп — нет.
+function mnRevenueCard(m){
+  const p = m.pace || {};
+  const delta = p.deltaPct;
+  const deltaCls = delta == null ? "" : delta < 0 ? "mn-bad" : "mn-good";
+  const deltaTxt = delta == null ? "" : `${delta > 0 ? "+" : ""}${delta}%`;
+  return `
+    <div class="mn-card">
+      <div class="sec">Выручка · ${m.isCurrentMonth ? "факт за месяц" : "итог месяца"}</div>
+      <div class="mn-big">${formatMoneyPlain(m.revenue.fact)} ₽</div>
+      <div class="mn-sub">за ${m.revenue.days} ${pluralize(m.revenue.days, "день", "дня", "дней")} · наличными ${formatMoneyPlain(m.revenue.cash)} ₽</div>
+      <div class="mn-pace">
+        <span class="mn-pace-now">${mnThousands(p.perDay)} ₽/день</span>
+        ${p.prevPerDay ? `<span class="mn-pace-prev">${p.prevLabel} ${mnThousands(p.prevPerDay)}</span>` : ""}
+        ${deltaTxt ? `<span class="mn-delta ${deltaCls}">${deltaTxt}</span>` : ""}
+      </div>
+      ${m.isCurrentMonth ? `<div class="mn-forecast">Прогноз месяца ${formatMoneyPlain(m.revenue.predicted)} ₽ · ещё придёт ~${formatMoneyPlain(m.revenue.left)} ₽</div>` : ""}
+    </div>
+  `;
+}
+
+function mnProfitCard(m){
+  const good = m.profit >= 0;
+  const purchaseInput = `
+    <div class="mn-purchase">
+      <label class="mn-purchase-label">Закуп за ${MN_MONTHS_FULL[m.month - 1]}, ₽</label>
+      <div class="tr-row2">
+        <input id="mn-purchase" class="tr-input" inputmode="numeric" placeholder="${m.purchase.isEstimate ? `оценка ${formatMoneyPlain(m.purchase.amount)}` : ""}" value="${m.purchase.isEstimate ? "" : Math.round(m.purchase.amount)}">
+        <button class="btn brand-action" data-mn="save-purchase">Сохранить</button>
+      </div>
+      <div class="tr-muted">${m.purchase.isEstimate
+        ? `Пока не введено — считаю по нормативу ${m.purchase.normPct}% от выручки. Введи фактическую сумму из банка — цифра прибыли станет настоящей.`
+        : "Факт введён. Чтобы вернуться к оценке — очисти поле и сохрани."}</div>
+    </div>
+  `;
+  return `
+    <div class="mn-card">
+      <div class="sec">${m.profitIsForecast ? "Прибыль · прогноз месяца" : "Прибыль месяца"}</div>
+      <div class="mn-big ${good ? "mn-good" : "mn-bad"}">${good ? "" : "−"}${formatMoneyPlain(Math.abs(m.profit))} ₽</div>
+      <div class="mn-sub">${m.profitIsForecast ? `выручка по прогнозу ${formatMoneyPlain(m.revenue.predicted)} ₽` : `выручка ${formatMoneyPlain(m.revenue.fact)} ₽`} − расходы ${formatMoneyPlain(m.costsTotal)} ₽</div>
+      <div class="mn-costs">
+        ${m.costs.map((c)=>`<div class="mn-cost-row"><span>${escapeHtml(c.label)}</span><b>${formatMoneyPlain(c.amount)} ₽</b></div>`).join("")}
+      </div>
+      ${purchaseInput}
+      <details class="tr-fold" ${state.moneyFixedOpen ? "open" : ""} data-mn-fold="fixed">
+        <summary>Из чего постоянные платежи</summary>
+        <div class="mn-costs">
+          ${(m.fixed || []).map((f)=>`<div class="mn-cost-row"><span>${escapeHtml(f.label)}</span><b>${formatMoneyPlain(f.amount)} ₽</b></div>`).join("") || `<div class="tr-muted">Не заданы — раздел «Финансы»</div>`}
+        </div>
+      </details>
+    </div>
+  `;
+}
+
+function mnPaymentsCard(m){
+  const rest = m.afterPayments;
+  const verdict = m.isCurrentMonth
+    ? `<div class="mn-verdict ${rest >= 0 ? "mn-v-ok" : "mn-v-bad"}">
+         До конца месяца придёт ~${formatMoneyPlain(m.revenue.left)} ₽, платить ${formatMoneyPlain(m.paymentsTotal)} ₽ —
+         ${rest >= 0 ? `останется ${formatMoneyPlain(rest)} ₽` : `не хватает ${formatMoneyPlain(-rest)} ₽`}
+       </div>`
+    : "";
+  return `
+    <div class="mn-card">
+      <div class="sec">Обязательные платежи</div>
+      ${(m.payments && m.payments.length)
+        ? m.payments.map(mnPaymentRow).join("")
+        : `<div class="tr-muted">Платежей нет — добавь аренду, ЖКХ, налоги ниже</div>`}
+      ${verdict}
+      <details class="tr-fold" ${state.moneyAddOpen ? "open" : ""} data-mn-fold="add">
+        <summary>Добавить платёж</summary>
+        <div class="tr-add-body">
+          <input id="mn-p-title" class="tr-input" placeholder="Название (Аренда, ЖКХ, Налог)">
+          <input id="mn-p-amount" class="tr-input" inputmode="numeric" placeholder="Сумма, ₽">
+          <input id="mn-p-date" class="tr-input" type="date">
+          <label class="tr-check"><input type="checkbox" id="mn-p-recur"> Повторяется каждый месяц</label>
+          <button class="btn brand-action w-100" data-mn="add-payment">Добавить</button>
+        </div>
+      </details>
+    </div>
+  `;
+}
+
+function mnPaymentRow(p){
+  const d = p.dueDate ? `${Number(p.dueDate.slice(8, 10))} ${TR_MONTHS[Number(p.dueDate.slice(5, 7)) - 1]}` : "";
+  return `
+    <div class="mn-pay ${p.overdue ? "mn-pay-late" : ""}">
+      <div class="mn-pay-main">
+        <span class="mn-pay-title">${escapeHtml(p.title)}</span>
+        <span class="mn-pay-amount">${formatMoneyPlain(p.amount)} ₽</span>
+      </div>
+      <div class="mn-pay-bottom">
+        <span class="mn-pay-date">${d}${p.overdue ? " · просрочен" : ""}</span>
+        ${p.isSalary
+          ? `<span class="tr-muted">из графика · раздел «Выплаты»</span>`
+          : `<span class="tr-pay-actions">
+               <button class="tr-link" data-mn-pay="${p.id}">Оплачен</button>
+               <button class="tr-link tr-del" data-mn-del="${p.id}">Удалить</button>
+             </span>`}
+      </div>
+    </div>
+  `;
+}
+
+function bindMoney(){
+  app.querySelectorAll("[data-mn-month]").forEach((b)=>b.addEventListener("click", ()=>{
+    const m = state.money;
+    if(!m) return;
+    const d = new Date(Date.UTC(m.year, m.month - 1 + Number(b.dataset.mnMonth), 1));
+    state.moneyMonth = { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+    state.money = null;
+    loadMoney();
+  }));
+  app.querySelectorAll("[data-mn-fold]").forEach((node)=>{
+    node.addEventListener("toggle", ()=>{
+      if(node.dataset.mnFold === "add") state.moneyAddOpen = node.open;
+      if(node.dataset.mnFold === "fixed") state.moneyFixedOpen = node.open;
+    });
+  });
+  app.querySelectorAll("[data-mn-pay]").forEach((b)=>b.addEventListener("click", ()=>{
+    moneyAction(apiPost(`/api/money/payments/${b.dataset.mnPay}/pay`, {}), "Отмечен оплаченным");
+  }));
+  app.querySelectorAll("[data-mn-del]").forEach((b)=>b.addEventListener("click", ()=>{
+    moneyAction(apiDelete(`/api/money/payments/${b.dataset.mnDel}`), "Платёж удалён");
+  }));
+  app.querySelectorAll("[data-mn]").forEach((b)=>b.addEventListener("click", ()=>{
+    if(b.dataset.mn === "save-purchase") moneySavePurchase();
+    else if(b.dataset.mn === "add-payment") moneyAddPayment();
+  }));
+}
+
+async function moneyAction(promise, okMsg){
+  state.moneyNotice = "";
+  try{
+    const data = await promise;
+    state.money = data;
+    state.moneyMonth = { year: data.year, month: data.month };
+    if(okMsg) state.moneyNotice = okMsg;
+    render();
+  }catch(error){
+    state.moneyNotice = error.status === 403 ? "Раздел только для собственника" : "Ошибка — проверь ввод и соединение";
+    render();
+  }
+}
+
+function moneySavePurchase(){
+  const m = state.money;
+  if(!m) return;
+  const raw = String(document.getElementById("mn-purchase").value || "").replace(/\s/g, "").replace(",", ".");
+  const month = `${m.year}-${String(m.month).padStart(2, "0")}`;
+  if(!raw){
+    moneyAction(apiPut("/api/money/purchase", { month, amount: null }), "Вернул оценку по нормативу");
+    return;
+  }
+  const v = Number(raw);
+  if(!Number.isFinite(v) || v < 0){ state.moneyNotice = "Введи сумму закупа"; render(); return; }
+  moneyAction(apiPut("/api/money/purchase", { month, amount: Math.round(v) }), "Закуп сохранён");
+}
+
+function moneyAddPayment(){
+  const title = String(document.getElementById("mn-p-title").value || "").trim();
+  const amount = Number(String(document.getElementById("mn-p-amount").value || "").replace(/\s/g, "").replace(",", "."));
+  const date = document.getElementById("mn-p-date").value;
+  if(!title || !Number.isFinite(amount) || amount <= 0 || !date){
+    state.moneyNotice = "Заполни название, сумму и дату";
+    render();
+    return;
+  }
+  moneyAction(apiPost("/api/money/payments", {
+    title,
+    amount: Math.round(amount),
+    dueDate: date,
+    recurring: document.getElementById("mn-p-recur").checked ? "monthly" : "none"
+  }), "Платёж добавлен");
 }
 
 function renderTrainingPage(service){
@@ -6657,7 +6920,8 @@ function tintFor(code){
     payroll:"var(--green-tint)",
     admin:"var(--ink-tint)",
     finance:"var(--gold-tint)",
-    treasury:"var(--gold-tint)"
+    treasury:"var(--gold-tint)",
+    money:"var(--gold-tint)"
   }[code] || "var(--brand-tint)";
 }
 
