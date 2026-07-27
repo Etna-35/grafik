@@ -8,3 +8,8 @@ CREATE TABLE IF NOT EXISTS money_month_facts (
   updated_by uuid REFERENCES employees(id) ON DELETE SET NULL,
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+
+-- «ЗП за месяц закрыта» — владелец отмечает, что по зарплате месяц для него закрыт
+-- (остаток догашен наличными/иначе). Строка ЗП пропадает из «Денег»; раздел «Выплаты»
+-- при этом продолжает показывать реальный остаток — это только отметка для владельческого экрана.
+ALTER TABLE money_month_facts ADD COLUMN IF NOT EXISTS salary_closed boolean NOT NULL DEFAULT false;

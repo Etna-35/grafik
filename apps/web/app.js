@@ -1359,9 +1359,10 @@ function mnRevenueCard(m){
     <div class="mn-card">
       <div class="sec">Выручка · ${m.isCurrentMonth ? "факт за месяц" : "итог месяца"}</div>
       <div class="mn-big">${formatMoneyPlain(m.revenue.fact)} ₽</div>
-      <div class="mn-sub">за ${m.revenue.days} ${pluralize(m.revenue.days, "день", "дня", "дней")} · наличными ${formatMoneyPlain(m.revenue.cash)} ₽</div>
+      <div class="mn-sub">закрытия смен ${formatMoneyPlain(m.revenue.shifts)} ₽ за ${m.revenue.days} ${pluralize(m.revenue.days, "день", "дня", "дней")}${m.revenue.other > 0 ? ` · прочие поступления ${formatMoneyPlain(m.revenue.other)} ₽` : ""}</div>
       <div class="mn-pace">
         <span class="mn-pace-now">${mnThousands(p.perDay)} ₽/день</span>
+        <span class="mn-pace-prev">по сменам</span>
         ${p.prevPerDay ? `<span class="mn-pace-prev">${p.prevLabel} ${mnThousands(p.prevPerDay)}</span>` : ""}
         ${deltaTxt ? `<span class="mn-delta ${deltaCls}">${deltaTxt}</span>` : ""}
       </div>
@@ -1418,6 +1419,7 @@ function mnPaymentsCard(m){
         ? m.payments.map(mnPaymentRow).join("")
         : `<div class="tr-muted">Платежей нет — добавь аренду, ЖКХ, налоги ниже</div>`}
       ${verdict}
+      ${mnSalaryToggle(m)}
       <details class="tr-fold" ${state.moneyAddOpen ? "open" : ""} data-mn-fold="add">
         <summary>Добавить платёж</summary>
         <div class="tr-add-body">
@@ -1430,6 +1432,20 @@ function mnPaymentsCard(m){
       </details>
     </div>
   `;
+}
+
+// ЗП считается из графика и выплат, поэтому строку нельзя «удалить» — её можно только закрыть:
+// владелец говорит «за этот месяц по зарплате рассчитался», и строка уходит с экрана.
+// В «Выплатах» остаток при этом остаётся как есть — там источник правды по деньгам сотрудников.
+function mnSalaryToggle(m){
+  const hasSalary = (m.payments || []).some((p)=>p.isSalary);
+  if(hasSalary){
+    return `<button class="tr-link mn-salary-btn" data-mn="close-salary">ЗП за ${m.prevMonthLabel} закрыта — убрать строку</button>`;
+  }
+  if(m.salaryClosed){
+    return `<button class="tr-link mn-salary-btn" data-mn="open-salary">ЗП за ${m.prevMonthLabel} отмечена закрытой — вернуть строку</button>`;
+  }
+  return "";
 }
 
 function mnPaymentRow(p){
@@ -1477,6 +1493,8 @@ function bindMoney(){
   app.querySelectorAll("[data-mn]").forEach((b)=>b.addEventListener("click", ()=>{
     if(b.dataset.mn === "save-purchase") moneySavePurchase();
     else if(b.dataset.mn === "add-payment") moneyAddPayment();
+    else if(b.dataset.mn === "close-salary") moneySetSalaryClosed(true);
+    else if(b.dataset.mn === "open-salary") moneySetSalaryClosed(false);
   }));
 }
 
@@ -1506,6 +1524,15 @@ function moneySavePurchase(){
   const v = Number(raw);
   if(!Number.isFinite(v) || v < 0){ state.moneyNotice = "Введи сумму закупа"; render(); return; }
   moneyAction(apiPut("/api/money/purchase", { month, amount: Math.round(v) }), "Закуп сохранён");
+}
+
+function moneySetSalaryClosed(closed){
+  const m = state.money;
+  if(!m) return;
+  const d = new Date(Date.UTC(m.year, m.month - 2, 1));
+  const month = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  moneyAction(apiPut("/api/money/salary-closed", { month, closed }),
+    closed ? "ЗП за месяц отмечена закрытой" : "Строка ЗП вернулась");
 }
 
 function moneyAddPayment(){

@@ -67,6 +67,17 @@ async function revenueOfMonth(year: number, month: number) {
   return { total, days, cash: Number(r.rows[0]?.cash || 0), perDay: days > 0 ? Math.round(total / days) : 0 };
 }
 
+// Прочие поступления месяца (finance_income): корпоративы, коррекции незакрытых смен и т.п.
+// Они входят в выручку МЕСЯЦА, но НЕ в темп ₽/день — это разовые деньги, они задрали бы средние.
+async function otherIncomeOfMonth(year: number, month: number) {
+  const r = await query<{ total: string; items: string }>(
+    `SELECT COALESCE(SUM(amount), 0)::text AS total, COUNT(*)::text AS items
+     FROM finance_income WHERE entry_date >= $1::date AND entry_date <= $2::date`,
+    [monthStart(year, month), monthEnd(year, month)]
+  );
+  return { total: Number(r.rows[0]?.total || 0), items: Number(r.rows[0]?.items || 0) };
+}
+
 // Наличные траты из закрытий смен (мойка / такси / доп. расходы) + выплаты кальянщикам.
 async function shiftCostsOfMonth(year: number, month: number) {
   const r = await query<{ wash: string; taxi: string; extra: string; hookah: string }>(
@@ -115,6 +126,14 @@ async function fixedPayments(): Promise<{ items: Array<{ article: string; label:
   return { items, total: items.reduce((s, i) => s + i.amount, 0) };
 }
 
+async function salaryClosed(year: number, month: number): Promise<boolean> {
+  const r = await query<{ salary_closed: boolean }>(
+    "SELECT salary_closed FROM money_month_facts WHERE month = $1::date",
+    [monthStart(year, month)]
+  );
+  return Boolean(r.rows[0]?.salary_closed);
+}
+
 async function purchaseOfMonth(year: number, month: number, predictedRevenue: number) {
   const r = await query<{ purchase_amount: number | null }>(
     "SELECT purchase_amount FROM money_month_facts WHERE month = $1::date",
@@ -130,7 +149,7 @@ async function upcomingPayments(year: number, month: number, today: string) {
   const prev = shiftMonth(year, month, -1);
   const list: Array<{ id: string; title: string; amount: number; dueDate: string; category: string; isSalary: boolean; overdue: boolean }> = [];
 
-  const owed = await salaryOwed(prev.year, prev.month);
+  const owed = (await salaryClosed(prev.year, prev.month)) ? 0 : await salaryOwed(prev.year, prev.month);
   if (owed > 0) {
     const due = `${year}-${String(month).padStart(2, "0")}-10`;
     list.push({
@@ -175,13 +194,17 @@ export async function computeMoney(year: number, month: number) {
   const prev = shiftMonth(year, month, -1);
   const prevRevenue = await revenueOfMonth(prev.year, prev.month);
 
-  const [fot, shiftCosts, fixed, payments] = await Promise.all([
+  const [fot, shiftCosts, fixed, payments, otherIncome] = await Promise.all([
     payrollAccrued(year, month),
     shiftCostsOfMonth(year, month),
     fixedPayments(),
-    upcomingPayments(year, month, today)
+    upcomingPayments(year, month, today),
+    otherIncomeOfMonth(year, month)
   ]);
-  const purchase = await purchaseOfMonth(year, month, forecast.predicted);
+  // Выручка месяца = закрытия смен + прочие поступления (корпоративы и пр., миграция 048).
+  const factTotal = revenue.total + otherIncome.total;
+  const predictedTotal = forecast.predicted + otherIncome.total;
+  const purchase = await purchaseOfMonth(year, month, predictedTotal);
 
   // Темп: ₽ в день по факту, против прошлого месяца. Главный сигнал экрана.
   const paceDeltaPct = prevRevenue.perDay > 0 && revenue.perDay > 0
@@ -190,7 +213,7 @@ export async function computeMoney(year: number, month: number) {
 
   // Прибыль месяца: выручка (факт + прогноз до конца месяца) минус расходы.
   // Всё расписано строками, чтобы владелец видел, из чего сложилось, и мог не верить на слово.
-  const revenueForProfit = isCurrentMonth ? forecast.predicted : revenue.total;
+  const revenueForProfit = isCurrentMonth ? predictedTotal : factTotal;
   const costs = [
     { key: "fot", label: "ФОТ по графику", amount: fot },
     { key: "hookah", label: "Кальянщики", amount: shiftCosts.hookah },
@@ -205,6 +228,7 @@ export async function computeMoney(year: number, month: number) {
 
   // «Хватит ли»: сколько выручки ещё придёт до конца месяца против того, что надо заплатить.
   const revenueLeft = Math.max(0, Math.round(forecast.predicted - revenue.total));
+  const prevSalaryClosed = await salaryClosed(...(() => { const p = shiftMonth(year, month, -1); return [p.year, p.month] as [number, number]; })());
   const paymentsTotal = payments.reduce((s, p) => s + p.amount, 0);
 
   return {
@@ -214,11 +238,14 @@ export async function computeMoney(year: number, month: number) {
     monthLabel: RU_MONTHS[month - 1],
     isCurrentMonth,
     revenue: {
-      fact: revenue.total,
+      fact: factTotal,
+      shifts: revenue.total,
+      other: otherIncome.total,
+      otherItems: otherIncome.items,
       cash: revenue.cash,
       days: revenue.days,
       perDay: revenue.perDay,
-      predicted: forecast.predicted,
+      predicted: predictedTotal,
       left: revenueLeft,
       daysInMonth: forecast.daysInMonth
     },
@@ -230,6 +257,8 @@ export async function computeMoney(year: number, month: number) {
     },
     profit,
     profitIsForecast: isCurrentMonth,
+    prevMonthLabel: RU_MONTHS[shiftMonth(year, month, -1).month - 1],
+    salaryClosed: prevSalaryClosed,
     costs,
     costsTotal,
     purchase: { amount: purchase.amount, isEstimate: purchase.isEstimate, normPct: purchase.normPct },
@@ -247,6 +276,10 @@ const monthQuery = z.object({
 const purchaseSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   amount: z.number().int().min(0).max(1_000_000_000).nullable()
+});
+const salaryClosedSchema = z.object({
+  month: z.string().regex(/^\d{4}-\d{2}$/),   // месяц, ЗА который закрываем зарплату
+  closed: z.boolean()
 });
 const paymentSchema = z.object({
   title: z.string().trim().min(1).max(120),
@@ -286,6 +319,23 @@ export function registerMoneyRoutes(app: FastifyInstance): void {
       );
     }
     return computeMoney(y, m);
+  });
+
+  // «ЗП за <месяц> закрыта» — убрать строку ЗП с экрана (в «Выплатах» остаток остаётся как есть).
+  app.put("/api/money/salary-closed", async (request, reply) => {
+    const user = await requireOwner(request, reply);
+    if (!user) return;
+    const body = salaryClosedSchema.parse(request.body);
+    const [y, m] = body.month.split("-").map(Number);
+    await query(
+      `INSERT INTO money_month_facts (month, salary_closed, updated_by, updated_at)
+       VALUES ($1::date, $2, $3, now())
+       ON CONFLICT (month) DO UPDATE SET salary_closed = excluded.salary_closed,
+                                         updated_by = excluded.updated_by, updated_at = now()`,
+      [monthStart(y, m), body.closed, user.id]
+    );
+    const next = shiftMonth(y, m, 1);
+    return computeMoney(next.year, next.month);
   });
 
   // Обязательные платежи живут в treasury_payments (та же таблица, что была у Кассы).

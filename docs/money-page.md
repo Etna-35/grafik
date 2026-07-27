@@ -41,9 +41,16 @@
 
 ## Данные и API
 
-- Миграция `045_money_month_facts.sql`: `money_month_facts(month PK, purchase_amount, note, updated_by, updated_at)`.
+- Миграция `049_money_month_facts.sql` (`purchase_amount` + `salary_closed`): `money_month_facts(month PK, purchase_amount, note, updated_by, updated_at)`.
 - Платежи переиспользуют таблицу `treasury_payments` (новой не заводили).
+- Выручка месяца = закрытия смен + **прочие поступления** (`finance_income`, миграция 048: корпоративы,
+  коррекции незакрытых смен). Темп ₽/день считается ТОЛЬКО по сменам — разовые деньги задрали бы средние
+  (та же логика, что в `finance.ts`/`getFinance`).
+- Строку «ЗП за <месяц>» удалить нельзя (она вычисляется из графика и выплат), но можно **закрыть**:
+  `salary_closed` в `money_month_facts` убирает её с экрана. В разделе «Выплаты» остаток остаётся как есть —
+  там источник правды по деньгам сотрудников.
 - `GET /api/money?year=&month=` · `PUT /api/money/purchase` `{month:'YYYY-MM', amount|null}` ·
+  `PUT /api/money/salary-closed` `{month:'YYYY-MM', closed}` ·
   `POST /api/money/payments` · `POST /api/money/payments/:id/pay` (ежемесячный сам создаётся на след. месяц) ·
   `DELETE /api/money/payments/:id`. Все — строго `role = owner`.
 - Плитка «Деньги» инжектится в `getServices` при включённом флаге `money_page`; при включённом флаге плитка
