@@ -1457,9 +1457,9 @@ function mnPaymentRow(p){
         <span class="mn-pay-amount">${formatMoneyPlain(p.amount)} ₽</span>
       </div>
       <div class="mn-pay-bottom">
-        <span class="mn-pay-date">${d}${p.overdue ? " · просрочен" : ""}</span>
+        <span class="mn-pay-date">${p.isSalary ? "выплатить до конца месяца" : `${d}${p.overdue ? " · просрочен" : ""}`}</span>
         ${p.isSalary
-          ? `<span class="tr-muted">из графика · раздел «Выплаты»</span>`
+          ? `<span class="tr-muted">остаток из графика</span>`
           : `<span class="tr-pay-actions">
                <button class="tr-link" data-mn-pay="${p.id}">Оплачен</button>
                <button class="tr-link tr-del" data-mn-del="${p.id}">Удалить</button>

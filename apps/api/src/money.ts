@@ -107,15 +107,50 @@ async function payrollAccrued(year: number, month: number): Promise<number> {
   return Math.round(Number(r.rows[0]?.total || 0));
 }
 
-// Долг по ЗП за месяц: начислено по графику − выплачено (payroll_payouts.apply_month).
+// Остаток по ЗП за месяц — ТОЙ ЖЕ формулой, что «Осталось выплатить» в графике (schedule.ts):
+// по каждому сотруднику max(0, смены + премии за задачи + цели продаж + кэш-серии − выплачено),
+// и только потом сумма. Клампим на уровне сотрудника, поэтому переплата одному (например, полный
+// расчёт при увольнении) НЕ гасит долг перед остальными. Кальяны и чаевые в остаток не входят —
+// они выдаются сразу. Выплаты относим по apply_month (выплата в июле за июнь считается в июне).
 async function salaryOwed(year: number, month: number): Promise<number> {
-  const accrued = await payrollAccrued(year, month);
+  const start = monthStart(year, month);
   const r = await query<{ total: string }>(
-    `SELECT COALESCE(SUM(amount), 0)::text AS total FROM payroll_payouts
-     WHERE COALESCE(apply_month, date_trunc('month', work_date)::date) = $1::date`,
-    [monthStart(year, month)]
+    `WITH acc AS (
+       SELECT employee_id, SUM(pay_amount)::int AS v FROM schedule_shifts
+       WHERE work_date >= $1::date AND work_date < ($1::date + interval '1 month') GROUP BY 1
+     ), task AS (
+       SELECT employee_id, SUM(reward_amount)::int AS v FROM tasks
+       WHERE status = 'done' AND approved_at IS NOT NULL AND reward_amount > 0
+         AND approved_at >= $1::date AND approved_at < ($1::date + interval '1 month') GROUP BY 1
+     ), goal AS (
+       SELECT employee_id, SUM(reward_amount)::int AS v FROM sales_goals
+       WHERE status = 'confirmed' AND reward_amount > 0
+         AND confirmed_at >= $1::date AND confirmed_at < ($1::date + interval '1 month') GROUP BY 1
+     ), streak AS (
+       SELECT employee_id, SUM(bonus_amount)::int AS v FROM cash_streak_awards
+       WHERE streak_end_date >= $1::date AND streak_end_date < ($1::date + interval '1 month') GROUP BY 1
+     ), paid AS (
+       SELECT employee_id, SUM(amount)::int AS v FROM payroll_payouts
+       WHERE COALESCE(apply_month, date_trunc('month', work_date)::date) >= $1::date
+         AND COALESCE(apply_month, date_trunc('month', work_date)::date) < ($1::date + interval '1 month')
+       GROUP BY 1
+     ), emp AS (
+       SELECT employee_id FROM acc
+       UNION SELECT employee_id FROM task
+       UNION SELECT employee_id FROM goal
+       UNION SELECT employee_id FROM streak
+       UNION SELECT employee_id FROM paid
+     )
+     SELECT COALESCE(SUM(GREATEST(0,
+       COALESCE(acc.v,0) + COALESCE(task.v,0) + COALESCE(goal.v,0) + COALESCE(streak.v,0) - COALESCE(paid.v,0)
+     )), 0)::text AS total
+     FROM emp
+     LEFT JOIN acc USING (employee_id) LEFT JOIN task USING (employee_id)
+     LEFT JOIN goal USING (employee_id) LEFT JOIN streak USING (employee_id)
+     LEFT JOIN paid USING (employee_id)`,
+    [start]
   );
-  return Math.max(0, Math.round(accrued - Number(r.rows[0]?.total || 0)));
+  return Math.round(Number(r.rows[0]?.total || 0));
 }
 
 async function fixedPayments(): Promise<{ items: Array<{ article: string; label: string; amount: number }>; total: number }> {
@@ -151,15 +186,16 @@ async function upcomingPayments(year: number, month: number, today: string) {
 
   const owed = (await salaryClosed(prev.year, prev.month)) ? 0 : await salaryOwed(prev.year, prev.month);
   if (owed > 0) {
-    const due = `${year}-${String(month).padStart(2, "0")}-10`;
+    // Срок по ЗП — конец текущего месяца, без конкретной даты и без «просрочен»:
+    // задача владельца — закрыть прошлый месяц до конца текущего, а не к 10-му числу.
     list.push({
       id: `salary-${prev.year}-${prev.month}`,
       title: `ЗП за ${RU_MONTHS[prev.month - 1]}`,
       amount: owed,
-      dueDate: due,
+      dueDate: monthEnd(year, month),
       category: "ЗП",
       isSalary: true,
-      overdue: due < today
+      overdue: false
     });
   }
 
