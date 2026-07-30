@@ -611,9 +611,14 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
 
   // «Выплачено за месяц» считаем по МЕСЯЦУ НАЗНАЧЕНИЯ (apply_month), а не по дате выплаты в календаре,
   // чтобы плитки/итоги показывали погашение именно того месяца (выплата июня за май учитывается в мае).
-  const paidByMonth = await query<{ employee_id: string; paid: number }>(
+  // Выплаты по ОБЯЗАТЕЛЬСТВАМ (obligation_id) считаем отдельно: это гашение личного долга, а не зарплаты.
+  // В «Выплачено» (реальный кэш) они входят, из «Остатка к выплате» — НЕ вычитаются, иначе одни и те же
+  // деньги списываются дважды. Так же сделано в payroll.ts (ЛК сотрудника) — раньше график расходился с ЛК.
+  const paidByMonth = await query<{ employee_id: string; paid: number; paid_salary: number }>(
     `
-      SELECT employee_id, SUM(amount)::int AS paid
+      SELECT employee_id,
+             SUM(amount)::int AS paid,
+             SUM(amount) FILTER (WHERE obligation_id IS NULL)::int AS paid_salary
       FROM payroll_payouts
       WHERE COALESCE(apply_month, date_trunc('month', work_date)::date) >= $1::date
         AND COALESCE(apply_month, date_trunc('month', work_date)::date) < ($1::date + interval '1 month')
@@ -622,10 +627,12 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     `,
     [start, canSeeAllMoney, user.id]
   );
+  const paidSalaryByEmp = new Map<string, number>();
   for (const row of paidByMonth.rows) {
     const total = employeeTotals.get(row.employee_id) || { accrued: 0, paid: 0, shifts: 0 };
     total.paid += Number(row.paid || 0);
     employeeTotals.set(row.employee_id, total);
+    paidSalaryByEmp.set(row.employee_id, Number(row.paid_salary || 0));
   }
 
   // Доп. начисления месяца для плиток графика (как в ЛК): премии за задачи, цели продаж, кальяны.
@@ -731,7 +738,7 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     for (const employee of employeeRows.rows) {
       const t = employeeTotals.get(employee.id) || { accrued: 0, paid: 0, shifts: 0 };
       const extras = extrasByEmp.get(employee.id) || 0;
-      totalRemaining += Math.max(0, t.accrued + extras - t.paid);
+      totalRemaining += Math.max(0, t.accrued + extras - (paidSalaryByEmp.get(employee.id) ?? t.paid));
     }
   }
 
@@ -781,8 +788,11 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
             // «Начислено» (доход) = смены + премии/цели + кальяны (как в ЛК).
             accrued: canSeeAllMoney ? totals.accrued + extras + hookah : null,
             paid: canSeeAllMoney ? totals.paid : null,
-            // «Остаток к выплате» = смены + премии/цели − выплачено (кальяны выдаются сразу, в остаток не входят).
-            remaining: canSeeAllMoney ? Math.max(0, totals.accrued + extras - totals.paid) : null
+            // «Остаток к выплате» = смены + премии/цели − выплачено ПО ЗАРПЛАТЕ (гашение обязательств
+            // не вычитаем — у них свой счёт; кальяны выдаются сразу и в остаток не входят).
+            remaining: canSeeAllMoney
+              ? Math.max(0, totals.accrued + extras - (paidSalaryByEmp.get(employee.id) ?? totals.paid))
+              : null
           };
         })()
       };

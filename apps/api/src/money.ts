@@ -130,8 +130,10 @@ async function salaryOwed(year: number, month: number): Promise<number> {
        SELECT employee_id, SUM(bonus_amount)::int AS v FROM cash_streak_awards
        WHERE streak_end_date >= $1::date AND streak_end_date < ($1::date + interval '1 month') GROUP BY 1
      ), paid AS (
+       -- только зарплатные выплаты: гашение личных обязательств (obligation_id) — отдельный долг
        SELECT employee_id, SUM(amount)::int AS v FROM payroll_payouts
-       WHERE COALESCE(apply_month, date_trunc('month', work_date)::date) >= $1::date
+       WHERE obligation_id IS NULL
+         AND COALESCE(apply_month, date_trunc('month', work_date)::date) >= $1::date
          AND COALESCE(apply_month, date_trunc('month', work_date)::date) < ($1::date + interval '1 month')
        GROUP BY 1
      ), emp AS (
