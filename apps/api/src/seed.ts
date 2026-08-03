@@ -45,20 +45,36 @@ async function main(): Promise<void> {
         ownerId = inserted.rows[0].id;
       }
     }
+    // PIN владельца ставим ОДИН РАЗ — при первом создании учётки. Дальше seed его не трогает,
+    // иначе каждый деплой откатывал бы PIN, который владелец сменил в приложении (так и было до
+    // 2026-07-30). Аварийный сброс (владелец забыл PIN): выставить OWNER_PIN_RESET=1 в .env,
+    // перезапустить api, затем УБРАТЬ переменную — иначе следующий деплой снова перезапишет PIN.
     const pinHash = await hashPin(env.ownerPin);
+    const forceReset = process.env.OWNER_PIN_RESET === "1" || process.env.OWNER_PIN_RESET === "true";
 
-    await pool.query(
+    const authResult = await pool.query(
       `
         INSERT INTO employee_auth (employee_id, pin_hash, pin_changed_at)
         VALUES ($1, $2, now())
-        ON CONFLICT (employee_id) DO UPDATE
-        SET pin_hash = excluded.pin_hash,
-            pin_changed_at = now(),
-            failed_attempts = 0,
-            locked_until = NULL
+        ON CONFLICT (employee_id) DO NOTHING
       `,
       [ownerId, pinHash]
     );
+    if (authResult.rowCount === 0 && forceReset) {
+      await pool.query(
+        `
+          UPDATE employee_auth
+          SET pin_hash = $2, pin_changed_at = now(), failed_attempts = 0, locked_until = NULL
+          WHERE employee_id = $1
+        `,
+        [ownerId, pinHash]
+      );
+      console.log("OWNER_PIN_RESET: PIN владельца перезаписан значением из OWNER_PIN");
+    } else if (authResult.rowCount === 0) {
+      console.log("PIN владельца не тронут (учётка уже существует)");
+    } else {
+      console.log("PIN владельца установлен впервые из OWNER_PIN");
+    }
 
     for (const [code, title, url] of services) {
       await pool.query(
