@@ -1161,3 +1161,19 @@ button.day-block{cursor:pointer;font:inherit}
 .brk-total b.brk-rest{color:var(--green)}
 .brk-sec{font-family:var(--font-display);font-weight:700;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--brand);margin:14px 0 8px}
 .brk-note{font-size:11.5px;color:var(--ink-soft);line-height:1.45;margin-top:10px}
+
+/* Карточка сотрудника в блоке «Команда» на странице прогресса (руководитель) */
+/* Карточки команды стали информативнее (уровень, темп, «спасибо», оценки, награды) —
+   поэтому идут в одну колонку на всю ширину, иначе имена и цифры не помещаются. */
+.progress-team{grid-template-columns:1fr}
+.pteam-card{position:relative;align-items:center;gap:12px}
+.pteam-info{flex:1;min-width:0}
+.pteam-info span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pteam-stats{display:flex;flex-wrap:wrap;gap:4px 9px;margin-top:5px;font-size:11px;color:var(--ink-soft)}
+.pteam-stats span{white-space:nowrap}
+.pteam-stats .ps-g{color:var(--green)}
+.pteam-stats .ps-y{color:var(--gold)}
+.pteam-stats .ps-r{color:var(--danger)}
+.pteam-awards{display:flex;gap:3px;margin-left:auto;align-self:flex-start}
+.pteam-award{appearance:none;background:none;border:0;padding:0;width:24px;height:24px;cursor:pointer;opacity:.9}
+.pteam-award img{width:100%;height:100%;object-fit:contain;display:block}

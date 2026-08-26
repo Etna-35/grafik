@@ -609,6 +609,15 @@ function renderProgressScreen(){
     });
   });
   bindAwardModal();
+  app.querySelectorAll("[data-team-award]").forEach((btn)=>{
+    btn.addEventListener("click", ()=>{
+      const [ti, ai] = btn.dataset.teamAward.split(":").map(Number);
+      const award = state.progress?.team?.[ti]?.awards?.[ai];
+      if(!award) return;
+      const same = state.openAward && state.openAward.title === award.title;
+      openAward(same ? null : award);
+    });
+  });
 }
 
 // Значки у имени («Основатель ЭТНА», «Победившие смуту» и т.п.) — иконки после приветствия.
@@ -689,13 +698,25 @@ function renderProgressTeam(team){
   return `
     <h2 class="sec">Команда</h2>
     <div class="progress-team">
-      ${team.map((m)=>`
+      ${team.map((m, idx)=>`
         <div class="pteam-card">
           <div class="pteam-mask">${levelMaskImg(m.level)}</div>
           <div class="pteam-info">
             <b>${escapeHtml(firstName(m.name))}</b>
-            <span>Уровень ${m.level}</span>
+            <span>Уровень ${m.level} · ${String(m.perDay).replace(".", ",")} очк/день</span>
+            <div class="pteam-stats">
+              <span title="Сказал спасибо">↑ ${m.thanksGiven}</span>
+              <span title="Получил спасибо">♥ ${m.thanksReceived}</span>
+              ${m.scores.green ? `<span class="ps-g" title="Зелёные оценки">${m.scores.green}</span>` : ""}
+              ${m.scores.yellow ? `<span class="ps-y" title="Жёлтые оценки">${m.scores.yellow}</span>` : ""}
+              ${m.scores.red ? `<span class="ps-r" title="Красные оценки">${m.scores.red}</span>` : ""}
+            </div>
           </div>
+          ${(m.awards || []).length ? `<div class="pteam-awards">
+            ${m.awards.map((a, ai)=>`<button type="button" class="pteam-award" data-team-award="${idx}:${ai}" aria-label="${escapeAttr(a.title)}">
+              <img src="${escapeAttr(a.image)}" alt="${escapeAttr(a.title)}">
+            </button>`).join("")}
+          </div>` : ""}
         </div>
       `).join("")}
     </div>

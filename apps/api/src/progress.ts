@@ -21,7 +21,8 @@ export const PROGRESS_POINTS = {
   quiz_passed: 15,
   attestation_passed: 40,
   challenge_test: 20,
-  sales_goal: 20
+  sales_goal: 20,
+  score_green: 20
 } as const;
 
 const KIND_LABELS: Record<string, string> = {
@@ -39,6 +40,7 @@ const KIND_LABELS: Record<string, string> = {
   attestation_passed: "Сдал аттестацию",
   challenge_test: "Проверка знаний",
   sales_goal: "Достиг цели по продажам",
+  score_green: "Отличная работа",
   tenure: "Стаж работы",
   totem_shift: "Тотем: смена отработана"
 };
@@ -200,6 +202,26 @@ export async function awardDailyShiftTotems(dateIso: string): Promise<void> {
   }
 }
 
+function scoreRef(employeeId: string, workDate: string): string {
+  const h = createHash("md5").update(`score_green:${employeeId}:${workDate}`).digest("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
+}
+
+/** Зелёная оценка от руководителя = +20 очков «Отличная работа». Жёлтая и красная не дают ничего.
+ *  Идемпотентно по дню: повторная простановка зелёной за тот же день очки не задваивает. */
+export async function awardGreenScore(employeeId: string, workDate: string): Promise<void> {
+  await awardPoints(employeeId, "score_green", "Отличная работа", "score_green", scoreRef(employeeId, workDate));
+}
+
+/** Оценку сняли или поменяли на жёлтую/красную — начисленные за неё очки убираем.
+ *  Это не «штраф»: просто отмена ошибочно поставленной зелёной. */
+export async function revokeGreenScore(employeeId: string, workDate: string): Promise<void> {
+  await query("DELETE FROM progress_events WHERE employee_id = $1 AND ref_type = 'score_green' AND ref_id = $2", [
+    employeeId,
+    scoreRef(employeeId, workDate)
+  ]);
+}
+
 /** Сколько раз сотруднику начислялись очки данного вида за последние `hours` часов. */
 export async function countRecentAwards(
   employeeId: string,
@@ -320,7 +342,22 @@ export function registerProgressRoutes(app: FastifyInstance): void {
     }));
 
     // Руководитель видит уровни команды (кроме мойщиц) — для сетки аватаров на странице прогресса.
-    let team: Array<{ id: string; name: string; role: string; level: number }> | undefined;
+    // Карточка сотрудника для руководителя: уровень, динамика опыта, награды, «спасибо», оценки.
+    // Значения оценок (зелёная/жёлтая/красная) видны ТОЛЬКО руководителю — сотруднику в его ЛК
+    // показывается лишь общее количество.
+    type TeamMember = {
+      id: string;
+      name: string;
+      role: string;
+      level: number;
+      pointsTotal: number;
+      perDay: number;
+      awards: Array<{ title: string; description: string; image: string; bonus: string; placement: string }>;
+      thanksGiven: number;
+      thanksReceived: number;
+      scores: { green: number; yellow: number; red: number };
+    };
+    let team: TeamMember[] | undefined;
     if (isManager(user)) {
       const teamRows = await query<{ id: string; name: string; role: string; start_date: string | null }>(
         `SELECT id::text, display_name AS name, role::text, start_date::text
@@ -330,15 +367,71 @@ export function registerProgressRoutes(app: FastifyInstance): void {
            AND COALESCE(schedule_role, '') NOT IN ('dish', 'dishwasher')
          ORDER BY display_name`
       );
+
+      // Динамика: очки за последние 30 дней, делённые на 30. Показывает текущий темп,
+      // а не средний за всё время работы — иначе стаж размывает картину.
+      const [pace, thanks, scoreRows, awardRows] = await Promise.all([
+        query<{ employee_id: string; pts: string }>(
+          `SELECT employee_id::text, COALESCE(SUM(points), 0)::text AS pts FROM progress_events
+           WHERE created_at >= now() - interval '30 days' GROUP BY 1`
+        ),
+        query<{ employee_id: string; given: string; received: string }>(
+          `SELECT employee_id::text,
+                  COUNT(*) FILTER (WHERE kind = 'praise_giver')::text AS given,
+                  COUNT(*) FILTER (WHERE kind IN ('praise_peer', 'praise_manager'))::text AS received
+           FROM progress_events GROUP BY 1`
+        ),
+        query<{ employee_id: string; score: string; cnt: string }>(
+          `SELECT employee_id::text, score::text, COUNT(*)::text AS cnt FROM employee_scores GROUP BY 1, 2`
+        ),
+        query<{ employee_id: string; title: string; description: string; image_path: string; bonus_note: string; placement: string }>(
+          `SELECT employee_id::text, title, description, image_path, bonus_note, placement
+           FROM totem_awards ORDER BY placement DESC, slot`
+        )
+      ]);
+
+      const paceBy = new Map(pace.rows.map((r) => [r.employee_id, Number(r.pts || 0)]));
+      const thanksBy = new Map(thanks.rows.map((r) => [r.employee_id, { given: Number(r.given || 0), received: Number(r.received || 0) }]));
+      const bonusesOn = await isFeatureEnabled("totem_bonuses");
+      const scoresBy = new Map<string, { green: number; yellow: number; red: number }>();
+      for (const r of scoreRows.rows) {
+        const cur = scoresBy.get(r.employee_id) || { green: 0, yellow: 0, red: 0 };
+        if (r.score === "green" || r.score === "yellow" || r.score === "red") cur[r.score] = Number(r.cnt || 0);
+        scoresBy.set(r.employee_id, cur);
+      }
+      const awardsBy = new Map<string, TeamMember["awards"]>();
+      for (const r of awardRows.rows) {
+        const list = awardsBy.get(r.employee_id) || [];
+        list.push({
+          title: r.title,
+          description: r.description || "",
+          image: r.image_path,
+          bonus: bonusesOn ? r.bonus_note || "" : "",
+          placement: r.placement
+        });
+        awardsBy.set(r.employee_id, list);
+      }
+
       team = await Promise.all(
-        teamRows.rows.map(async (row) => ({
-          id: row.id,
-          name: row.name,
-          role: row.role,
-          level: (await getProgressSummary(row.id, row.start_date)).level
-        }))
+        teamRows.rows.map(async (row) => {
+          const summary = await getProgressSummary(row.id, row.start_date);
+          const pts30 = paceBy.get(row.id) || 0;
+          const t = thanksBy.get(row.id) || { given: 0, received: 0 };
+          return {
+            id: row.id,
+            name: row.name,
+            role: row.role,
+            level: summary.level,
+            pointsTotal: summary.pointsTotal,
+            perDay: Math.round((pts30 / 30) * 10) / 10,
+            awards: awardsBy.get(row.id) || [],
+            thanksGiven: t.given,
+            thanksReceived: t.received,
+            scores: scoresBy.get(row.id) || { green: 0, yellow: 0, red: 0 }
+          };
+        })
       );
-      team.sort((a, b) => b.level - a.level || a.name.localeCompare(b.name, "ru"));
+      team.sort((a, b) => b.level - a.level || b.perDay - a.perDay || a.name.localeCompare(b.name, "ru"));
     }
 
     return { ...summary, history, team, totems };

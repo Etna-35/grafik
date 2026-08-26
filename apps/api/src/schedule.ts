@@ -4,6 +4,7 @@ import { audit, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
 import { isFeatureEnabled } from "./features.js";
 import { getDailyRevenueForecast } from "./finance.js";
+import { awardGreenScore, revokeGreenScore } from "./progress.js";
 
 const roleLabels: Record<string, string> = {
   cook: "Повар",
@@ -561,6 +562,13 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
       `,
       [parsed.data.workDate, parsed.data.employeeId, parsed.data.score, user.id]
     );
+    // Зелёная оценка = +20 очков «Отличная работа». Жёлтая и красная очки не дают и не отнимают,
+    // но если зелёную заменили на них — ранее начисленные за этот день очки снимаем.
+    if (parsed.data.score === "green") {
+      await awardGreenScore(parsed.data.employeeId, parsed.data.workDate);
+    } else {
+      await revokeGreenScore(parsed.data.employeeId, parsed.data.workDate);
+    }
     await audit(request, "employee_score_set", user.id, "employee_score", `${parsed.data.workDate}:${parsed.data.employeeId}`, parsed.data);
     return { ok: true };
   });
@@ -576,6 +584,7 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     }
 
     await query("DELETE FROM employee_scores WHERE work_date = $1::date AND employee_id = $2", [parsed.data.workDate, parsed.data.employeeId]);
+    await revokeGreenScore(parsed.data.employeeId, parsed.data.workDate);
     await audit(request, "employee_score_delete", user.id, "employee_score", `${parsed.data.workDate}:${parsed.data.employeeId}`);
     return { ok: true };
   });
