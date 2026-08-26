@@ -637,12 +637,12 @@ function renderAwardModal(){
   if(!a) return "";
   return `
     <div class="award-modal" data-award-close="1">
-      <div class="award-modal-box" role="dialog" aria-modal="true" aria-label="${escapeAttr(a.title)}">
-        <button type="button" class="award-modal-x" data-award-close="1" aria-label="Закрыть">×</button>
+      <div class="award-modal-box" data-award-close="1" role="dialog" aria-modal="true" aria-label="${escapeAttr(a.title)}">
         <img class="award-modal-img" src="${escapeAttr(a.image)}" alt="${escapeAttr(a.title)}">
         <div class="award-modal-title">${escapeHtml(a.title)}</div>
         ${a.description ? `<div class="award-modal-text">${escapeHtml(a.description)}</div>` : ""}
         ${a.bonus ? `<div class="award-modal-bonus">${escapeHtml(a.bonus)}${a.bonusUntil ? ` · до ${trShortDate(a.bonusUntil)}` : ""}</div>` : ""}
+        <div class="modal-hint">нажми, чтобы закрыть</div>
       </div>
     </div>
   `;
@@ -664,16 +664,16 @@ function bindAwardModal(){
       openAward(same ? null : b);
     });
   });
+  // Крестиков нет: окно награды закрывается тапом в любом месте — и по фону, и по карточке.
   app.querySelectorAll("[data-award-close]").forEach((node)=>{
-    node.addEventListener("click", (event)=>{
-      if(event.target !== node) return; // тап по самой карточке окно не закрывает
-      openAward(null);
-    });
+    node.addEventListener("click", ()=>openAward(null));
   });
 }
 
 document.addEventListener("keydown", (event)=>{
-  if(event.key === "Escape" && state.openAward) openAward(null);
+  if(event.key !== "Escape") return;
+  if(state.openAward) openAward(null);
+  else if(state.breakdown || state.breakdownLoading || state.breakdownError) closeBreakdown();
 });
 
 // Тотем — редкая именная награда по бокам от куклы. Пустой слот = приглушённая заглушка.
@@ -5755,12 +5755,12 @@ function renderBreakdownModal(){
           ${b.tips ? row("Чаевые", money(b.tips), "ведёт сам, в расчётах не участвуют") : ""}
         </div>` : ""}
       ${b.payouts.obligation ? `<div class="brk-note">Из выплат ${money(b.payouts.obligation)} пошли на личные обязательства — остаток по зарплате они не уменьшают.</div>` : ""}
+      <div class="modal-hint">нажми вне окна, чтобы закрыть</div>
     `;
   }
   return `
     <div class="award-modal" data-brk-close="1">
       <div class="award-modal-box brk-box" role="dialog" aria-modal="true">
-        <button type="button" class="award-modal-x" data-brk-close="1" aria-label="Закрыть">×</button>
         <div class="brk-head">${escapeHtml(b?.employee?.name || "Детализация")}<i>${b ? `${MN_MONTHS_FULL[b.month - 1]} ${b.year}` : ""}</i></div>
         ${body}
       </div>
