@@ -99,6 +99,7 @@ let state = {
   progressLoading: false,
   progressError: "",
   openTotemSlot: null,
+  openAward: null,
   tasksLoading: false,
   tasksError: "",
   tasksSaving: false,
@@ -323,7 +324,7 @@ function renderHub(){
           <h1 class="brand-title">ЭТНА</h1>
         </header>
         <div class="greet">
-          <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}</div>
+          <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}${renderNameBadge()}</div>
         </div>
         ${renderBirthday()}
         ${state.features?.day_plan ? renderDayPanel() : ""}
@@ -334,6 +335,7 @@ function renderHub(){
         <div class="nav">
           ${state.services.map(renderServiceCard).join("")}
         </div>
+        ${renderAwardModal()}
         <div class="hub-gap"></div>
         <button class="ghost logout" data-action="logout">Выйти</button>
       </section>
@@ -352,6 +354,7 @@ function renderHub(){
     });
   });
   app.querySelector("[data-action='logout']").addEventListener("click", logout);
+  bindAwardModal();
   app.querySelector("[data-action='praise']")?.addEventListener("click", openPraise);
   app.querySelector("[data-action='progress']")?.addEventListener("click", openProgress);
   app.querySelectorAll("[data-praise-bday]").forEach((button)=>{
@@ -563,6 +566,7 @@ function renderProgressScreen(){
           <button class="iconbtn" aria-label="Назад" data-action="prog-back">${arrowLeftIcon()}</button>
           <h1 class="page-title">Мой прогресс</h1>
         </div>
+        ${renderAwardModal()}
         ${state.progressLoading
           ? `<div class="panel"><div class="loader compact">Загружаю</div></div>`
           : p ? `
@@ -575,7 +579,7 @@ function renderProgressScreen(){
               <div class="prog-title">Уровень ${p.level}</div>
               <div class="award-bar big meter ok"><i style="width:${p.progressPct}%"></i></div>
               <div class="prog-sub">${p.progressPct}% · ещё ${p.toNextPct}% до повышения</div>
-              ${renderTotemDetail(p.totems)}
+
             </div>
             ${renderProgressTeam(p.team)}
             <h2 class="sec">За что начислено</h2>
@@ -593,11 +597,69 @@ function renderProgressScreen(){
   app.querySelectorAll("[data-totem-slot]").forEach((button)=>{
     button.addEventListener("click", ()=>{
       const slot = Number(button.dataset.totemSlot);
-      state.openTotemSlot = state.openTotemSlot === slot ? null : slot;
-      renderProgressScreen();
+      const totem = (state.progress?.totems || []).find((t)=>Number(t.slot) === slot);
+      if(!totem) return;
+      // Повторный тап по той же награде закрывает окно.
+      const same = state.openAward && state.openAward.title === totem.title;
+      state.openTotemSlot = same ? null : slot;
+      openAward(same ? null : totem);
+    });
+  });
+  bindAwardModal();
+}
+
+// Знак у имени (например «Основатель ЭТНА») — иконка после приветствия, тап открывает окно награды.
+function renderNameBadge(){
+  const b = state.summary?.badge;
+  if(!b) return "";
+  return `<button type="button" class="name-badge" data-award="badge" aria-label="${escapeAttr(b.title)}">
+    <img src="${escapeAttr(b.image)}" alt="${escapeAttr(b.title)}">
+  </button>`;
+}
+
+// Окно награды поверх интерфейса: крупная картинка, название, описание, бонус.
+// Закрывается повторным тапом по награде, тапом по фону, крестиком или Esc.
+function renderAwardModal(){
+  const a = state.openAward;
+  if(!a) return "";
+  return `
+    <div class="award-modal" data-award-close="1">
+      <div class="award-modal-box" role="dialog" aria-modal="true" aria-label="${escapeAttr(a.title)}">
+        <button type="button" class="award-modal-x" data-award-close="1" aria-label="Закрыть">×</button>
+        <img class="award-modal-img" src="${escapeAttr(a.image)}" alt="${escapeAttr(a.title)}">
+        <div class="award-modal-title">${escapeHtml(a.title)}</div>
+        ${a.description ? `<div class="award-modal-text">${escapeHtml(a.description)}</div>` : ""}
+        ${a.bonus ? `<div class="award-modal-bonus">${escapeHtml(a.bonus)}${a.bonusUntil ? ` · до ${trShortDate(a.bonusUntil)}` : ""}</div>` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function openAward(award){
+  state.openAward = award || null;
+  render();
+}
+
+// Общие обработчики окна награды: фон, крестик, Esc. Вызывается после каждого рендера экрана.
+function bindAwardModal(){
+  app.querySelectorAll("[data-award='badge']").forEach((btn)=>{
+    btn.addEventListener("click", ()=>{
+      const b = state.summary?.badge;
+      if(!b) return;
+      openAward(state.openAward ? null : b);
+    });
+  });
+  app.querySelectorAll("[data-award-close]").forEach((node)=>{
+    node.addEventListener("click", (event)=>{
+      if(event.target !== node) return; // тап по самой карточке окно не закрывает
+      openAward(null);
     });
   });
 }
+
+document.addEventListener("keydown", (event)=>{
+  if(event.key === "Escape" && state.openAward) openAward(null);
+});
 
 // Тотем — редкая именная награда по бокам от куклы. Пустой слот = приглушённая заглушка.
 function renderTotemSlot(totems, slot){
@@ -614,17 +676,6 @@ function renderTotemSlot(totems, slot){
 }
 
 // Описание выбранного тотема — раскрывается по тапу под куклой.
-function renderTotemDetail(totems){
-  const totem = (totems || []).find((t)=>Number(t.slot) === state.openTotemSlot);
-  if(!totem) return "";
-  return `
-    <div class="totem-detail">
-      <b>${escapeHtml(totem.title)}</b>
-      ${totem.description ? `<span>${escapeHtml(totem.description)}</span>` : ""}
-      ${totem.bonus ? `<i class="totem-bonus">${escapeHtml(totem.bonus)}${totem.bonusUntil ? ` · до ${trShortDate(totem.bonusUntil)}` : ""}</i>` : ""}
-    </div>
-  `;
-}
 
 // Сетка команды (только у руководителя): аватар-кукла уровня + имя + уровень.
 function renderProgressTeam(team){

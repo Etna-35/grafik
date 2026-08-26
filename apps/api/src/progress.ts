@@ -304,7 +304,7 @@ export function registerProgressRoutes(app: FastifyInstance): void {
     const totemRows = await query<{ slot: number; title: string; description: string; image_path: string; bonus_note: string; bonus_until: string | null }>(
       `SELECT slot, title, description, image_path, bonus_note, bonus_until::text
        FROM totem_awards
-       WHERE employee_id = $1
+       WHERE employee_id = $1 AND placement = 'progress'
        ORDER BY slot`,
       [user.id]
     );

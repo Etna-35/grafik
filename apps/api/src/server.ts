@@ -214,7 +214,23 @@ export function buildServer() {
       [user.id]
     );
 
+    // Знак у имени (slot 3, placement = 'name') — например «Основатель ЭТНА».
+    const badgeRow = await query<{ title: string; description: string; image_path: string; bonus_note: string }>(
+      `SELECT title, description, image_path, bonus_note FROM totem_awards
+       WHERE employee_id = $1 AND placement = 'name' ORDER BY slot LIMIT 1`,
+      [user.id]
+    );
+    const badge = badgeRow.rows[0]
+      ? {
+          title: badgeRow.rows[0].title,
+          description: badgeRow.rows[0].description || "",
+          image: badgeRow.rows[0].image_path,
+          bonus: badgeRow.rows[0].bonus_note || ""
+        }
+      : null;
+
     return {
+      badge,
       isBirthdayToday: birthdays.rows.some((row) => row.is_self),
       birthdaysToday: birthdays.rows.filter((row) => !row.is_self).map((row) => ({ id: row.id, name: row.display_name, nameGenitive: genitiveFirstName(row.display_name) })),
       level: progress.level,
