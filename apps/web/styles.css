@@ -1178,3 +1178,8 @@ button.day-block{cursor:pointer;font:inherit}
 .pteam-awards{display:flex;gap:3px;margin-left:auto;align-self:flex-start}
 .pteam-award{appearance:none;background:none;border:0;padding:0;width:24px;height:24px;cursor:pointer;opacity:.9}
 .pteam-award img{width:100%;height:100%;object-fit:contain;display:block}
+
+/* Кукла уровня кликабельна: тап открывает окно с крупным персонажем */
+button.prog-badge{appearance:none;background:none;border:0;padding:0;cursor:pointer}
+button.pteam-mask{appearance:none;background:none;border:0;padding:0;cursor:pointer}
+.award-modal-img.big{width:100%;max-width:270px;height:auto;max-height:56vh}

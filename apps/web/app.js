@@ -576,7 +576,7 @@ function renderProgressScreen(){
             <div class="progress-hero">
               <div class="prog-hero-row">
                 ${renderTotemSlot(p.totems, 1)}
-                <div class="prog-badge mask">${levelMaskImg(p.level)}</div>
+                <button type="button" class="prog-badge mask" data-level-award="${p.level}" aria-label="Уровень ${p.level}">${levelMaskImg(p.level)}</button>
                 ${renderTotemSlot(p.totems, 2)}
               </div>
               <div class="prog-title">Уровень ${p.level}</div>
@@ -609,6 +609,22 @@ function renderProgressScreen(){
     });
   });
   bindAwardModal();
+  app.querySelectorAll("[data-level-award]").forEach((btn)=>{
+    btn.addEventListener("click", (event)=>{
+      event.stopPropagation();
+      const level = Number(btn.dataset.levelAward);
+      const who = btn.dataset.levelName;
+      const title = `Уровень ${level}`;
+      const same = state.openAward && state.openAward.title === title && state.openAward.who === who;
+      openAward(same ? null : {
+        title,
+        who,
+        description: who ? `Персонаж ${who} на ${level}-м уровне` : "Твой персонаж. Следующий облик откроется на новом уровне.",
+        image: levelMaskUrl(level),
+        big: true
+      });
+    });
+  });
   app.querySelectorAll("[data-team-award]").forEach((btn)=>{
     btn.addEventListener("click", ()=>{
       const [ti, ai] = btn.dataset.teamAward.split(":").map(Number);
@@ -638,7 +654,7 @@ function renderAwardModal(){
   return `
     <div class="award-modal" data-award-close="1">
       <div class="award-modal-box" data-award-close="1" role="dialog" aria-modal="true" aria-label="${escapeAttr(a.title)}">
-        <img class="award-modal-img" src="${escapeAttr(a.image)}" alt="${escapeAttr(a.title)}">
+        <img class="award-modal-img${a.big ? " big" : ""}" src="${escapeAttr(a.image)}" alt="${escapeAttr(a.title)}">
         <div class="award-modal-title">${escapeHtml(a.title)}</div>
         ${a.description ? `<div class="award-modal-text">${escapeHtml(a.description)}</div>` : ""}
         ${a.bonus ? `<div class="award-modal-bonus">${escapeHtml(a.bonus)}${a.bonusUntil ? ` · до ${trShortDate(a.bonusUntil)}` : ""}</div>` : ""}
@@ -700,7 +716,7 @@ function renderProgressTeam(team){
     <div class="progress-team">
       ${team.map((m, idx)=>`
         <div class="pteam-card">
-          <div class="pteam-mask">${levelMaskImg(m.level)}</div>
+          <button type="button" class="pteam-mask" data-level-award="${m.level}" data-level-name="${escapeAttr(firstName(m.name))}" aria-label="Уровень ${m.level}">${levelMaskImg(m.level)}</button>
           <div class="pteam-info">
             <b>${escapeHtml(firstName(m.name))}</b>
             <span>Уровень ${m.level} · ${String(m.perDay).replace(".", ",")} очк/день</span>
