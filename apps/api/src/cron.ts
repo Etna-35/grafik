@@ -1,4 +1,5 @@
 import { query } from "./db.js";
+import { awardDailyShiftTotems } from "./progress.js";
 import { genitiveFirstName } from "./names.js";
 import { PUBLIC_BASE_URL, sendMessage, teamChatId } from "./telegram.js";
 
@@ -8,6 +9,7 @@ import { PUBLIC_BASE_URL, sendMessage, teamChatId } from "./telegram.js";
 // закрытия смены (shiftClosing.ts → postWeeklyDigestOnce). Шедулер не нужен.
 
 let lastDailyFired = "";
+let lastNightFired = "";
 
 function pad(n: number): string {
   return String(n).padStart(2, "0");
@@ -103,6 +105,11 @@ async function tick(): Promise<void> {
       lastDailyFired = date;
       await sendDailyPlan(date);
       await sendBirthdayGreetings();
+    }
+    // 23:00 МСК — тотемы, которые начисляются за отработанный по графику день.
+    if (hh === 23 && lastNightFired !== date) {
+      lastNightFired = date;
+      await awardDailyShiftTotems(date);
     }
   } catch {
     // планировщик не должен ронять процесс

@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
+import { createHash } from "node:crypto";
 import { isFeatureEnabled } from "./features.js";
 
 const POINTS_PER_LEVEL = 100;
@@ -38,7 +39,8 @@ const KIND_LABELS: Record<string, string> = {
   attestation_passed: "Сдал аттестацию",
   challenge_test: "Проверка знаний",
   sales_goal: "Достиг цели по продажам",
-  tenure: "Стаж работы"
+  tenure: "Стаж работы",
+  totem_shift: "Тотем: смена отработана"
 };
 
 function isManager(user: SessionUser): boolean {
@@ -106,18 +108,26 @@ async function isStreakDay(employeeId: string): Promise<boolean> {
   return streak === 1 && off >= 3; // вернулся после 3+ выходных
 }
 
-async function totemMultiplier(employeeId: string, kind: keyof typeof PROGRESS_POINTS): Promise<number> {
-  if (!(await isFeatureEnabled("totem_bonuses"))) return 1;
+// ВАЖНО про семантику: «+5%» в описании тотема — это ЧИСТЫЕ очки опыта (уровень = 100 очков = 100%),
+// а не увеличение награды на 5%. Поэтому личные бонусы прибавляются ПЛОСКО, и только «Победившие смуту»
+// работает множителем. Порядок: base × множитель + плоские бонусы.
+// Пример: «спасибо» (5) у Анжелины = 5 × 2 (смута) + 10 (её тотем) = 20.
+async function totemAdjust(
+  employeeId: string,
+  kind: keyof typeof PROGRESS_POINTS
+): Promise<{ mult: number; flat: number }> {
+  if (!(await isFeatureEnabled("totem_bonuses"))) return { mult: 1, flat: 0 };
   const bonuses = await activeTotemBonuses(employeeId);
-  if (!bonuses.length) return 1;
+  if (!bonuses.length) return { mult: 1, flat: 0 };
   let mult = 1;
+  let flat = 0;
   for (const b of bonuses) {
     if (b.kind === "all") mult += b.pct / 100;
-    else if (b.kind === "shift" && kind === "shift_closed") mult += b.pct / 100;
-    else if (b.kind === "praise" && PRAISE_KINDS.has(kind)) mult += b.pct / 100;
-    else if (b.kind === "shift_streak" && (await isStreakDay(employeeId))) mult += b.pct / 100;
+    else if (b.kind === "praise" && PRAISE_KINDS.has(kind)) flat += b.pct;
+    else if (b.kind === "shift_streak" && (await isStreakDay(employeeId))) flat += b.pct;
+    // 'shift' здесь НЕ обрабатываем: он начисляется отдельно, ежедневно в 23:00 (см. awardDailyShiftTotems)
   }
-  return mult;
+  return { mult, flat };
 }
 
 /** Начислить очки сотруднику. Если передан ref — повторное начисление за тот же объект игнорируется. */
@@ -129,15 +139,15 @@ export async function awardPoints(
   refId?: string
 ): Promise<void> {
   const base = PROGRESS_POINTS[kind];
-  const mult = await totemMultiplier(employeeId, kind);
-  const points = Math.max(1, Math.round(base * mult));
+  const { mult, flat } = await totemAdjust(employeeId, kind);
+  const points = Math.max(1, Math.round(base * mult) + flat);
   await query(
     `
       INSERT INTO progress_events (employee_id, kind, points, note, ref_type, ref_id)
       VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (employee_id, ref_type, ref_id) WHERE ref_id IS NOT NULL DO NOTHING
     `,
-    [employeeId, kind, points, mult > 1 ? `${note} · бонус тотема ×${mult.toFixed(2)}` : note, refType ?? null, refId ?? null]
+    [employeeId, kind, points, points !== base ? `${note} · с бонусом тотема` : note, refType ?? null, refId ?? null]
   );
 }
 
@@ -152,7 +162,7 @@ export async function awardQuizWitnessBonus(attemptId: string, passerId: string)
   );
   for (const holder of holders.rows) {
     if (holder.employee_id === passerId) continue; // за свой же тест бонус не начисляем
-    const points = Math.max(1, Math.round((PROGRESS_POINTS.quiz_passed * Number(holder.bonus_pct)) / 100));
+    const points = Math.max(1, Number(holder.bonus_pct)); // «+5%» = 5 очков
     await query(
       `
         INSERT INTO progress_events (employee_id, kind, points, note, ref_type, ref_id)
@@ -160,6 +170,32 @@ export async function awardQuizWitnessBonus(attemptId: string, passerId: string)
         ON CONFLICT (employee_id, ref_type, ref_id) WHERE ref_id IS NOT NULL DO NOTHING
       `,
       [holder.employee_id, points, attemptId]
+    );
+  }
+}
+
+/** Тотем «Ошибка выжившего»: за каждую СВОЮ смену по графику. Вызывается кроном в 23:00 МСК —
+ *  если на сегодня у владельца тотема есть смена, начисляем очки; нет смены — ничего не происходит.
+ *  Идемпотентно: ref_id — детерминированный uuid из даты и сотрудника, повтор за тот же день игнорируется. */
+export async function awardDailyShiftTotems(dateIso: string): Promise<void> {
+  if (!(await isFeatureEnabled("totem_bonuses"))) return;
+  const holders = await query<{ employee_id: string; bonus_pct: number }>(
+    `SELECT t.employee_id::text, t.bonus_pct FROM totem_awards t
+     WHERE t.bonus_kind = 'shift' AND t.bonus_pct <> 0
+       AND (t.bonus_until IS NULL OR t.bonus_until >= $1::date)
+       AND EXISTS (SELECT 1 FROM schedule_shifts s WHERE s.employee_id = t.employee_id AND s.work_date = $1::date)`,
+    [dateIso]
+  );
+  for (const holder of holders.rows) {
+    const hash = createHash("md5").update(`totem_shift:${holder.employee_id}:${dateIso}`).digest("hex");
+    const refId = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
+    await query(
+      `
+        INSERT INTO progress_events (employee_id, kind, points, note, ref_type, ref_id)
+        VALUES ($1, 'totem_shift', $2, 'Тотем: смена отработана', 'totem_shift', $3)
+        ON CONFLICT (employee_id, ref_type, ref_id) WHERE ref_id IS NOT NULL DO NOTHING
+      `,
+      [holder.employee_id, Math.max(1, Number(holder.bonus_pct)), refId]
     );
   }
 }
