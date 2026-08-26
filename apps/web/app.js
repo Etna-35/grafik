@@ -621,6 +621,7 @@ function renderTotemDetail(totems){
     <div class="totem-detail">
       <b>${escapeHtml(totem.title)}</b>
       ${totem.description ? `<span>${escapeHtml(totem.description)}</span>` : ""}
+      ${totem.bonus ? `<i class="totem-bonus">${escapeHtml(totem.bonus)}${totem.bonusUntil ? ` · до ${trShortDate(totem.bonusUntil)}` : ""}</i>` : ""}
     </div>
   `;
 }

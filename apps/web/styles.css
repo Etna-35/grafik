@@ -1130,3 +1130,4 @@ button.day-block{cursor:pointer;font:inherit}
 .mn-v-bad{color:var(--danger);background:var(--danger-bg);border:1px solid var(--danger-line)}
 
 .mn-salary-btn{display:block;margin-top:10px}
+.totem-detail .totem-bonus{display:block;margin-top:7px;padding-top:7px;border-top:1px solid var(--brand-line);font-style:normal;font-size:11.5px;color:var(--brand-bright)}

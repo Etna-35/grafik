@@ -55,6 +55,71 @@ function tenureMonths(startDate: string | null): number {
   return Math.max(0, months);
 }
 
+// ===== Бонусы тотемов (миграция 050) =====
+// Именной тотем может усиливать начисление очков владельцу. Всё считается в одной точке —
+// в awardPoints, поэтому новые виды бонусов добавляются одной строкой в applies().
+// Гейтится флагом totem_bonuses: пока он выключен, очки начисляются как раньше.
+
+type TotemBonus = { kind: string; pct: number };
+
+const PRAISE_KINDS = new Set(["praise_peer", "praise_manager", "praise_giver"]);
+
+async function activeTotemBonuses(employeeId: string): Promise<TotemBonus[]> {
+  const r = await query<{ bonus_kind: string; bonus_pct: number }>(
+    `SELECT bonus_kind, bonus_pct FROM totem_awards
+     WHERE employee_id = $1 AND bonus_kind IS NOT NULL AND bonus_pct <> 0
+       AND (bonus_until IS NULL OR bonus_until >= (now() AT TIME ZONE 'Europe/Moscow')::date)`,
+    [employeeId]
+  );
+  return r.rows.map((row) => ({ kind: row.bonus_kind, pct: Number(row.bonus_pct) }));
+}
+
+// «Особый день» для тотема Кота Шрёдингера: сегодня 3-я (6-я, 9-я…) смена подряд
+// ИЛИ первая смена после трёх и более выходных подряд. Считаем по графику.
+async function isStreakDay(employeeId: string): Promise<boolean> {
+  const r = await query<{ d: string }>(
+    `SELECT work_date::text AS d FROM schedule_shifts
+     WHERE employee_id = $1
+       AND work_date <= (now() AT TIME ZONE 'Europe/Moscow')::date
+       AND work_date > ((now() AT TIME ZONE 'Europe/Moscow')::date - 40)
+     ORDER BY work_date DESC`,
+    [employeeId]
+  );
+  const days = new Set(r.rows.map((row) => row.d));
+  const today = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  if (!days.has(iso(today))) return false; // сегодня не рабочий день — бонуса нет
+
+  let streak = 0;
+  const cursor = new Date(today.getTime());
+  while (days.has(iso(cursor))) {
+    streak++;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  if (streak % 3 === 0) return true; // каждая 3-я смена подряд
+
+  let off = 0;
+  while (!days.has(iso(cursor)) && off < 10) {
+    off++;
+    cursor.setUTCDate(cursor.getUTCDate() - 1);
+  }
+  return streak === 1 && off >= 3; // вернулся после 3+ выходных
+}
+
+async function totemMultiplier(employeeId: string, kind: keyof typeof PROGRESS_POINTS): Promise<number> {
+  if (!(await isFeatureEnabled("totem_bonuses"))) return 1;
+  const bonuses = await activeTotemBonuses(employeeId);
+  if (!bonuses.length) return 1;
+  let mult = 1;
+  for (const b of bonuses) {
+    if (b.kind === "all") mult += b.pct / 100;
+    else if (b.kind === "shift" && kind === "shift_closed") mult += b.pct / 100;
+    else if (b.kind === "praise" && PRAISE_KINDS.has(kind)) mult += b.pct / 100;
+    else if (b.kind === "shift_streak" && (await isStreakDay(employeeId))) mult += b.pct / 100;
+  }
+  return mult;
+}
+
 /** Начислить очки сотруднику. Если передан ref — повторное начисление за тот же объект игнорируется. */
 export async function awardPoints(
   employeeId: string,
@@ -63,14 +128,40 @@ export async function awardPoints(
   refType?: string,
   refId?: string
 ): Promise<void> {
+  const base = PROGRESS_POINTS[kind];
+  const mult = await totemMultiplier(employeeId, kind);
+  const points = Math.max(1, Math.round(base * mult));
   await query(
     `
       INSERT INTO progress_events (employee_id, kind, points, note, ref_type, ref_id)
       VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (employee_id, ref_type, ref_id) WHERE ref_id IS NOT NULL DO NOTHING
     `,
-    [employeeId, kind, PROGRESS_POINTS[kind], note, refType ?? null, refId ?? null]
+    [employeeId, kind, points, mult > 1 ? `${note} · бонус тотема ×${mult.toFixed(2)}` : note, refType ?? null, refId ?? null]
   );
+}
+
+/** Тотем «Создатель Библии новичка»: любой сданный тест приносит владельцу тотема долю очков.
+ *  Вызывается после начисления за тест самому сдавшему; идемпотентно по попытке. */
+export async function awardQuizWitnessBonus(attemptId: string, passerId: string): Promise<void> {
+  if (!(await isFeatureEnabled("totem_bonuses"))) return;
+  const holders = await query<{ employee_id: string; bonus_pct: number }>(
+    `SELECT employee_id::text, bonus_pct FROM totem_awards
+     WHERE bonus_kind = 'quiz_any' AND bonus_pct <> 0
+       AND (bonus_until IS NULL OR bonus_until >= (now() AT TIME ZONE 'Europe/Moscow')::date)`
+  );
+  for (const holder of holders.rows) {
+    if (holder.employee_id === passerId) continue; // за свой же тест бонус не начисляем
+    const points = Math.max(1, Math.round((PROGRESS_POINTS.quiz_passed * Number(holder.bonus_pct)) / 100));
+    await query(
+      `
+        INSERT INTO progress_events (employee_id, kind, points, note, ref_type, ref_id)
+        VALUES ($1, 'quiz_passed', $2, 'Тотем: коллега сдал тест по твоей Библии', 'totem_quiz', $3)
+        ON CONFLICT (employee_id, ref_type, ref_id) WHERE ref_id IS NOT NULL DO NOTHING
+      `,
+      [holder.employee_id, points, attemptId]
+    );
+  }
 }
 
 /** Сколько раз сотруднику начислялись очки данного вида за последние `hours` часов. */
@@ -174,18 +265,22 @@ export function registerProgressRoutes(app: FastifyInstance): void {
     }
 
     // Тотемы сотрудника (до 2 шт.) — редкая именная награда по бокам от куклы.
-    const totemRows = await query<{ slot: number; title: string; description: string; image_path: string }>(
-      `SELECT slot, title, description, image_path
+    const totemRows = await query<{ slot: number; title: string; description: string; image_path: string; bonus_note: string; bonus_until: string | null }>(
+      `SELECT slot, title, description, image_path, bonus_note, bonus_until::text
        FROM totem_awards
        WHERE employee_id = $1
        ORDER BY slot`,
       [user.id]
     );
+    const bonusesOn = await isFeatureEnabled("totem_bonuses");
     const totems = totemRows.rows.map((row) => ({
       slot: row.slot,
       title: row.title,
       description: row.description || "",
-      image: row.image_path
+      image: row.image_path,
+      // Бонус показываем, только когда механика включена и срок действия не вышел.
+      bonus: bonusesOn && row.bonus_note ? row.bonus_note : "",
+      bonusUntil: bonusesOn ? row.bonus_until : null
     }));
 
     // Руководитель видит уровни команды (кроме мойщиц) — для сетки аватаров на странице прогресса.

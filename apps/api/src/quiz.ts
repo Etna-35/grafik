@@ -2,7 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { query } from "./db.js";
-import { awardPoints } from "./progress.js";
+import { awardPoints, awardQuizWitnessBonus } from "./progress.js";
 
 export const QUIZ_PASS_PCT = 80;
 export const QUIZ_PER_QUESTION_SEC = 90;
@@ -321,6 +321,8 @@ export function registerQuizRoutes(app: FastifyInstance): void {
       } else {
         await awardPoints(user.id, "quiz_passed", "Сдал тест по главе", "quiz_chapter", attempt.scope_id);
       }
+      // Тотем «Создатель Библии новичка»: сданный тест приносит очки автору обучения.
+      await awardQuizWitnessBonus(attempt.id, user.id);
     }
 
     let lockedUntil: string | null = null;
