@@ -22,7 +22,7 @@ export const PROGRESS_POINTS = {
   attestation_passed: 40,
   challenge_test: 20,
   sales_goal: 20,
-  score_green: 20
+  score_green: 10
 } as const;
 
 const KIND_LABELS: Record<string, string> = {
