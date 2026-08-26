@@ -35,7 +35,7 @@ import { registerFinanceRoutes } from "./finance.js";
 import { registerTreasuryRoutes } from "./treasury.js";
 import { registerMoneyRoutes } from "./money.js";
 import { registerWeeklyStatsRoutes } from "./weeklyStats.js";
-import { registerFeatureRoutes, getAllFeatures } from "./features.js";
+import { isFeatureEnabled, registerFeatureRoutes, getAllFeatures } from "./features.js";
 import { registerTipsRoutes } from "./tips.js";
 import { getWaiterCashStats } from "./cashPlan.js";
 import { genitiveFirstName } from "./names.js";
@@ -214,23 +214,24 @@ export function buildServer() {
       [user.id]
     );
 
-    // Знак у имени (slot 3, placement = 'name') — например «Основатель ЭТНА».
-    const badgeRow = await query<{ title: string; description: string; image_path: string; bonus_note: string }>(
-      `SELECT title, description, image_path, bonus_note FROM totem_awards
-       WHERE employee_id = $1 AND placement = 'name' ORDER BY slot LIMIT 1`,
+    // Значки у имени (placement = 'name'): «Основатель ЭТНА», «Победившие смуту» и т.п.
+    // Их может быть несколько — показываем все по порядку слотов.
+    const badgeRows = await query<{ title: string; description: string; image_path: string; bonus_note: string; bonus_until: string | null }>(
+      `SELECT title, description, image_path, bonus_note, bonus_until::text FROM totem_awards
+       WHERE employee_id = $1 AND placement = 'name' ORDER BY slot`,
       [user.id]
     );
-    const badge = badgeRow.rows[0]
-      ? {
-          title: badgeRow.rows[0].title,
-          description: badgeRow.rows[0].description || "",
-          image: badgeRow.rows[0].image_path,
-          bonus: badgeRow.rows[0].bonus_note || ""
-        }
-      : null;
+    const bonusesOn = await isFeatureEnabled("totem_bonuses");
+    const badges = badgeRows.rows.map((row) => ({
+      title: row.title,
+      description: row.description || "",
+      image: row.image_path,
+      bonus: bonusesOn ? row.bonus_note || "" : "",
+      bonusUntil: bonusesOn ? row.bonus_until : null
+    }));
 
     return {
-      badge,
+      badges,
       isBirthdayToday: birthdays.rows.some((row) => row.is_self),
       birthdaysToday: birthdays.rows.filter((row) => !row.is_self).map((row) => ({ id: row.id, name: row.display_name, nameGenitive: genitiveFirstName(row.display_name) })),
       level: progress.level,

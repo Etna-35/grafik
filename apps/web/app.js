@@ -324,7 +324,7 @@ function renderHub(){
           <h1 class="brand-title">ЭТНА</h1>
         </header>
         <div class="greet">
-          <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}${renderNameBadge()}</div>
+          <div class="hi">Привет, ${escapeHtml(firstName(state.user.displayName))}${renderNameBadges()}</div>
         </div>
         ${renderBirthday()}
         ${state.features?.day_plan ? renderDayPanel() : ""}
@@ -608,13 +608,14 @@ function renderProgressScreen(){
   bindAwardModal();
 }
 
-// Знак у имени (например «Основатель ЭТНА») — иконка после приветствия, тап открывает окно награды.
-function renderNameBadge(){
-  const b = state.summary?.badge;
-  if(!b) return "";
-  return `<button type="button" class="name-badge" data-award="badge" aria-label="${escapeAttr(b.title)}">
+// Значки у имени («Основатель ЭТНА», «Победившие смуту» и т.п.) — иконки после приветствия.
+// Их может быть несколько; тап по любой открывает окно этой награды.
+function renderNameBadges(){
+  const list = state.summary?.badges || [];
+  if(!list.length) return "";
+  return list.map((b, i)=>`<button type="button" class="name-badge" data-award="badge" data-badge-index="${i}" aria-label="${escapeAttr(b.title)}">
     <img src="${escapeAttr(b.image)}" alt="${escapeAttr(b.title)}">
-  </button>`;
+  </button>`).join("");
 }
 
 // Окно награды поверх интерфейса: крупная картинка, название, описание, бонус.
@@ -644,9 +645,11 @@ function openAward(award){
 function bindAwardModal(){
   app.querySelectorAll("[data-award='badge']").forEach((btn)=>{
     btn.addEventListener("click", ()=>{
-      const b = state.summary?.badge;
+      const b = (state.summary?.badges || [])[Number(btn.dataset.badgeIndex)];
       if(!b) return;
-      openAward(state.openAward ? null : b);
+      // Повторный тап по тому же значку закрывает окно.
+      const same = state.openAward && state.openAward.title === b.title;
+      openAward(same ? null : b);
     });
   });
   app.querySelectorAll("[data-award-close]").forEach((node)=>{
