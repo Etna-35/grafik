@@ -100,6 +100,9 @@ let state = {
   progressError: "",
   openTotemSlot: null,
   openAward: null,
+  breakdown: null,
+  breakdownLoading: false,
+  breakdownError: "",
   tasksLoading: false,
   tasksError: "",
   tasksSaving: false,
@@ -5459,6 +5462,7 @@ function renderScheduleContent(schedule){
       ${renderRoleTotals(schedule, totals)}
       <div class="cards">
         ${renderSummaryCards(schedule, totals)}
+        ${renderBreakdownModal()}
       </div>
     ` : ""}
   `;
@@ -5678,6 +5682,7 @@ function renderSummaryCards(schedule, totals){
       const showMoney = total.remaining != null;
       return `
         <div class="scard" style="border-left-color:${roleColor(employee.role)}">
+          ${showMoney ? `<button type="button" class="scard-brk" data-brk="${employee.id}" aria-label="Детализация начислений">₽</button>` : ""}
           <div class="nm">${escapeHtml(employee.name)}</div>
           <div class="rl">${escapeHtml(employee.roleLabel)}</div>
           <div class="nums">
@@ -5691,6 +5696,79 @@ function renderSummaryCards(schedule, totals){
       `;
     })
     .join("");
+}
+
+// Детализация начислений сотрудника за месяц: из чего сложилось «к выплате».
+// Открывается по бледной кнопке ₽ в карточке сотрудника внизу графика (только руководителю).
+function renderBreakdownModal(){
+  if(!state.breakdown && !state.breakdownLoading && !state.breakdownError) return "";
+  const b = state.breakdown;
+  const money = (v)=>`${formatMoneyPlain(v)} ₽`;
+  const row = (label, value, sub)=>`<div class="brk-row"><span>${escapeHtml(label)}${sub ? `<i>${escapeHtml(sub)}</i>` : ""}</span><b>${value}</b></div>`;
+  let body = "";
+  if(state.breakdownLoading){
+    body = `<div class="loader compact">Считаю</div>`;
+  }else if(state.breakdownError){
+    body = `<div class="brk-note">${escapeHtml(state.breakdownError)}</div>`;
+  }else if(b){
+    const rows = [];
+    if(b.shifts.hourly.count) rows.push(row("Смены почасовые", money(b.shifts.hourly.amount), `${b.shifts.hourly.count} смен · ${formatHours(b.shifts.hourly.hours)} ч`));
+    if(b.shifts.fixed.count) rows.push(row("Смены по фикс-ставке", money(b.shifts.fixed.amount), `${b.shifts.fixed.count} смен`));
+    if(b.shifts.event.count) rows.push(row("Корпоративы", money(b.shifts.event.amount), `${b.shifts.event.count} шт`));
+    b.tasks.items.forEach((t)=>rows.push(row(`Задача: ${t.title}`, money(t.amount))));
+    b.goals.items.forEach((g)=>rows.push(row(`Цель продаж: ${g.title}`, money(g.amount))));
+    if(b.streaks.total) rows.push(row("Награды за наличный план", money(b.streaks.total), `${b.streaks.count} серии`));
+    body = `
+      <div class="brk-list">${rows.join("") || `<div class="brk-note">Начислений за месяц нет</div>`}</div>
+      <div class="brk-row brk-total"><span>Начислено к выплате</span><b>${money(b.accruedForPay)}</b></div>
+      ${b.payouts.items.length ? `
+        <div class="brk-sec">Выплачено</div>
+        <div class="brk-list">
+          ${b.payouts.items.map((p)=>row(trShortDate(p.date), money(p.amount), p.obligation ? `в счёт: ${p.obligation}` : "зарплата")).join("")}
+        </div>` : `<div class="brk-note">Выплат за этот месяц ещё не было</div>`}
+      <div class="brk-row brk-total"><span>Остаток к выплате</span><b class="brk-rest">${money(b.remaining)}</b></div>
+      ${(b.hookah.total || b.tips) ? `
+        <div class="brk-sec">Справочно — в остаток не входит</div>
+        <div class="brk-list">
+          ${b.hookah.total ? row("Кальяны", money(b.hookah.total), `${b.hookah.count} шт · выдаются в смену`) : ""}
+          ${b.tips ? row("Чаевые", money(b.tips), "ведёт сам, в расчётах не участвуют") : ""}
+        </div>` : ""}
+      ${b.payouts.obligation ? `<div class="brk-note">Из выплат ${money(b.payouts.obligation)} пошли на личные обязательства — остаток по зарплате они не уменьшают.</div>` : ""}
+    `;
+  }
+  return `
+    <div class="award-modal" data-brk-close="1">
+      <div class="award-modal-box brk-box" role="dialog" aria-modal="true">
+        <button type="button" class="award-modal-x" data-brk-close="1" aria-label="Закрыть">×</button>
+        <div class="brk-head">${escapeHtml(b?.employee?.name || "Детализация")}<i>${b ? `${MN_MONTHS_FULL[b.month - 1]} ${b.year}` : ""}</i></div>
+        ${body}
+      </div>
+    </div>
+  `;
+}
+
+async function openBreakdown(employeeId){
+  state.breakdownLoading = true;
+  state.breakdownError = "";
+  state.breakdown = null;
+  render();
+  try{
+    const y = state.schedule?.year || new Date().getFullYear();
+    const m = state.schedule?.month || new Date().getMonth() + 1;
+    state.breakdown = await apiGet(`/api/schedule/breakdown?employeeId=${employeeId}&year=${y}&month=${m}`);
+  }catch(error){
+    state.breakdownError = error.status === 403 ? "Доступно только руководителю" : "Не удалось загрузить";
+  }finally{
+    state.breakdownLoading = false;
+    render();
+  }
+}
+
+function closeBreakdown(){
+  state.breakdown = null;
+  state.breakdownLoading = false;
+  state.breakdownError = "";
+  render();
 }
 
 function buildScheduleTotals(schedule){
@@ -6206,6 +6284,16 @@ async function saveMyHours(context){
 
 function bindScheduleCells(service){
   const unlocked = isScheduleEditingUnlocked(service);
+  // Бледная кнопка ₽ в карточке сотрудника — детализация начислений за месяц.
+  app.querySelectorAll("[data-brk]").forEach((btn)=>{
+    btn.addEventListener("click", ()=>openBreakdown(btn.dataset.brk));
+  });
+  app.querySelectorAll("[data-brk-close]").forEach((node)=>{
+    node.addEventListener("click", (event)=>{
+      if(event.target !== node) return;
+      closeBreakdown();
+    });
+  });
   app.querySelectorAll("[data-schedule-cell]").forEach((cell)=>{
     if(unlocked){
       // Управление графиком (руководитель): одиночный клик — поставить/снять смену;

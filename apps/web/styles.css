@@ -1143,3 +1143,21 @@ button.day-block{cursor:pointer;font:inherit}
 .award-modal-text{font-size:13px;color:var(--ink-soft);line-height:1.5;margin-top:9px}
 .award-modal-bonus{margin-top:13px;padding-top:12px;border-top:1px solid var(--brand-line);font-size:12.5px;color:var(--brand);line-height:1.45}
 .greet .hi .name-badge + .name-badge{margin-left:4px}
+
+/* Детализация начислений сотрудника (кнопка ₽ в карточке графика) */
+.scard{position:relative}
+.scard-brk{position:absolute;top:8px;right:9px;appearance:none;width:24px;height:24px;border-radius:50%;border:1px solid var(--line);background:var(--card-2);color:var(--ink-soft);font-family:var(--font-display);font-size:12px;line-height:1;cursor:pointer;opacity:.45;transition:opacity .15s,color .15s}
+.scard-brk:hover,.scard-brk:active{opacity:1;color:var(--brand)}
+.brk-box{max-width:360px;text-align:left;max-height:82vh;overflow-y:auto}
+.brk-head{font-family:var(--font-display);font-weight:700;font-size:16px;color:var(--brand-bright);margin-bottom:12px;padding-right:22px}
+.brk-head i{display:block;font-style:normal;font-family:var(--font);font-weight:400;font-size:12px;color:var(--ink-soft);margin-top:3px}
+.brk-list{display:flex;flex-direction:column;gap:7px}
+.brk-row{display:flex;align-items:baseline;justify-content:space-between;gap:12px;font-size:12.5px;color:var(--ink-soft)}
+.brk-row span{min-width:0}
+.brk-row span i{display:block;font-style:normal;font-size:11px;color:var(--ink-soft);opacity:.75;margin-top:1px}
+.brk-row b{font-family:var(--font-display);font-weight:500;font-size:12.5px;color:var(--ink);white-space:nowrap}
+.brk-total{margin-top:11px;padding-top:10px;border-top:1px solid var(--line);font-size:13.5px;color:var(--ink)}
+.brk-total b{font-size:15px;color:var(--brand-bright)}
+.brk-total b.brk-rest{color:var(--green)}
+.brk-sec{font-family:var(--font-display);font-weight:700;font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--brand);margin:14px 0 8px}
+.brk-note{font-size:11.5px;color:var(--ink-soft);line-height:1.45;margin-top:10px}

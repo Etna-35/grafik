@@ -111,6 +111,118 @@ type ImportedEmployee = {
 
 type ImportedBackup = z.infer<typeof importSchema>["backup"];
 
+
+const breakdownQuerySchema = z.object({
+  employeeId: z.string().uuid(),
+  year: z.coerce.number().int().min(2024).max(2100),
+  month: z.coerce.number().int().min(1).max(12)
+});
+
+/** Из чего складывается «к выплате» у сотрудника за месяц. Порядок строк — как в ЛК сотрудника. */
+async function employeeBreakdown(employeeId: string, year: number, month: number) {
+  const start = `${year}-${String(month).padStart(2, "0")}-01`;
+
+  const [emp, shifts, tasks, goals, streaks, hookah, tips, payouts] = await Promise.all([
+    query<{ name: string; role: string; role_label: string | null; hourly_rate: number | null }>(
+      "SELECT display_name AS name, role::text, schedule_role::text AS role_label, hourly_rate FROM employees WHERE id = $1",
+      [employeeId]
+    ),
+    query<{ pay_model: string | null; cnt: string; hours: string; amount: string }>(
+      `SELECT pay_model, COUNT(*)::text AS cnt, COALESCE(SUM(planned_hours), 0)::text AS hours,
+              COALESCE(SUM(pay_amount), 0)::text AS amount
+       FROM schedule_shifts
+       WHERE employee_id = $1 AND work_date >= $2::date AND work_date < ($2::date + interval '1 month')
+       GROUP BY pay_model`,
+      [employeeId, start]
+    ),
+    query<{ title: string; amount: number }>(
+      `SELECT title, reward_amount AS amount FROM tasks
+       WHERE employee_id = $1 AND status = 'done' AND approved_at IS NOT NULL AND reward_amount > 0
+         AND approved_at >= $2::date AND approved_at < ($2::date + interval '1 month')
+       ORDER BY approved_at`,
+      [employeeId, start]
+    ),
+    query<{ title: string; amount: number }>(
+      `SELECT title, reward_amount AS amount FROM sales_goals
+       WHERE employee_id = $1 AND status = 'confirmed' AND reward_amount > 0
+         AND confirmed_at >= $2::date AND confirmed_at < ($2::date + interval '1 month')
+       ORDER BY confirmed_at`,
+      [employeeId, start]
+    ),
+    query<{ total: string; cnt: string }>(
+      `SELECT COALESCE(SUM(bonus_amount), 0)::text AS total, COUNT(*)::text AS cnt FROM cash_streak_awards
+       WHERE employee_id = $1 AND streak_end_date >= $2::date AND streak_end_date < ($2::date + interval '1 month')`,
+      [employeeId, start]
+    ),
+    query<{ total: string; cnt: string }>(
+      `SELECT COALESCE(SUM(h.payout), 0)::text AS total, COALESCE(SUM(h.count), 0)::text AS cnt
+       FROM shift_closing_hookah h JOIN shift_closings sc ON sc.id = h.shift_closing_id
+       WHERE h.employee_id = $1 AND sc.work_date >= $2::date AND sc.work_date < ($2::date + interval '1 month')`,
+      [employeeId, start]
+    ),
+    query<{ total: string }>(
+      `SELECT COALESCE(SUM(amount), 0)::text AS total FROM employee_tips
+       WHERE employee_id = $1 AND work_date >= $2::date AND work_date < ($2::date + interval '1 month')`,
+      [employeeId, start]
+    ),
+    query<{ work_date: string; amount: number; obligation_title: string | null }>(
+      `SELECT p.work_date::text, p.amount, o.title AS obligation_title
+       FROM payroll_payouts p LEFT JOIN employee_obligations o ON o.id = p.obligation_id
+       WHERE p.employee_id = $1
+         AND COALESCE(p.apply_month, date_trunc('month', p.work_date)::date) >= $2::date
+         AND COALESCE(p.apply_month, date_trunc('month', p.work_date)::date) < ($2::date + interval '1 month')
+       ORDER BY p.work_date`,
+      [employeeId, start]
+    )
+  ]);
+
+  const byModel = (m: string) => shifts.rows.find((r) => (r.pay_model || "hourly") === m);
+  const hourly = byModel("hourly");
+  const fixed = byModel("fixed");
+  const event = byModel("event");
+
+  const num = (v: string | undefined) => Number(v || 0);
+  const shiftsAmount = shifts.rows.reduce((sum, r) => sum + num(r.amount), 0);
+  const taskTotal = tasks.rows.reduce((sum, r) => sum + Number(r.amount), 0);
+  const goalTotal = goals.rows.reduce((sum, r) => sum + Number(r.amount), 0);
+  const streakTotal = num(streaks.rows[0]?.total);
+  const hookahTotal = num(hookah.rows[0]?.total);
+  const tipsTotal = num(tips.rows[0]?.total);
+
+  const paidSalary = payouts.rows.filter((p) => !p.obligation_title).reduce((sum, p) => sum + Number(p.amount), 0);
+  const paidObligation = payouts.rows.filter((p) => p.obligation_title).reduce((sum, p) => sum + Number(p.amount), 0);
+
+  // «К выплате» — та же формула, что в графике и в ЛК: кальяны и чаевые в остаток НЕ входят.
+  const accruedForPay = shiftsAmount + taskTotal + goalTotal + streakTotal;
+  const remaining = Math.max(0, accruedForPay - paidSalary);
+
+  return {
+    employee: { id: employeeId, name: emp.rows[0]?.name || "", role: emp.rows[0]?.role || "", hourlyRate: emp.rows[0]?.hourly_rate ?? null },
+    year,
+    month,
+    shifts: {
+      hourly: { count: num(hourly?.cnt), hours: num(hourly?.hours), amount: num(hourly?.amount) },
+      fixed: { count: num(fixed?.cnt), hours: num(fixed?.hours), amount: num(fixed?.amount) },
+      event: { count: num(event?.cnt), amount: num(event?.amount) },
+      amount: shiftsAmount
+    },
+    tasks: { items: tasks.rows.map((r) => ({ title: r.title, amount: Number(r.amount) })), total: taskTotal },
+    goals: { items: goals.rows.map((r) => ({ title: r.title, amount: Number(r.amount) })), total: goalTotal },
+    streaks: { count: num(streaks.rows[0]?.cnt), total: streakTotal },
+    hookah: { count: num(hookah.rows[0]?.cnt), total: hookahTotal },
+    tips: tipsTotal,
+    payouts: {
+      items: payouts.rows.map((p) => ({ date: p.work_date, amount: Number(p.amount), obligation: p.obligation_title || null })),
+      salary: paidSalary,
+      obligation: paidObligation,
+      total: paidSalary + paidObligation
+    },
+    accruedForPay,
+    accruedTotal: accruedForPay + hookahTotal + tipsTotal,
+    remaining
+  };
+}
+
 export function registerScheduleRoutes(app: FastifyInstance): void {
   app.get("/api/schedule", async (request, reply) => {
     const user = await requireUser(request, reply);
@@ -126,6 +238,19 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     const year = parsed.data.year || now.getFullYear();
     const month = parsed.data.month || now.getMonth() + 1;
     return getScheduleMonth(user, year, month);
+  });
+
+  // Детализация начислений сотрудника за месяц — быстрый ответ на вопрос «из чего сложилось "к выплате"».
+  // Только руководителю: тут видны деньги всех. Чаевые показываем справочно, в остаток они не входят.
+  app.get("/api/schedule/breakdown", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+    const parsed = breakdownQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      await reply.code(400).send({ error: "bad_query" });
+      return;
+    }
+    return employeeBreakdown(parsed.data.employeeId, parsed.data.year, parsed.data.month);
   });
 
   app.post("/api/schedule/import", async (request, reply) => {
