@@ -374,7 +374,7 @@ function renderHub(){
   });
 }
 
-const MAX_MASK_LEVEL = 20;
+const MAX_MASK_LEVEL = 28;
 function levelMaskUrl(level){
   const n = Math.min(Math.max(Number(level) || 1, 1), MAX_MASK_LEVEL);
   return `/assets/awards/level-${n}.png`;
