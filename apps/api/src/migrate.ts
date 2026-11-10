@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const applied = await query<{ filename: string }>("SELECT filename FROM schema_migrations");
   const appliedNames = new Set(applied.rows.map((row) => row.filename));
   const files = (await readdir(migrationsDir))
-    .filter((file) => file.endsWith(".sql"))
+    .filter((file) => !file.startsWith(".") && file.endsWith(".sql"))
     .sort();
 
   for (const file of files) {

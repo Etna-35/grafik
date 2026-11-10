@@ -9,15 +9,21 @@ const taskParamsSchema = z.object({
   id: z.string().uuid()
 });
 
+const rewardMonthSchema = z.string().regex(/^(20\d{2}|2100)-(0[1-9]|1[0-2])$/).nullable();
+const taskRewardMonthSchema = z.object({ rewardMonth: rewardMonthSchema });
+
 const taskCreateSchema = z.object({
   title: z.string().trim().min(2).max(200),
   description: z.string().trim().max(2000).nullable().optional(),
   employeeId: z.string().uuid().nullable().optional(),
   audienceRole: z.enum(["cook", "bar", "waiter", "dishwasher"]).nullable().optional(),
   deadlineDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  rewardAmount: z.number().int().min(0).max(1000000).nullable().optional()
+  rewardAmount: z.number().int().min(0).max(1000000).nullable().optional(),
+  rewardMonth: rewardMonthSchema.optional()
 }).refine((data) => Boolean(data.employeeId) !== Boolean(data.audienceRole), {
   message: "either employee or role"
+}).refine((data) => !data.rewardMonth || (Boolean(data.employeeId) && Number(data.rewardAmount) > 0), {
+  message: "reward month requires a personal reward"
 });
 
 const taskStatusSchema = z.object({
@@ -33,6 +39,8 @@ type TaskRow = {
   audience_role: string | null;
   deadline_date: string | null;
   reward_amount: number | null;
+  reward_month: string | null;
+  reward_accounting_month: string | null;
   status: string;
   approved_at: string | null;
   created_at: string;
@@ -91,14 +99,38 @@ export function registerTaskRoutes(app: FastifyInstance): void {
 
     const result = await query<{ id: string }>(
       `
-        INSERT INTO tasks (title, description, employee_id, audience_role, deadline_date, reward_amount, status, created_by)
-        VALUES ($1, $2, $3, $4, $5::date, $6, 'open', $7)
+        INSERT INTO tasks (title, description, employee_id, audience_role, deadline_date, reward_amount, status, created_by, reward_month)
+        VALUES ($1, $2, $3, $4, $5::date, $6, 'open', $7, $8::date)
         RETURNING id
       `,
-      [parsed.data.title, parsed.data.description?.trim() || null, parsed.data.employeeId ?? null, parsed.data.audienceRole ?? null, parsed.data.deadlineDate || null, parsed.data.rewardAmount ?? null, user.id]
+      [parsed.data.title, parsed.data.description?.trim() || null, parsed.data.employeeId ?? null, parsed.data.audienceRole ?? null, parsed.data.deadlineDate || null, parsed.data.rewardAmount ?? null, user.id, parsed.data.rewardMonth ? `${parsed.data.rewardMonth}-01` : null]
     );
     await audit(request, "task_create", user.id, "task", result.rows[0].id, parsed.data);
     return { ok: true, id: result.rows[0].id };
+  });
+
+  // Переносит существующую премию между месяцами без повторной приёмки, очков или ТГ.
+  app.patch("/api/tasks/:id/reward-month", async (request, reply) => {
+    const user = await requireTaskManager(request, reply);
+    if (!user) return;
+    const params = taskParamsSchema.safeParse(request.params);
+    const parsed = taskRewardMonthSchema.safeParse(request.body);
+    if (!params.success || !parsed.success) {
+      await reply.code(400).send({ error: "bad_reward_month" });
+      return;
+    }
+    const result = await query<{ id: string }>(
+      `UPDATE tasks SET reward_month = $2::date, updated_at = now()
+       WHERE id = $1 AND status <> 'cancelled' AND employee_id IS NOT NULL AND reward_amount > 0
+       RETURNING id`,
+      [params.data.id, parsed.data.rewardMonth ? `${parsed.data.rewardMonth}-01` : null]
+    );
+    if (!result.rows.length) {
+      await reply.code(404).send({ error: "reward_not_found" });
+      return;
+    }
+    await audit(request, "task_reward_month_update", user.id, "task", params.data.id, parsed.data);
+    return { ok: true };
   });
 
   app.patch("/api/tasks/:id/status", async (request, reply) => {
@@ -264,6 +296,8 @@ async function getOwnTasks(employeeId: string, role: string): Promise<TaskRow[]>
         t.audience_role,
         t.deadline_date::text,
         t.reward_amount,
+        to_char(t.reward_month, 'YYYY-MM') AS reward_month,
+        to_char(COALESCE(t.reward_month::timestamptz, t.approved_at), 'YYYY-MM') AS reward_accounting_month,
         t.status::text,
         t.approved_at::text,
         t.created_at::text,
@@ -294,6 +328,8 @@ async function getTeamTasks(): Promise<TaskRow[]> {
         t.audience_role,
         t.deadline_date::text,
         t.reward_amount,
+        to_char(t.reward_month, 'YYYY-MM') AS reward_month,
+        to_char(COALESCE(t.reward_month::timestamptz, t.approved_at), 'YYYY-MM') AS reward_accounting_month,
         t.status::text,
         t.approved_at::text,
         t.created_at::text,
@@ -367,6 +403,8 @@ function serializeTask(task: TaskRow) {
     audienceRole: task.audience_role || null,
     deadlineDate: task.deadline_date || "",
     rewardAmount: task.reward_amount ?? null,
+    rewardMonth: task.reward_month || null,
+    rewardAccountingMonth: task.reward_accounting_month || null,
     status: task.status,
     approvedAt: task.approved_at || null,
     // Личная задача, отмеченная выполненной, но ещё не принятая руководителем.

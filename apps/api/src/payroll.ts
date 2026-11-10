@@ -76,6 +76,7 @@ type EmployeePayrollFlagsRow = {
 };
 
 type TaskRewardRow = {
+  reward_month: string;
   id: string;
   title: string;
   reward_amount: number;
@@ -270,15 +271,16 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
     ),
     query<TaskRewardRow>(
       `
-        SELECT id::text, title, reward_amount, approved_at::text AS updated_at
+        SELECT id::text, title, reward_amount, approved_at::text AS updated_at,
+               to_char(COALESCE(reward_month::timestamptz, approved_at), 'YYYY-MM') AS reward_month
         FROM tasks
         WHERE employee_id = $2
           AND status = 'done'
           AND approved_at IS NOT NULL
           AND reward_amount IS NOT NULL
           AND reward_amount > 0
-          AND approved_at >= $1::date
-          AND approved_at < ($1::date + interval '1 month')
+          AND COALESCE(reward_month::timestamptz, approved_at) >= $1::date
+          AND COALESCE(reward_month::timestamptz, approved_at) < ($1::date + interval '1 month')
         ORDER BY approved_at DESC
       `,
       [start, user.id]
@@ -549,7 +551,8 @@ async function getPayrollMonth(user: SessionUser, year: number, month: number) {
       id: row.id,
       title: row.title,
       amount: Number(row.reward_amount || 0),
-      doneAt: row.updated_at
+      doneAt: row.updated_at,
+      rewardMonth: row.reward_month
     })),
     goalRewards: goalRewardRows.rows.map((row) => ({
       id: row.id,

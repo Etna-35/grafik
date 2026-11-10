@@ -2413,6 +2413,7 @@ function renderTaskCreatePanel(tasks){
           <div class="task-reward-row">
             <label class="reward-check"><input name="rewardOn" type="checkbox"> назначить премию за выполнение</label>
             <input name="rewardAmount" type="number" min="0" step="50" inputmode="numeric" placeholder="Сумма премии, ₽" data-reward-amount hidden>
+            <div data-reward-month-fields hidden>${renderTaskRewardMonthFields(null)}</div>
           </div>
         </div>
         <button class="ghost brand-action" type="submit">Добавить</button>
@@ -2423,6 +2424,32 @@ function renderTaskCreatePanel(tasks){
 
 function roleAudienceLabel(role){
   return { cook:"повара", bar:"бармены", waiter:"официанты", dishwasher:"мойка" }[role] || "смена";
+}
+
+// Два обычных select работают и в Safari, где input[type=month] не поддерживается.
+function renderTaskRewardMonthFields(selectedMonth){
+  const currentYear = Number(new Intl.DateTimeFormat("en", { year:"numeric", timeZone:"Europe/Moscow" }).format(new Date()));
+  const [year, month] = String(selectedMonth || "").split("-");
+  const years = Array.from({ length:81 }, (_,i)=>2020+i);
+  return `<div class="task-reward-month-fields">
+    <label class="field"><span>Месяц премии</span>
+      <select name="rewardMonthNumber" aria-label="Месяц премии">
+        <option value="">По дате подтверждения</option>
+        ${Array.from({ length:12 }, (_,i)=>{
+          const m = String(i+1).padStart(2,"0");
+          return `<option value="${m}" ${m === month ? "selected" : ""}>${escapeHtml(formatYearMonth(`2000-${m}`).split(" ")[0])}</option>`;
+        }).join("")}
+      </select>
+    </label>
+    <label class="field"><span>Год премии</span>
+      <select name="rewardMonthYear" aria-label="Год премии">${years.map((y)=>`<option value="${y}" ${y === Number(year || currentYear) ? "selected" : ""}>${y}</option>`).join("")}</select>
+    </label>
+  </div>`;
+}
+
+function taskRewardMonthFromForm(form){
+  const month = form.elements.rewardMonthNumber?.value;
+  return month ? `${form.elements.rewardMonthYear.value}-${month}` : null;
 }
 
 function renderTaskCard(task, showEmployee){
@@ -2440,6 +2467,7 @@ function renderTaskCard(task, showEmployee){
   const rewardLabel = task.rewardAmount
     ? `<span class="task-reward${approved ? " ok" : ""}">+${formatMoneyPlain(task.rewardAmount)} ₽${awaiting ? " · на проверке" : (approved ? " · начислена" : "")}</span>`
     : "";
+  const rewardMonth = task.rewardAccountingMonth || task.rewardMonth;
 
   const actions = [];
   // Готово/Вернуть: сотруднику — пока не принято; руководителю (команда) — всегда (может вернуть).
@@ -2466,7 +2494,16 @@ function renderTaskCard(task, showEmployee){
           ${isRole ? `<span class="task-aud">Вся смена · ${roleAudienceLabel(task.audienceRole)}</span>` : (showEmployee && task.employeeName ? `<span>${escapeHtml(task.employeeName)}</span>` : "")}
           ${task.deadlineDate ? `<span>${escapeHtml(formatDateHuman(task.deadlineDate))}</span>` : ""}
           ${rewardLabel}
+          ${task.rewardAmount && !isRole ? `<span>Учёт премии: ${rewardMonth ? escapeHtml(formatYearMonth(rewardMonth)) : "по дате подтверждения"}</span>` : ""}
         </div>
+        ${showEmployee && !isRole && task.rewardAmount > 0 ? `
+          <details class="task-reward-month-editor">
+            <summary>Изменить месяц премии</summary>
+            <form data-task-reward-month="${escapeAttr(task.id)}">
+              ${renderTaskRewardMonthFields(task.rewardMonth)}
+              <button class="ghost mini" type="submit" ${state.tasksSaving ? "disabled" : ""}>Сохранить месяц</button>
+            </form>
+          </details>` : ""}
       </div>
       <div class="task-actions">
         ${actions.join("")}
@@ -2484,8 +2521,10 @@ function bindTasksPage(){
     });
     const rewardOn = form.elements.rewardOn;
     const rewardAmount = form.querySelector("[data-reward-amount]");
+    const monthFields = form.querySelector("[data-reward-month-fields]");
     rewardOn?.addEventListener("change", ()=>{
       rewardAmount.hidden = !rewardOn.checked;
+      monthFields.hidden = !rewardOn.checked;
       if(rewardOn.checked) rewardAmount.focus();
     });
   }
@@ -2500,6 +2539,14 @@ function bindTasksPage(){
 
   app.querySelectorAll("[data-task-approve]").forEach((button)=>{
     button.addEventListener("click", ()=>approveTask(button.dataset.taskApprove));
+  });
+  app.querySelectorAll("[data-task-reward-month]").forEach((form)=>{
+    form.addEventListener("submit", (event)=>{
+      event.preventDefault();
+      if(state.tasksSaving) return;
+      const rewardMonth = taskRewardMonthFromForm(form);
+      saveTasksAction(()=>apiPatch(`/api/tasks/${encodeURIComponent(form.dataset.taskRewardMonth)}/reward-month`, { rewardMonth }));
+    });
   });
 
   const handoverForm = app.querySelector("#handoverForm");
@@ -2607,6 +2654,7 @@ async function createTaskFromForm(form){
   const payload = assignTo.startsWith("role:")
     ? { title, description, audienceRole: assignTo.slice(5), deadlineDate, rewardAmount }
     : { title, description, employeeId: assignTo, deadlineDate, rewardAmount };
+  payload.rewardMonth = rewardAmount && !assignTo.startsWith("role:") ? taskRewardMonthFromForm(form) : null;
   await saveTasksAction(()=>apiPost("/api/tasks", payload));
 }
 
@@ -2631,6 +2679,12 @@ async function saveTasksAction(action){
   render();
   try{
     await action();
+    // Перенос премии меняет начисления и остатки обоих месяцев.
+    state.schedule = null;
+    state.payroll = null;
+    state.money = null;
+    state.treasury = null;
+    state.breakdown = null;
     state.tasks = await apiGet("/api/tasks");
     state.summary = await apiGet("/api/summary");
   }catch(error){
@@ -3833,7 +3887,7 @@ function renderPayrollContent(payroll){
           <div class="payroll-row">
             <span>
               <b>+${formatMoneyPlain(row.amount)} ₽</b>
-              <small>${escapeHtml(row.title)} · ${escapeHtml(formatDateHuman(row.doneAt.slice(0, 10)))}</small>
+              <small>${escapeHtml(row.title)} · за ${escapeHtml(formatYearMonth(row.rewardMonth))} · подтверждено ${escapeHtml(formatDateHuman(row.doneAt.slice(0, 10)))}</small>
             </span>
             <i>начислено</i>
           </div>

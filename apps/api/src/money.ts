@@ -121,7 +121,7 @@ async function salaryOwed(year: number, month: number): Promise<number> {
      ), task AS (
        SELECT employee_id, SUM(reward_amount)::int AS v FROM tasks
        WHERE status = 'done' AND approved_at IS NOT NULL AND reward_amount > 0
-         AND approved_at >= $1::date AND approved_at < ($1::date + interval '1 month') GROUP BY 1
+         AND COALESCE(reward_month::timestamptz, approved_at) >= $1::date AND COALESCE(reward_month::timestamptz, approved_at) < ($1::date + interval '1 month') GROUP BY 1
      ), goal AS (
        SELECT employee_id, SUM(reward_amount)::int AS v FROM sales_goals
        WHERE status = 'confirmed' AND reward_amount > 0

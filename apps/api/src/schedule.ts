@@ -139,7 +139,7 @@ async function employeeBreakdown(employeeId: string, year: number, month: number
     query<{ title: string; amount: number }>(
       `SELECT title, reward_amount AS amount FROM tasks
        WHERE employee_id = $1 AND status = 'done' AND approved_at IS NOT NULL AND reward_amount > 0
-         AND approved_at >= $2::date AND approved_at < ($2::date + interval '1 month')
+         AND COALESCE(reward_month::timestamptz, approved_at) >= $2::date AND COALESCE(reward_month::timestamptz, approved_at) < ($2::date + interval '1 month')
        ORDER BY approved_at`,
       [employeeId, start]
     ),
@@ -623,6 +623,13 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
           WHERE work_date >= $1::date
             AND work_date < ($1::date + interval '1 month')
         )
+        -- Премия за прошлый месяц должна быть видна и без смен, в том числе у архивного сотрудника.
+        OR id IN (
+          SELECT employee_id FROM tasks
+          WHERE status = 'done' AND approved_at IS NOT NULL AND reward_amount > 0
+            AND COALESCE(reward_month::timestamptz, approved_at) >= $1::date
+            AND COALESCE(reward_month::timestamptz, approved_at) < ($1::date + interval '1 month')
+        )
         -- Активный ростер месяца: в графике, не архивный; появляется с месяца даты начала работы,
         -- скрывается после месяца даты увольнения (schedule_until).
         OR (
@@ -775,7 +782,7 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     query<{ employee_id: string; v: number }>(
       `SELECT employee_id, SUM(reward_amount)::int AS v FROM tasks
        WHERE status = 'done' AND approved_at IS NOT NULL AND reward_amount IS NOT NULL AND reward_amount > 0
-         AND approved_at >= $1::date AND approved_at < ($1::date + interval '1 month')
+         AND COALESCE(reward_month::timestamptz, approved_at) >= $1::date AND COALESCE(reward_month::timestamptz, approved_at) < ($1::date + interval '1 month')
        GROUP BY employee_id`,
       [start]
     ),
