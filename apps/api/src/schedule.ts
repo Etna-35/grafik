@@ -5,6 +5,7 @@ import { pool, query } from "./db.js";
 import { isFeatureEnabled } from "./features.js";
 import { getDailyRevenueForecast } from "./finance.js";
 import { awardGreenScore, revokeGreenScore } from "./progress.js";
+import { saveEmploymentTerms } from "./scheduleTerms.js";
 
 const roleLabels: Record<string, string> = {
   cook: "Повар",
@@ -76,6 +77,13 @@ const monthRateSchema = z.object({
   rate: z.number().int().positive().max(100000).nullable()
 });
 
+const employmentTermsSchema = z.object({
+  employeeId: z.string().uuid(),
+  effectiveMonth: z.string().regex(/^(20\d{2}|2100)-(0[1-9]|1[0-2])$/),
+  scheduleRole: z.enum(["cook", "bar", "waiter", "dish", "other"]),
+  rate: z.number().int().positive().max(100000).nullable()
+}).refine(data => data.scheduleRole === "dish" || data.rate !== null);
+
 const rosterWindowSchema = z.object({
   employeeId: z.string().uuid(),
   scheduleFrom: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
@@ -125,8 +133,8 @@ async function employeeBreakdown(employeeId: string, year: number, month: number
 
   const [emp, shifts, tasks, goals, streaks, hookah, tips, payouts] = await Promise.all([
     query<{ name: string; role: string; role_label: string | null; hourly_rate: number | null }>(
-      "SELECT display_name AS name, role::text, schedule_role::text AS role_label, hourly_rate FROM employees WHERE id = $1",
-      [employeeId]
+      "SELECT display_name AS name, role::text, schedule_role_on(id, $2::date) AS role_label, schedule_rate_on(id, $2::date) AS hourly_rate FROM employees WHERE id = $1",
+      [employeeId, start]
     ),
     query<{ pay_model: string | null; cnt: string; hours: string; amount: string }>(
       `SELECT pay_model, COUNT(*)::text AS cnt, COALESCE(SUM(planned_hours), 0)::text AS hours,
@@ -198,7 +206,7 @@ async function employeeBreakdown(employeeId: string, year: number, month: number
   const remaining = Math.max(0, accruedForPay - paidSalary);
 
   return {
-    employee: { id: employeeId, name: emp.rows[0]?.name || "", role: emp.rows[0]?.role || "", hourlyRate: emp.rows[0]?.hourly_rate ?? null },
+    employee: { id: employeeId, name: emp.rows[0]?.name || "", role: emp.rows[0]?.role_label || emp.rows[0]?.role || "", hourlyRate: emp.rows[0]?.hourly_rate ?? null },
     year,
     month,
     shifts: {
@@ -334,6 +342,21 @@ export function registerScheduleRoutes(app: FastifyInstance): void {
     const result = await setMonthRate(parsed.data);
     await audit(request, "schedule_month_rate", user.id, "schedule_month_rate", `${parsed.data.year}-${parsed.data.month}:${parsed.data.employeeId}`, parsed.data);
     return result;
+  });
+
+  app.put("/api/schedule/employment-terms", async (request, reply) => {
+    const user = await requireManager(request, reply);
+    if (!user) return;
+    const parsed = employmentTermsSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ error: "bad_employment_terms" });
+    try {
+      const result = await saveEmploymentTerms(parsed.data, user.id);
+      await audit(request, "schedule_employment_terms", user.id, "employee", parsed.data.employeeId, parsed.data);
+      return result;
+    } catch (error) {
+      if ((error as Error).message === "employee_not_found") return reply.code(404).send({ error: "employee_not_found" });
+      throw error;
+    }
   });
 
   // Окно участия в графике (скрыть с месяца / вернуть) — управление прямо из экрана графика.
@@ -613,7 +636,12 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     birth_date: string | null;
   }>(
     `
-      SELECT id, display_name, role, schedule_role, default_hours, hourly_rate, pay_model, birth_date::text
+      SELECT id, display_name, role, schedule_role_on(id, $1::date) AS schedule_role, default_hours,
+             schedule_rate_on(id, $1::date) AS hourly_rate,
+             CASE WHEN EXISTS (SELECT 1 FROM schedule_employment_terms t WHERE t.employee_id = employees.id
+                    AND t.effective_month > '1900-01-01' AND t.effective_month <= $1::date)
+               THEN CASE WHEN schedule_role_on(id, $1::date) = 'dish' THEN 'fixed' ELSE 'hourly' END
+               ELSE pay_model END AS pay_model, birth_date::text
       FROM employees
       WHERE
         -- Историю показываем ВСЕГДА: кто работал в этом месяце (даже архивный) остаётся при пролистывании назад.
@@ -640,7 +668,7 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
           AND ($1::date <= date_trunc('month', schedule_until)::date OR schedule_until IS NULL)
         )
       ORDER BY
-        CASE COALESCE(schedule_role, role::text)
+        CASE schedule_role_on(id, $1::date)
           WHEN 'cook' THEN 1
           WHEN 'bar' THEN 2
           WHEN 'waiter' THEN 3
@@ -889,6 +917,10 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
     [year, month]
   );
   const monthRates = new Map(monthRateRows.rows.map((r) => [r.employee_id, r.hourly_rate]));
+  const termRows = canSeeAllMoney ? await query<{
+    employee_id: string; effective_month: string; schedule_role: string; hourly_rate: number | null;
+  }>(`SELECT employee_id::text, to_char(effective_month, 'YYYY-MM') AS effective_month,
+            schedule_role, hourly_rate FROM schedule_employment_terms ORDER BY effective_month`) : { rows: [] };
 
   // Активные личные обязательства (для привязки выплаты к обязательству в окне дня).
   const obligations = canSeeAllMoney
@@ -919,6 +951,9 @@ async function getScheduleMonth(user: SessionUser, year: number, month: number) 
         birthDate: employee.birth_date,
         hourlyRate: canSeeAllMoney ? (monthRates.get(employee.id) ?? employee.hourly_rate) : null,
         baseRate: canSeeAllMoney ? employee.hourly_rate : null,
+        employmentTerms: termRows.rows.filter(t => t.employee_id === employee.id).map(t => ({
+          effectiveMonth: t.effective_month, role: t.schedule_role, rate: t.hourly_rate
+        })),
         rateOverride: canSeeAllMoney ? monthRates.has(employee.id) : false,
         payModel: canSeeAllMoney ? payModel : null,
         totals: (() => {
@@ -968,13 +1003,14 @@ async function upsertShift(
     role: string;
   }>(
     `
-      SELECT id, default_hours, hourly_rate, pay_model, schedule_role, role::text
+      SELECT id, default_hours, schedule_rate_on(id, $2::date) AS hourly_rate, pay_model,
+             schedule_role_on(id, $2::date) AS schedule_role, role::text
       FROM employees
       WHERE id = $1
         AND is_active = true
       LIMIT 1
     `,
-    [data.employeeId]
+    [data.employeeId, data.workDate]
   );
   const employee = employeeResult.rows[0];
   if (!employee) {
@@ -1015,7 +1051,7 @@ async function upsertShift(
   const payModel = roleIsFixed ? "fixed" : "hourly";
   // Ставка дня: явная из редактора > индивидуальная ставка месяца (только для штатной роли) > штатная ставка.
   let baseRate = employee.hourly_rate || 0;
-  if (!data.roleOverride) {
+  if (dayRole === defaultRole) {
     const monthRate = await getMonthRateFor(data.workDate, data.employeeId);
     if (monthRate != null) baseRate = monthRate;
   }
@@ -1143,8 +1179,8 @@ async function setMonthRate(
   data: z.infer<typeof monthRateSchema>
 ): Promise<{ ok: true; recomputed: number; rate: number | null }> {
   const empRes = await query<{ hourly_rate: number | null }>(
-    "SELECT hourly_rate FROM employees WHERE id = $1 LIMIT 1",
-    [data.employeeId]
+    "SELECT schedule_rate_on(id, $2::date) AS hourly_rate FROM employees WHERE id = $1 LIMIT 1",
+    [data.employeeId, `${data.year}-${String(data.month).padStart(2, "0")}-01`]
   );
   if (!empRes.rows[0]) throw new Error("Employee not found");
   const defaultRate = Number(empRes.rows[0].hourly_rate || 0);

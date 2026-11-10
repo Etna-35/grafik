@@ -4239,6 +4239,8 @@ function renderEmployeeForm(admin){
         </label>
       </div>
 
+      ${!isNew ? `<div class="hint hint-block-sm">Перевод на другую должность или новую базовую ставку с месяца задаётся в «Графике»: открой нужный месяц, разблокируй замок и нажми имя сотрудника. Здесь — исходные условия до первого перевода.</div>` : ""}
+
       <div class="admin-fields hookah-settings">
         <label class="checkrow active-toggle">
           <input name="isHookahMaster" type="checkbox" ${employee.isHookahMaster ? "checked" : ""}>
@@ -4527,6 +4529,7 @@ function integerOrNull(value){
 }
 
 function adminErrorText(error){
+  if(error.code === "use_employment_terms") return "У сотрудника есть история переводов. Меняй должность и базовую ставку через «График» → имя сотрудника → «Должность и ставка с месяца».";
   if(error.code === "pin_exists") return "Такой PIN уже используется";
   if(error.code === "employee_exists") return "Сотрудник с таким именем уже есть";
   if(error.code === "cannot_disable_self") return "Нельзя отключить самого себя";
@@ -6139,10 +6142,26 @@ function renderRosterEditor(service){
       <div class="editor-head">
         <span class="grow">
           <span class="row-title">${escapeHtml(employee.name)}</span>
-          <span class="row-sub">${escapeHtml(monthTitle)} · ставка и состав на месяц</span>
+          <span class="row-sub">${escapeHtml(monthTitle)} · должность, ставка и состав</span>
         </span>
         <button class="iconbtn small" data-roster-action="close">×</button>
       </div>
+
+      <div class="section-title">Должность и ставка с этого месяца</div>
+      <div class="editor-grid editor-grid-2">
+        <label class="field"><span>Должность с ${escapeHtml(monthTitle)}</span>
+          <select id="rosterTermsRole">${scheduleRoleOptions().filter(o=>o.value !== 'dishwasher').map(o=>`<option value="${o.value}" ${employee.role === o.value ? 'selected' : ''}>${escapeHtml(o.label)}</option>`).join('')}</select>
+        </label>
+        <label class="field"><span>Базовая ставка, ₽/час</span>
+          <input id="rosterTermsRate" type="number" min="1" max="100000" step="1" value="${escapeAttr(base || '')}" ${isFixed ? 'disabled' : ''}>
+        </label>
+      </div>
+      <div class="hint hint-block-sm">Действует с первого числа выбранного месяца и далее, до следующего перевода. Уже записанные смены и выплаты не пересчитываются. Индивидуальная роль смены и ставка на месяц сохраняются.</div>
+      ${employee.rateOverride ? `<div class="hint hint-block-sm">На этот месяц уже задана отдельная ставка ${formatMoneyPlain(rateValue)} ₽/час — она имеет приоритет над базовой ставкой перевода.</div>` : ''}
+      <button class="ghost brand-action mt-10" data-roster-action="save-terms">Сохранить условия с ${escapeHtml(monthTitle)}</button>
+      ${(employee.employmentTerms || []).length ? `<div class="hint hint-block-sm">${employee.employmentTerms.map(t=>`${t.effectiveMonth === '1900-01' ? 'До первого перевода' : 'С ' + t.effectiveMonth.split('-').reverse().join('.')} · ${escapeHtml(scheduleRoleOptions().find(o=>o.value===t.role)?.label || t.role)} · ${t.role === 'dish' ? 'оплата за смену' : (t.rate == null ? 'ставка не задана' : formatMoneyPlain(t.rate) + ' ₽/час')}`).join('<br>')}</div>` : ''}
+      <div class="hint hint-block-sm">Роль учётной записи и доступы к разделам этим переводом не меняются.</div>
+      <div class="roster-sep"></div>
 
       ${isFixed ? `
         <div class="hint hint-block-sm">У этой должности фиксированная оплата — индивидуальная ставка/час не применяется.</div>
@@ -6169,6 +6188,21 @@ function bindRosterEditor(){
   if(!state.selectedRosterEmployeeId) return;
   const employee = state.schedule?.employees.find((e)=>e.id === state.selectedRosterEmployeeId);
   if(!employee) return;
+
+  app.querySelector('#rosterTermsRole')?.addEventListener('change', event=>{
+    const input = app.querySelector('#rosterTermsRate');
+    if(input) input.disabled = event.target.value === 'dish';
+  });
+  app.querySelector("[data-roster-action='save-terms']")?.addEventListener('click', async ()=>{
+    const role = app.querySelector('#rosterTermsRole')?.value;
+    const rate = role === 'dish' ? null : Number(app.querySelector('#rosterTermsRate')?.value);
+    if(role !== 'dish' && (!Number.isInteger(rate) || rate <= 0 || rate > 100000)){
+      state.scheduleSaveError = 'Укажи целую ставку от 1 до 100 000 ₽/час'; render(); return;
+    }
+    const effectiveMonth = `${state.schedule.year}-${String(state.schedule.month).padStart(2,'0')}`;
+    state.selectedRosterEmployeeId = null;
+    await saveAndReload(()=>apiPut('/api/schedule/employment-terms', {employeeId:employee.id,effectiveMonth,scheduleRole:role,rate}));
+  });
 
   app.querySelector("[data-roster-action='close']")?.addEventListener("click", ()=>{
     state.selectedRosterEmployeeId = null;

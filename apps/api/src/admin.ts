@@ -3,6 +3,7 @@ import { z } from "zod";
 import { audit, requireUser, type SessionUser } from "./auth.js";
 import { pool, query } from "./db.js";
 import { hashPin, verifyPin } from "./security.js";
+import type { PoolClient } from "pg";
 
 const roleSchema = z.enum(["owner", "manager", "cook", "bar", "waiter", "dishwasher", "other"]);
 const scheduleRoleSchema = z.enum(["cook", "bar", "waiter", "dish", "dishwasher", "other"]);
@@ -165,6 +166,9 @@ export function registerAdminRoutes(app: FastifyInstance): void {
       await audit(request, "employee_update", user.id, "employee", result.id, result);
       return result;
     } catch (error) {
+      if (error instanceof Error && error.message === "use_employment_terms") {
+        return reply.code(409).send({ error: "use_employment_terms" });
+      }
       if (isConflictError(error)) {
         await reply.code(409).send({ error: conflictCode(error) });
         return;
@@ -372,9 +376,17 @@ async function createEmployee(data: z.infer<typeof createEmployeeSchema>) {
 }
 
 async function updateEmployee(employeeId: string, data: z.infer<typeof updateEmployeeSchema>) {
-  await pool.query("BEGIN");
+  const client = await pool.connect();
   try {
-    await pool.query(
+    await client.query("BEGIN");
+    const previous = await client.query(
+      "SELECT schedule_role, hourly_rate, pay_model FROM employees WHERE id = $1 FOR UPDATE", [employeeId]);
+    const hasTerms = await client.query("SELECT 1 FROM schedule_employment_terms WHERE employee_id = $1 LIMIT 1", [employeeId]);
+    const old = previous.rows[0];
+    if (hasTerms.rowCount && old && (old.schedule_role !== data.scheduleRole || old.hourly_rate !== data.hourlyRate || old.pay_model !== data.payModel)) {
+      throw new Error("use_employment_terms");
+    }
+    await client.query(
       `
         UPDATE employees
         SET display_name = $2,
@@ -411,7 +423,7 @@ async function updateEmployee(employeeId: string, data: z.infer<typeof updateEmp
 
     if (data.pin) {
       const pinHash = await hashPin(data.pin);
-      await pool.query(
+      await client.query(
         `
           INSERT INTO employee_auth (employee_id, pin_hash, pin_changed_at)
           VALUES ($1, $2, now())
@@ -425,20 +437,22 @@ async function updateEmployee(employeeId: string, data: z.infer<typeof updateEmp
       );
     }
 
-    await syncServiceAccess(employeeId, data.services);
-    await pool.query("COMMIT");
+    await syncServiceAccess(employeeId, data.services, client);
+    await client.query("COMMIT");
     return { ok: true, id: employeeId };
   } catch (error) {
-    await pool.query("ROLLBACK");
+    await client.query("ROLLBACK");
     throw error;
+  } finally {
+    client.release();
   }
 }
 
-async function syncServiceAccess(employeeId: string, services: z.infer<typeof serviceAccessSchema>[]): Promise<void> {
-  await pool.query("DELETE FROM employee_service_access WHERE employee_id = $1", [employeeId]);
+async function syncServiceAccess(employeeId: string, services: z.infer<typeof serviceAccessSchema>[], client: Pick<PoolClient, "query"> = pool): Promise<void> {
+  await client.query("DELETE FROM employee_service_access WHERE employee_id = $1", [employeeId]);
 
   for (const service of services.filter((item) => item.canView || item.canEdit)) {
-    await pool.query(
+    await client.query(
       `
         INSERT INTO employee_service_access (employee_id, service_id, can_view, can_edit)
         SELECT $1, id, $3, $4

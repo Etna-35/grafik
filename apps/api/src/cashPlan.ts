@@ -8,7 +8,7 @@ import { query } from "./db.js";
 export const STREAK_LEN = 5;
 export const BONUS_PCT = 1.5;
 
-const WAITER_FILTER = "(e.role::text = 'waiter' OR e.schedule_role = 'waiter')";
+const waiterFilter = (shift: string) => `schedule_is_waiter_on(e.id, ${shift}.work_date, ${shift}.role_override)`;
 
 type ShiftRow = {
   work_date: string;
@@ -31,13 +31,14 @@ async function waiterSequence(employeeId: string): Promise<SeqItem[]> {
              ss.planned_hours AS my_hours,
              (SELECT COALESCE(SUM(s2.planned_hours), 0) FROM schedule_shifts s2
                 JOIN employees e ON e.id = s2.employee_id
-                WHERE s2.work_date = ss.work_date AND ${WAITER_FILTER}) AS waiter_hours,
+                WHERE s2.work_date = ss.work_date AND ${waiterFilter('s2')}) AS waiter_hours,
              (SELECT COUNT(*) FROM schedule_shifts s3
                 JOIN employees e ON e.id = s3.employee_id
-                WHERE s3.work_date = ss.work_date AND ${WAITER_FILTER})::int AS waiter_count
+                WHERE s3.work_date = ss.work_date AND ${waiterFilter('s3')})::int AS waiter_count
       FROM schedule_shifts ss
       JOIN shift_closings sc ON sc.work_date = ss.work_date
       WHERE ss.employee_id = $1
+        AND schedule_is_waiter_on(ss.employee_id, ss.work_date, ss.role_override)
       ORDER BY ss.work_date
     `,
     [employeeId]
@@ -96,7 +97,7 @@ export async function recomputeStreaksForDate(workDate: string): Promise<void> {
   const waiters = await query<{ id: string }>(
     `SELECT ss.employee_id::text AS id
      FROM schedule_shifts ss JOIN employees e ON e.id = ss.employee_id
-     WHERE ss.work_date = $1::date AND ${WAITER_FILTER}`,
+     WHERE ss.work_date = $1::date AND ${waiterFilter('ss')}`,
     [workDate]
   );
   for (const w of waiters.rows) {
@@ -113,7 +114,10 @@ export async function getWaiterCashStats(employeeId: string): Promise<{
   bonusTotal: number;
 } | null> {
   const empRow = await query<{ is_waiter: boolean }>(
-    `SELECT ${WAITER_FILTER} AS is_waiter FROM employees e WHERE e.id = $1`,
+    `SELECT EXISTS (SELECT 1 FROM schedule_shifts ss WHERE ss.employee_id = e.id
+       AND schedule_is_waiter_on(e.id, ss.work_date, ss.role_override))
+       OR schedule_is_waiter_on(e.id, (now() AT TIME ZONE 'Europe/Moscow')::date, NULL) AS is_waiter
+     FROM employees e WHERE e.id = $1`,
     [employeeId]
   );
   if (!empRow.rows[0]?.is_waiter) return null;
