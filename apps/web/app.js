@@ -1,5 +1,9 @@
 const app = document.querySelector("#app");
 
+// Временно выключен по просьбе владельца: на iPhone кнопка попадает под статус-бар.
+// Вернуть true только после исправления расположения и команды владельца.
+const SCHEDULE_EDIT_LOCK_ENABLED = false;
+
 const serviceMeta = {
   schedule: {
     accent: "var(--brand)",
@@ -5405,6 +5409,7 @@ async function resendShiftTelegram(){
 }
 
 function renderSchedulePage(service){
+  state.scheduleEditUnlocked = isScheduleEditingUnlocked(service);
   const today = new Date();
   const year = state.schedule?.year || today.getFullYear();
   const month = state.schedule?.month || today.getMonth() + 1;
@@ -5524,7 +5529,7 @@ function renderScheduleImport(service){
 }
 
 function renderScheduleLockControl(service){
-  if(!service.can_edit) return "";
+  if(!SCHEDULE_EDIT_LOCK_ENABLED || !service.can_edit) return "";
   const unlocked = isScheduleEditingUnlocked(service);
   return `
     <button class="ghost mini schedule-lock-btn ${unlocked ? "unlocked" : ""}" type="button" data-schedule-lock="1">
@@ -5534,7 +5539,7 @@ function renderScheduleLockControl(service){
 }
 
 function isScheduleEditingUnlocked(service){
-  return Boolean(service?.can_edit && state.scheduleEditUnlocked);
+  return Boolean(service?.can_edit && (!SCHEDULE_EDIT_LOCK_ENABLED || state.scheduleEditUnlocked));
 }
 
 function renderScheduleContent(schedule){
