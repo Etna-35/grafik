@@ -1,8 +1,7 @@
 const app = document.querySelector("#app");
 
-// Временно выключен по просьбе владельца: на iPhone кнопка попадает под статус-бар.
-// Вернуть true только после исправления расположения и команды владельца.
-const SCHEDULE_EDIT_LOCK_ENABLED = false;
+// При входе график заблокирован; редактирование включается только кнопкой.
+const SCHEDULE_EDIT_LOCK_ENABLED = true;
 
 const serviceMeta = {
   schedule: {
@@ -177,6 +176,16 @@ init();
 
 async function init(){
   window.addEventListener("popstate", render);
+  window.addEventListener("pageshow", (event)=>{
+    // Возврат из кэша Safari тоже считается новым посещением графика.
+    if(!event.persisted || !state.scheduleEditUnlocked) return;
+    state.scheduleEditUnlocked = false;
+    state.selectedScheduleCell = null;
+    state.selectedScheduleDate = null;
+    state.selectedMyHoursDate = null;
+    state.selectedRosterEmployeeId = null;
+    render();
+  });
   preventMobileDoubleTapZoom();
   try{
     const session = await apiGet("/api/me");

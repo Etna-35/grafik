@@ -207,7 +207,7 @@ a{color:inherit;text-decoration:none}
 .dash-day .dd-acc{color:var(--ink-soft);font-size:11px}
 .auto-inp{background:var(--card-2);border-color:var(--line);box-shadow:none}
 .phone.schedule-phone{max-width:none;border-radius:0}
-.schedule-screen{padding:18px 14px 28px}
+.schedule-screen{padding:calc(18px + env(safe-area-inset-top, 0px)) calc(14px + env(safe-area-inset-right, 0px)) 28px calc(14px + env(safe-area-inset-left, 0px))}
 .monthbar{display:flex;align-items:center;gap:8px;margin:0 2px 12px}
 .monthbar .mname{flex:1;text-align:center;font-weight:600;font-size:16px;text-transform:capitalize}
 .btn{border:1px solid var(--line-strong);background:var(--card);color:var(--ink);border-radius:var(--r-md);padding:9px 12px;font:inherit;font-weight:700;font-size:14px;cursor:pointer;box-shadow:var(--shadow);transition:transform .08s ease,background .15s;text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
@@ -910,7 +910,7 @@ button.day-block{cursor:pointer;font:inherit}
   .screen{max-width:1180px;margin:0 auto;padding:28px 32px 42px}
   .service-page{min-height:100vh}
   .pin-wrap{min-height:calc(100vh - 90px);justify-content:center;padding-top:0}
-  .phone.schedule-phone .schedule-screen{max-width:none;padding:22px 24px 34px}
+  .phone.schedule-phone .schedule-screen{max-width:none;padding:calc(22px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-right, 0px)) 34px calc(24px + env(safe-area-inset-left, 0px))}
   .shift-close-screen{max-width:860px;padding:24px 32px 38px}
   .payroll-screen{max-width:860px;padding:24px 32px 38px}
   .requisition-screen{max-width:1080px;padding:24px 32px 38px}
